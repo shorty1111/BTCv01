@@ -8,7 +8,7 @@ let skyIdxCount = 0;
 
 // ===== Default sky params (bez SUN — njega prosleđuje main.js) =====
 export const DEFAULT_SKY = {
-  exposure: 1.0,
+  exposure: 1.6,
 
   // Nebo: čisto letnje nebo (Unreal Engine style)
   zenith: [0.12, 0.25, 0.6], // sky blue
@@ -20,14 +20,14 @@ export const DEFAULT_SKY = {
   worldLocked: 1,
   model: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
 
-  turbidity: 0.7, // manji brojevi = čisto nebo, bez “mutnog” horizonta!
+  turbidity: 0.9, // manji brojevi = čisto nebo, bez “mutnog” horizonta!
   sunSizeDeg: 0.53, // može i 0.53
-  sunHaloScale: 0.2,
-  horizonSoft: 0.1,
-  horizonLift: 0.0,
-  saturation: 1.0, // malo ispod 1.0
-  horizonDesat: 0.0,
-  horizonWarmth: 1.22,
+  sunHaloScale: 0.25,
+  horizonSoft: 0.18,
+  horizonLift: -0.02,
+  saturation: 1.1, // malo ispod 1.0
+  horizonDesat: 0.05,
+  horizonWarmth: 1.35,
 
   // Bandovi
   milkBandStrength: 0.0, // isključi!
@@ -36,10 +36,10 @@ export const DEFAULT_SKY = {
   warmBandWidth: 0.15,
 
   // Atmosfera
-  rayleighStrength: 0.93,
-  mieStrength: 0.68,
-  zenithDesat: 0.0,
-  groundScatter: 0.6,
+  rayleighStrength: 1.0,
+  mieStrength: 0.8,
+  zenithDesat: 0.12,
+  groundScatter: 0.85,
 };
 
 // ===== Helpers =====
@@ -277,6 +277,11 @@ void main(){
     curHorizon = mix(curHorizon, nightHorizon, nightAmt);
 
     vec3 base = mix(curZenith, curHorizon, hS);
+    // --- Ground gradient (toplija baza ispod horizonta) ---
+    float gMix = smoothstep(-0.25, 0.05, dir.y);
+    vec3 groundColor = mix(vec3(0.10, 0.07, 0.05), vec3(0.16, 0.11, 0.07), 1.0 - sunAlt);
+    base = mix(groundColor, base, gMix);
+
 
     // === 2. Procedural clouds, halo, sunset boost ===
     // (ostaje kao ranije – možeš da ga pojačaš po želji)
@@ -299,19 +304,20 @@ void main(){
             amp *= 0.5;
         }
         cl /= 1.75;
-        float density      = smoothstep(0.45, 0.70, cl);
+        float density = smoothstep(0.48, 0.68, cl);
         float opticalDepth = segLen / (uCloudThickness*2.0);
         cloudAlpha         = 1.0 - exp(-density * opticalDepth * 1.8);
         float fadeHor   = smoothstep(0.1, 0.18, dir.y);
         float fadeZen   = 1.0 - smoothstep(0.01, 1.0, dir.y);
         cloudAlpha     *= fadeHor * fadeZen;
         cloudAlpha      = clamp(cloudAlpha, 0.0, 1.0);
-        base = mix(base, vec3(1.0), 0.27 * cloudAlpha);
+        base = mix(base, vec3(1.0), 0.30 * cloudAlpha);
     }
 
     // --- sunset horizon warmth (neka ostane)
-    float warm     = pow(clamp(1.0 - sunAlt, 0.0, 1.0), 2.0) * hS * uHorizonWarmth;
-    base           = mix(base, vec3(1.0, 0.5, 0.2), warm);
+float warm = pow(clamp(1.0 - sunAlt, 0.0, 1.0), 2.0) * hS * uHorizonWarmth;
+vec3 sunsetWarm = vec3(1.0, 0.55, 0.25);
+base = mix(base, sunsetWarm, clamp(warm, 0.0, 0.65));
 
     // --- Ostali efekti ---
     float milkBand = exp(-pow(abs(dir.y - 1.0)/max(uMilkBandWidth,0.001), 2.0));
@@ -323,8 +329,18 @@ void main(){
     base  = applySaturation(base, uSaturation);
     base  = mix(base, applySaturation(base, 0.9), uZenithDesat);
     base *= mix(0.7, 1.0, uRayleighStrength);
-
     base = mix(base, vec3(0.035, 0.03, 0.03), clamp(uTurbidity*(1.0-hS), 0.0, 1.0));
+
+// --- Vertikalni "color curve": hladniji zenit, topliji horizont ---
+float skyFade = smoothstep(0.0, 0.55, dir.y);
+vec3 coldZenith  = vec3(0.80, 0.90, 1.05);  // blago hladnija nijansa gore
+vec3 warmHorizon = vec3(1.02, 0.94, 0.88);  // topliji ton pri horizontu
+base *= mix(warmHorizon, coldZenith, skyFade);
+
+// --- Blaga ozon/blue-shift ton korekcija ka visini ---
+float ozone = smoothstep(0.35, 0.95, dir.y);
+base = mix(base, base * vec3(0.92, 0.96, 1.06), 0.25 * ozone);
+
 
     // === 3. Sun disk & Mie halo ===
     float cosToSun = dot(dir, sunV);
@@ -332,8 +348,9 @@ void main(){
     float ang      = acos(cosToSun);
 
     float disk = exp(-pow(ang/(sunSize*0.9), 2.0));
-    float limb = exp(-pow(ang/(sunSize*2.5), 2.0));
-    vec3  sunLight = uSunColor * (disk*uSunIntensity + limb*(uSunIntensity*0.12));
+float limb = exp(-pow(ang/(sunSize*2.2), 2.0)); // uže, izraženije
+vec3  sunLight = uSunColor * (disk*uSunIntensity + limb*(uSunIntensity*0.18));
+
 
     float g = 0.8;
     float mie = (1.0 - g*g) / pow(1.0 + g*g - 2.0*g*cosToSun, 1.5);

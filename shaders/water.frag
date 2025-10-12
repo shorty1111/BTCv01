@@ -164,11 +164,18 @@ float horiz = smoothstep(-0.02, 0.02, R.y);
         color += sssLight;
 
         // uzmi HDR planar refleksiju
-        vec2 reflUV = getPlanarReflectionUV(vWorldPos);
-        vec3 reflCol = texture(uReflectionTex, reflUV).rgb;
+vec3 nm = texture(waterNormalTex, vUV * 4.0).xyz * 2.0 - 1.0;
+nm.z = sqrt(max(1.0 - dot(nm.xy, nm.xy), 0.0));
+
+// pomeri UV refleksije prema normali
+vec2 reflUV = getPlanarReflectionUV(vWorldPos);
+reflUV += nm.xy * 0.02;  // talasi deformišu odraz
+
+vec3 reflCol = texture(uReflectionTex, reflUV, -0.5).rgb;
 // kompenzuj mikronormale – povećaj kontrast refleksije
 float sharp = pow(1.0 - uRoughness, 4.0);
 reflCol = pow(reflCol, vec3(sharp));
+
         // pojačaj malo da ne izgleda tamno
         reflCol *= uSunIntensity * 1.2;
 
