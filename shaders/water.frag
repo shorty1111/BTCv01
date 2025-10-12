@@ -69,7 +69,8 @@ float sampleShadow(sampler2D sm, mat4 vp, vec3 wp) {
 vec2 getPlanarReflectionUV(vec3 worldPos) {
     vec4 rc = uReflectionMatrix * vec4(worldPos, 1.0);
     rc.xyz /= max(rc.w, 1e-4);
-    return rc.xy * 0.5 + 0.5;
+    vec2 uv = rc.xy * 0.5 + 0.5;
+return clamp(uv, 0.001, 0.999);
 }
 
 vec3 fresnelSchlick(float cosTheta, vec3 F0) {
@@ -92,7 +93,7 @@ void main() {
     float depthFactor = clamp(depthM / DEPTH_SCALE, 0.0, 1.0);
 
     // === Normal mapa + blend prema dubini ===
-    float normalStrength = 0.8; 
+    float normalStrength = 0.75; 
     vec3 tangentNormal = texture(waterNormalTex, vUV * 4.0).xyz * 2.0 - 1.0;
 
     // smanji snagu normal mape sa dubinom (manje u dubokoj vodi)
@@ -123,20 +124,6 @@ float horiz = smoothstep(-0.02, 0.02, R.y);
     vec3 F0 = vec3(0.02);
     float NdotV = max(dot(N, V), 0.0);
     float fresnel = F0.r + (1.0 - F0.r) * pow(1.0 - NdotV, 5.0);
-
-    // --- Planarna refleksija ---
-    vec2 reflUV = getPlanarReflectionUV(vWorldPos);
-    vec3 planarReflection = texture(uReflectionTex, reflUV).rgb;
-
-
-
-
-    float mipBias = clamp(pow(1.0 - NdotV, 1.0) * 1.0, 0.0, 1.0);
-   const float MAX_MIP_ENV = 0.0;
-float lodEnv = clamp(uRoughness, 0.0, 1.0) * MAX_MIP_ENV;
-vec3 envRefl = textureLod(uEnvTex, normalize(R), lodEnv).rgb;
-
-    // envRefl = mix(envRefl, planarReflection, 0.15 * fresnelFade);
 
     // --- Fake SSS + warm tint ---
     float backLit = clamp((dot(-L, N) + SSS_WRAP) / (1.0 + SSS_WRAP), 0.0, 1.0);
@@ -172,11 +159,25 @@ vec3 envRefl = textureLod(uEnvTex, normalize(R), lodEnv).rgb;
     baseColor = mix(baseColor * vec3(0.25, 0.3, 0.35), baseColor, 1.0 - waterDepth);
 
     // --- Final miks ---
-    vec3 color = baseColor * shadowTint;
-    color += sssLight;
+        // --- Final miks (planar refleksija umesto env cube) ---
+        vec3 color = baseColor * shadowTint;
+        color += sssLight;
 
-    color = mix(color, envRefl, fresnel * FRESNEL_POWER);
-    color += sunHighlight * fadeAA;
+        // uzmi HDR planar refleksiju
+        vec2 reflUV = getPlanarReflectionUV(vWorldPos);
+        vec3 reflCol = texture(uReflectionTex, reflUV).rgb;
+// kompenzuj mikronormale – povećaj kontrast refleksije
+float sharp = pow(1.0 - uRoughness, 4.0);
+reflCol = pow(reflCol, vec3(sharp));
+        // pojačaj malo da ne izgleda tamno
+        reflCol *= uSunIntensity * 1.2;
 
-    fragColor = vec4(color, 1.0);
+        // fresnel blend refleksije i vode
+        color = mix(color, reflCol, fresnel * FRESNEL_POWER);
+
+        // dodaj sunčev highlight
+        color += uSunColor * pow(max(dot(N, H), 0.0), 1200.0) * fadeAA;
+
+        fragColor = vec4(color, 1.0);
+
 }
