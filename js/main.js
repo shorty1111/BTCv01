@@ -1816,6 +1816,14 @@ function render() {
 
     reflView = reflCam.view;
 
+    // ✅ DODAJ OVO — prvo nacrtaj nebo u reflection FBO
+    drawSky(gl, reflectionFBO, reflView, reflProj, SUN.dir, {
+      ...DEFAULT_SKY,
+      sunColor: SUN.color,
+      sunIntensity: SUN.intensity,
+      useTonemap: false,
+    });
+
     gl.useProgram(reflectionColorProgram);
     gl.uniform3fv(
       gl.getUniformLocation(reflectionColorProgram, "uSunDir"),
