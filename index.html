@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <meta charset="UTF-8" />
+    <title>Custom WebGL Engine</title>
+    <style></style>
+  </head>
+  <body>
+    <div class="global-header">
+      <span class="boat-name">BT-300</span>
+    </div>
+    <div id="loading-screen" class="hidden">
+      <div class="sheet">
+        <div>Boat Configurator</div>
+        <div class="loader" aria-label="Loading"></div>
+        <div class="progress" aria-hidden="true"></div>
+        <div style="opacity: 0.8; font-weight: 500">
+          Pripremam materijale i scene…
+        </div>
+      </div>
+    </div>
+    <canvas id="glCanvas"></canvas>
+    <div id="lengthLabel">0.0 m</div>
+    <div id="labels"></div>
+    <div id="camera-controls">
+      <button data-view="front">Front</button>
+      <button data-view="left">Left</button>
+      <button data-view="top">Top</button>
+      <button data-view="iso">Persp</button>
+    </div>
+    <div id="utility-controls">
+      <button id="toggleDims">Show Dims</button>
+      <button id="toggleWater">Show Water</button>
+    </div>
+    <aside id="sidebar" class="tree">
+      <!-- <label class="upload-btn">
+        + Load GLB
+        <input type="file" id="glbInput" accept=".glb" hidden />
+      </label> -->
+      <input
+        id="glbInput"
+        type="file"
+        accept=".glb,.gltf"
+        style="display: none"
+      />
+
+      <!-- <ul id="nodeTree"></ul> -->
+      <div id="variantSidebar" class="variant-sidebar"></div>
+      <div class="sidebar-total">
+        <span class="label">Ukupno:</span>
+        <span class="price"></span>
+      </div>
+    </aside>
+
+    <link rel="stylesheet" href="tree.css?v=bf321" />
+    <script type="module" src="js/main.js?v=s2fs32131"></script>
+    <div
+      id="fps-meter"
+      style="
+        position: fixed;
+        top: 8px;
+        right: 8px;
+        background: rgba(0, 0, 0, 0.75);
+        color: #0f0;
+        padding: 6px 14px;
+        font-family: monospace;
+        font-size: 15px;
+        border-radius: 7px;
+        z-index: 9999;
+        pointer-events: none;
+      "
+    >
+      FPS: <span id="fps-value">0</span>
+    </div>
+    <div id="res-meter"></div>
+    <div id="info-panel">
+      <div id="info-content">
+        <h3>Informacije o delovima</h3>
+        <table id="partsTable">
+          <thead>
+            <tr>
+              <th>Deo</th>
+              <th>Opis</th>
+              <th>Cena</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Popunjava se iz main.js -->
+          </tbody>
+        </table>
+      </div>
+      <div id="boat-info" class="info-section"></div>
+      <div id="toggle-info"></div>
+    </div>
+  </body>
+</html>
