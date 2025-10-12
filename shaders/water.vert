@@ -96,7 +96,9 @@ void main() {
     float distCam = distance(uCameraPos.xz, basePos.xz);
 
     // ↓↓↓ dodato: fade za udaljenost — smanjuje amplitude talasa i nagibe
-    float distanceFade = clamp(1.0 - smoothstep(150.0,600.0, distCam), 0.5, 1.0);
+   float baseFade = smoothstep(100.0, 800.0, distCam);
+float distanceFade = clamp(1.0 - pow(baseFade, 0.2), 0.1, 1.0); // <– brži pad
+
     // 150.0 = početak smirivanja, 600.0 = potpuno ravno
 
     float ampNoise = 1.5 + 0.2 * noise(normXZ * 0.05 + uTime * 0.1);
@@ -133,7 +135,7 @@ void main() {
 
     // --- Kombinacija ---
     vec3 worldPos = basePos + disp;
-    vNormal = normalize(mix(flatNormal, waveNormal, mask));
+    vNormal = normalize(mix(flatNormal, waveNormal, mask * distanceFade));
 
     vTBN_N = normalize(vNormal);
     vTBN_T = normalize(dX);

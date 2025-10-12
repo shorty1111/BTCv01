@@ -135,9 +135,9 @@ const waveSetA = generateWaveSet(
   {
     largeAmp: 0.025,
     largeCount: 3,
-    midAmp: 0.04,
+    midAmp: 0.02,
     midCount: 10,
-    smallAmp: 0.02, // <-- OVO JE KLJUČNO!
+    smallAmp: 0.015, // <-- OVO JE KLJUČNO!
     smallCount: 6, // <-- OVO JE KLJUČNO!
   },
   12345
@@ -147,7 +147,7 @@ const waveSetB = generateWaveSet(
   {
     largeAmp: 0.017,
     largeCount: 2,
-    midAmp: 0.04,
+    midAmp: 0.03,
     midCount: 8,
     smallAmp: 0.01,
     smallCount: 6,
@@ -201,7 +201,7 @@ export async function initWater(gl) {
   waterProgram = createShaderProgram(gl, vsSource, fsSource);
 
   // generiši adaptivni grid
-  const grid = createSmartAdaptiveGrid(100.0, 120, 6, 0.7);
+  const grid = createSmartAdaptiveGrid(100.0, 320, 15, 0.7);
   console.log(
     "Vertex count:",
     grid.vertices.length / 6, // 6 float-ova po verteksu
@@ -346,7 +346,7 @@ export function drawWater(
   );
 
   gl.uniform1f(gl.getUniformLocation(waterProgram, "uOpacity"), 1.0);
-  gl.uniform1f(gl.getUniformLocation(waterProgram, "uRoughness"), 0.03);
+  gl.uniform1f(gl.getUniformLocation(waterProgram, "uRoughness"), 0.09);
   gl.uniform1f(gl.getUniformLocation(waterProgram, "uSpecularStrength"), 1.0);
   gl.uniform1f(gl.getUniformLocation(waterProgram, "uWaterLevel"), 0.0);
   gl.uniform1f(gl.getUniformLocation(waterProgram, "uBottomOffsetM"), 1.0);
@@ -390,7 +390,7 @@ export function drawWater(
   // Deep
   gl.uniform3fv(
     gl.getUniformLocation(waterProgram, "uDeepColor"),
-    [0.01, 0.02, 0.03]
+    [0.01, 0.01, 0.02]
   ); // #09182cff
   // --- SHADOW MAP UNIFORME ---  // PRE drawElements!!!
   gl.activeTexture(gl.TEXTURE8);

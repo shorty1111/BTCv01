@@ -25,7 +25,7 @@ import {
 // CENTRALNO SUNCE
 // CENTRALNO SUNCE
 const SUN = {
-  dir: v3.norm([-0.8, 0.3, 0.9]), // položaj
+  dir: v3.norm([-0.8, 0.1, 0.9]), // položaj
   color: [1.0, 0.92, 0.76],
   intensity: 1.0, // jačina
 };
