@@ -232,7 +232,7 @@ function renderBoatMask() {
   window.boatMaskVP = mat4mul(proj, view); // pazi redosled
 }
 
-let envSize = 2048; // kontrola kvaliteta/performansi
+let envSize = 512; // kontrola kvaliteta/performansi
 let cubeMaxMip = Math.floor(Math.log2(envSize));
 let showWater = true;
 let depthOnlyProgram = null;
@@ -633,8 +633,9 @@ function resizeCanvas() {
   let targetW = Math.min(cssW, maxRenderW);
   let targetH = Math.round(targetW / aspect);
 
-  const realW = Math.round(targetW * ssaa);
-  const realH = Math.round(targetH * ssaa);
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  const realW = Math.round(targetW * ssaa * dpr);
+  const realH = Math.round(targetH * ssaa * dpr);
 
   canvas.width = realW;
   canvas.height = realH;
@@ -650,13 +651,14 @@ function resizeCanvas() {
   if (sceneDepthTex) gl.deleteTexture(sceneDepthTex);
   sceneDepthTex = createDepthTexture(realW, realH);
   createGBuffer(realW, realH);
-  createSSAOBuffers(realW, realH);
+  createSSAOBuffers(Math.round(realW * 0.5), Math.round(realH * 0.5));
   createFinalColorTarget(canvas.width, canvas.height);
   if (reflectionFBO) {
     gl.deleteFramebuffer(reflectionFBO);
     gl.deleteTexture(reflectionTex);
   }
-  createReflectionTarget(gl, canvas.width, canvas.height);
+
+  createReflectionTarget(gl, realW, realH);
   createBoatMaskTarget(gl, MASK_RES);
   const resMeter = document.getElementById("res-meter");
   if (resMeter) {

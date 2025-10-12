@@ -6,7 +6,6 @@ uniform mat4  uProjection, uView, uModel;
 uniform float uTime;
 uniform vec3  uBoatPos;
 uniform vec3  uCameraPos;
-uniform vec2  uViewportSize;
 
 /* talasi iz JS-a */
 uniform int   uWaveCount;
@@ -32,13 +31,10 @@ out vec3 vTBN_T;
 out vec3 vTBN_B;
 out vec3 vTBN_N;
 out float vViewZ;
-out vec3 vTangent;
-out vec3 vBitangent;
 
 #define PI 3.14159265
 
 /* ------------------------------------------------------- */
-/* --- Procedural noise: hash, value noise, fbm ---------- */
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
 }
@@ -47,7 +43,6 @@ float noise(vec2 p) {
     vec2 i = floor(p);
     vec2 f = fract(p);
     vec2 u = f * f * (3.0 - 2.0 * f);
-
     return mix(
         mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), u.x),
         mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
@@ -65,7 +60,6 @@ float fbm(vec2 p) {
     return total;
 }
 
-/* ------------------------------------------------------- */
 struct WaveResult { vec3 disp; vec3 derivX; vec3 derivZ; };
 
 WaveResult gerstnerWave(vec3 p, vec2 normXZ, float A, float L, float Q,
@@ -91,37 +85,20 @@ WaveResult gerstnerWave(vec3 p, vec2 normXZ, float A, float L, float Q,
     return WaveResult(disp, dX, dZ);
 }
 
+/* ------------------------------------------------------- */
 void main() {
-    // === HARD DISABLE WAVES ===
-// if (true) {
-//     vec3 basePos = (uModel * vec4(aPos, 1.0)).xyz;
-
-//     vWorldPos   = basePos;
-//     vWaveHeight = basePos.y;
-//     vWaveMask   = 0.0;
-//     vUV         = aUV * 4.0;
-
-//     vNormal     = vec3(0.0, 1.0, 0.0);
-//     vTBN_T      = vec3(1.0, 0.0, 0.0);
-//     vTBN_B      = vec3(0.0, 0.0, 1.0);
-//     vTBN_N      = vNormal;
-
-//     vec4 viewPos = uView * vec4(basePos, 1.0);
-//     vViewZ = viewPos.z;
-//     gl_Position = uProjection * viewPos;
-//     return;
-// }
     float mask = clamp(aWaveMask, 0.0, 1.0);
 
     vec3 basePos = (uModel * vec4(aPos, 1.0)).xyz;
-    vec2 normXZ = (basePos.xz - uBoatPos.xz) / 50.0;
+    vec2 normXZ  = (basePos.xz - uBoatPos.xz) / 50.0;
 
-    float size = 50.0;
-    float prstena = 4.0;
-    float meshRadius = (prstena * 2.0 * size) + size;
-    float minFade = 2.25;
+    // udaljenost od kamere (koristi se za fade)
     float distCam = distance(uCameraPos.xz, basePos.xz);
-    float fade = 1.0;
+
+    // ↓↓↓ dodato: fade za udaljenost — smanjuje amplitude talasa i nagibe
+    float distanceFade = clamp(1.0 - smoothstep(150.0,600.0, distCam), 0.5, 1.0);
+    // 150.0 = početak smirivanja, 600.0 = potpuno ravno
+
     float ampNoise = 1.5 + 0.2 * noise(normXZ * 0.05 + uTime * 0.1);
 
     vec3 dispLarge = vec3(0.0);
@@ -135,67 +112,38 @@ void main() {
         WaveResult r = gerstnerWave(basePos, normXZ,
                                     uWaveA[i], uWaveL[i], uWaveQ[i],
                                     uWaveDir[i], uWavePhase[i], uWaveOmega[i], uTime, phaseNoise);
-        if ((i < 3) || (i >= 18 && i < 20)) {
-            dispLarge += r.disp * mask * fade * ampNoise;
-            dX   += r.derivX * mask * fade * ampNoise;
-            dZ   += r.derivZ * mask * fade * ampNoise;
-        } else if ((i >= 3 && i < 13) || (i >= 20 && i < 28)) {
-            dispMid += r.disp * mask * fade * ampNoise;
-            dX   += r.derivX * mask * fade * ampNoise;
-            dZ   += r.derivZ * mask * fade * ampNoise;
-        } else {
-            dispSmall += r.disp * mask * fade * ampNoise;
-            dX   += r.derivX * mask * fade * ampNoise;
-            dZ   += r.derivZ * mask * fade * ampNoise;
-        }
+
+        dispLarge += r.disp * mask * ampNoise;
+        dX += r.derivX * mask * ampNoise;
+        dZ += r.derivZ * mask * ampNoise;
     }
 
-    float crest = dispLarge.y + dispMid.y;
-    float crestThreshold = 1.5;
-    bool isCrest = crest > crestThreshold;
+    vec3 disp = (dispLarge + dispMid + dispSmall) * distanceFade; // ← fade primenjen ovde
 
-    vec3 disp = dispLarge + dispMid;
-    if (!isCrest) {
-        disp += dispSmall;
-    }
+    // --- Normale ---
+    vec3 waveNormal = normalize(cross(dZ, dX));
+    vec3 flatNormal = vec3(0.0, 1.0, 0.0);
 
-    float detail = fbm(normXZ * 0.8 + uTime * 0.2);
-    if (!isCrest) {
-        disp.y += 0.03 * detail * mask * fade;
-    }
+    // --- Transformacija u world-space ---
+    mat3 worldMat = mat3(uModel);
+    dX = normalize(worldMat * dX * distanceFade); // ← i ovde fade
+    dZ = normalize(worldMat * dZ * distanceFade);
+    waveNormal = normalize(worldMat * waveNormal);
+    flatNormal = normalize(worldMat * flatNormal);
 
-    vec2 jitter = 1.83 * vec2(
-        fbm(normXZ * 3.71 + uTime * 0.05),
-        fbm(normXZ * 4.01 - uTime * 0.09 + 5.2)
-    );
-
-    // --- Boat mask: IZBACENO ---
-    float hullMask = 0.0; // maska je uvek isključena
-
-    float edge = 0.0;
-    float hullInfluence = 1.0;
-    disp *= 1.0; // maska ne utiče
-
-    float rim = 0.0;
-    disp.y += 0.0; // maska ne utiče
-
-    // --- Finalizacija ---
+    // --- Kombinacija ---
     vec3 worldPos = basePos + disp;
-    worldPos.xz += jitter * mask * fade;
+    vNormal = normalize(mix(flatNormal, waveNormal, mask));
+
+    vTBN_N = normalize(vNormal);
+    vTBN_T = normalize(dX);
+    vTBN_B = normalize(cross(vTBN_N, vTBN_T));
+    vTBN_T = normalize(cross(vTBN_B, vTBN_N));
 
     vWaveHeight = worldPos.y;
     vWaveMask   = mask;
     vWorldPos   = worldPos;
     vUV         = aUV * 4.0;
-
-    vec3 waveNormal = normalize(cross(dZ, dX));
-    vec3 flatNormal = vec3(0.0, 1.0, 0.0);
-    vNormal = normalize(mix(flatNormal, waveNormal, mask));
-
-vTBN_T = normalize(dX);
-vTBN_B = normalize(dZ);
-vTBN_N = vNormal;
-
 
     vec4 viewPos = uView * vec4(worldPos, 1.0);
     vViewZ = viewPos.z;

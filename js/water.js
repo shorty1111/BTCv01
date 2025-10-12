@@ -201,7 +201,7 @@ export async function initWater(gl) {
   waterProgram = createShaderProgram(gl, vsSource, fsSource);
 
   // generiši adaptivni grid
-  const grid = createSmartAdaptiveGrid(50.0, 500, 1, 0.5);
+  const grid = createSmartAdaptiveGrid(100.0, 120, 6, 0.7);
   console.log(
     "Vertex count:",
     grid.vertices.length / 6, // 6 float-ova po verteksu
@@ -241,7 +241,7 @@ export async function initWater(gl) {
   gl.bindVertexArray(null);
   gl.useProgram(waterProgram);
   uploadWaveSet(gl, waterProgram, waveSet);
-  waterNormalTex = loadTexture2D(gl, "assets/water_normal.jpg");
+  waterNormalTex = loadTexture2D(gl, "assets/water_normal.png");
 }
 
 // === helper za učitavanje 2D teksture ===
@@ -390,7 +390,7 @@ export function drawWater(
   // Deep
   gl.uniform3fv(
     gl.getUniformLocation(waterProgram, "uDeepColor"),
-    [0.0, 0.0, 0.0]
+    [0.01, 0.02, 0.03]
   ); // #09182cff
   // --- SHADOW MAP UNIFORME ---  // PRE drawElements!!!
   gl.activeTexture(gl.TEXTURE8);
