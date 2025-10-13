@@ -20,7 +20,7 @@ uniform float uBiasBase, uBiasSlope;
 uniform float uLightSize;
 uniform float uCubeMaxMip;
 uniform vec2 uShadowMapSize;
-
+const float ENV_GI_BOUNCE_STRENGTH = 0.5; // tweakuj između 0.1 i 0.4
 // === Helper funkcije ===
 float hash12(vec2 p){ return fract(sin(dot(p, vec2(27.167,91.453)))*43758.5453); }
 mat2 rotFromHash(float h){ float a = h * 6.283185; return mat2(cos(a), -sin(a), sin(a), cos(a)); }
@@ -145,8 +145,13 @@ void main(){
     vec3 radiance = uSunColor;
     vec3 directLight = (diffuse + specularBRDF ) * radiance * NdotL * shadow;
 
+
+
     // === IBL refleksije ===
     vec3 envDiffuse  = textureLod(uEnvMap, bentNormal, uCubeMaxMip).rgb;
+
+
+
     vec3 envSpecular = textureLod(uEnvMap, normalize(Rw), roughness * uCubeMaxMip).rgb;
     vec2 brdf = texture(uBRDFLUT, vec2(NdotV, roughness)).rg;
 
@@ -154,14 +159,21 @@ void main(){
     vec3 diffuseIBL  = envDiffuse * baseColor * (1.0 - metalness);
     vec3 specularIBL = envSpecular * (F_IBL * brdf.x + brdf.y);
 
-float aoBoost = pow(ao, 1.5); // ili 2.5, ili 3.0
+    float aoBoost = pow(ao, 1.5); // ili 2.5, ili 3.0
     // === Ambient ===
     vec3 ambient = (diffuseIBL + specularIBL) * aoBoost;
 
+    // === Fake GI bounce iz environmenta ===
+    vec3 bounceDir = bentNormal; // ili vec3(0.0, 1.0, 0.0) ako nemaš bent normal
+    vec3 envGI = textureLod(uEnvMap, bounceDir, uCubeMaxMip).rgb;
+    float bounceVisibility = clamp(dot(N, bounceDir), 0.0, 1.0);
+    envGI *= baseColor * bounceVisibility * ENV_GI_BOUNCE_STRENGTH;
+    envGI *= aoBoost; // opcionalno, ali dobro za SSAO interakciju
 
 
     // === Finalna kompozicija ===
     vec3 color = directLight + ambient;
+    color += envGI;
     color += specularIBL * metalness;
 
 

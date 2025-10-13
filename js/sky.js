@@ -21,7 +21,7 @@ export const DEFAULT_SKY = {
   model: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
 
   turbidity: 0.9, // manji brojevi = čisto nebo, bez “mutnog” horizonta!
-  sunSizeDeg: 0.53, // može i 0.53
+  sunSizeDeg: 0.9, // može i 0.53
   sunHaloScale: 0.25,
   horizonSoft: 0.18,
   horizonLift: -0.02,
@@ -209,8 +209,11 @@ uniform float uRayleighStrength, uMieStrength;
 uniform float uGroundScatter, uTurbidity, uSaturation;
 uniform float uHorizonWarmth, uZenithDesat, uHorizonDesat;
 
-uniform float uCloudHeight, uCloudThickness, uCloudSpeed;
 uniform float uMilkBandStrength, uMilkBandWidth, uWarmBandStrength, uWarmBandWidth;
+
+// === Cloud layers ===
+uniform float uCloud1Height, uCloud1Thickness, uCloud1Speed, uCloud1Density, uCloud1Scale;
+uniform float uCloud2Height, uCloud2Thickness, uCloud2Speed, uCloud2Density, uCloud2Scale;
 
 // ---------- Helper noise funkcije ----------
 float hash(vec3 p){
@@ -226,6 +229,15 @@ float noise3d(vec3 p){
         mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)), f.x),
             mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)), f.x), f.y), f.z);
     return n;
+}
+float fbm(vec3 p) {
+    float sum = 0.0, amp = 1.0, freq = 1.0;
+    for(int i=0; i<5; ++i) {
+        sum += noise3d(p * freq) * amp;
+        freq *= 2.0;
+        amp *= 0.5;
+    }
+    return sum / 1.95;
 }
 
 // ---------- Ton-mapping & saturacija ----------
@@ -245,79 +257,89 @@ void main(){
     float sunAlt = clamp(sunV.y, -1.0, 1.0);
 
     // === 1. Dynamic sky colors by sunAlt ===
-
-    // DNEVNO NEBO (dan, zenit)
     vec3 dayZenith   = vec3(0.12, 0.25, 0.60);
     vec3 dayHorizon  = vec3(0.80, 0.90, 1.00);
-
-    // SUNSET (toplo, sunset, ljubičasto)
-    vec3 sunsetZenith   = vec3(0.18, 0.23, 0.55);   // plavo-ljubičasto
-    vec3 sunsetHorizon  = vec3(1.00, 0.35, 0.10);   // narandžasto
-
-    // NOĆ (deep blue)
+    vec3 sunsetZenith   = vec3(0.18, 0.23, 0.55);
+    vec3 sunsetHorizon  = vec3(1.00, 0.35, 0.10);
     vec3 nightZenith   = vec3(0.01, 0.02, 0.10);
     vec3 nightHorizon  = vec3(0.05, 0.06, 0.13);
 
-    // Koliko je sunset aktivan (0 dan, 1 sunset)
     float sunsetAmt = smoothstep(0.0, 0.15, clamp(0.2 - sunAlt, 0.0, 0.2));
-    // Koliko je noć aktivna (0 dan, 1 noć)
     float nightAmt = clamp(-sunAlt * 10.0, 0.0, 1.0);
-
-    // Gradijenti po visini
     float t   = clamp(dir.y*0.5 + 0.5 + uHorizonLift, 0.0, 1.0);
     float h   = 1.0 - t;
     float hS  = smoothstep(0.0, 1.0, pow(h, 1.0 + uHorizonSoft));
 
-    // Pravi blend
     vec3 curZenith   = mix(dayZenith,   sunsetZenith,  sunsetAmt);
     vec3 curHorizon  = mix(dayHorizon,  sunsetHorizon, sunsetAmt);
 
-    // Night blend
     curZenith  = mix(curZenith,  nightZenith,  nightAmt);
     curHorizon = mix(curHorizon, nightHorizon, nightAmt);
 
     vec3 base = mix(curZenith, curHorizon, hS);
-    // --- Ground gradient (toplija baza ispod horizonta) ---
     float gMix = smoothstep(-0.25, 0.05, dir.y);
     vec3 groundColor = mix(vec3(0.10, 0.07, 0.05), vec3(0.16, 0.11, 0.07), 1.0 - sunAlt);
     base = mix(groundColor, base, gMix);
 
+    // === 2. Procedural MULTI-LAYER clouds ===
+    float cloudSum = 0.0;
+    float totalAlpha = 0.0;
 
-    // === 2. Procedural clouds, halo, sunset boost ===
-    // (ostaje kao ranije – možeš da ga pojačaš po želji)
-
-    float tTop    = (uCloudHeight + uCloudThickness - uCameraHeight) / dir.y;
-    float tBottom = (uCloudHeight - uCloudThickness - uCameraHeight) / dir.y;
-    float tEnter  = max(min(tTop, tBottom), 0.0);
-    float tExit   = max(max(tTop, tBottom), 0.0);
-    float segLen  = max(tExit - tEnter, 0.0);
-    float cloudAlpha = 0.0;
-    if (segLen > 0.0){
-        vec3 samplePos = dir * (tEnter + segLen * 0.5);
-        samplePos.xz += uTime * vec2(uCloudSpeed, uCloudSpeed*0.8);
-
-        float cl = 0.0, amp = 1.0;
-        vec3 p = samplePos * 0.002;
-        for(int i=0; i<3; ++i) {
-            cl += noise3d(p) * amp;
-            p *= 2.0;
-            amp *= 0.5;
+    // --- Layer 1: "cumulus" nisko, gusti ---
+    {
+        float tTop    = (uCloud1Height + uCloud1Thickness - uCameraHeight) / dir.y;
+        float tBottom = (uCloud1Height - uCloud1Thickness - uCameraHeight) / dir.y;
+        float tEnter  = max(min(tTop, tBottom), 0.0);
+        float tExit   = max(max(tTop, tBottom), 0.0);
+        float segLen  = max(tExit - tEnter, 0.0);
+        if (segLen > 0.0){
+            vec3 samplePos = dir * (tEnter + segLen * 0.5);
+            samplePos.xz += uTime * vec2(uCloud1Speed, uCloud1Speed*0.8);
+            float cl = fbm(samplePos * uCloud1Scale);
+            float band = smoothstep(0.45, 0.67, cl);
+            float opticalDepth = segLen / (uCloud1Thickness*2.0);
+            float alpha = 1.0 - exp(-band * opticalDepth * uCloud1Density);
+            // Fake soft shadow from higher layer:
+            alpha *= 1.0 - 0.3 * totalAlpha;
+            cloudSum += alpha * 1.0; // belina
+            totalAlpha += alpha;
         }
-        cl /= 1.75;
-        float density = smoothstep(0.48, 0.68, cl);
-        float opticalDepth = segLen / (uCloudThickness*2.0);
-        cloudAlpha         = 1.0 - exp(-density * opticalDepth * 1.8);
-        float fadeHor   = smoothstep(0.1, 0.18, dir.y);
-        float fadeZen   = 1.0 - smoothstep(0.01, 1.0, dir.y);
-        cloudAlpha     *= fadeHor * fadeZen;
-        cloudAlpha      = clamp(cloudAlpha, 0.0, 1.0);
-        base = mix(base, vec3(1.0), 0.30 * cloudAlpha);
     }
 
-    // --- sunset horizon warmth (neka ostane)
-float warm = pow(clamp(1.0 - sunAlt, 0.0, 1.0), 2.0) * hS * uHorizonWarmth;
-vec3 sunsetWarm = vec3(1.0, 0.55, 0.25);
-base = mix(base, sunsetWarm, clamp(warm, 0.0, 0.65));
+    // --- Layer 2: "cirrus" visoko, tanje ---
+    {
+        float tTop    = (uCloud2Height + uCloud2Thickness - uCameraHeight) / dir.y;
+        float tBottom = (uCloud2Height - uCloud2Thickness - uCameraHeight) / dir.y;
+        float tEnter  = max(min(tTop, tBottom), 0.0);
+        float tExit   = max(max(tTop, tBottom), 0.0);
+        float segLen  = max(tExit - tEnter, 0.0);
+        if (segLen > 0.0){
+            vec3 samplePos = dir * (tEnter + segLen * 0.5);
+            samplePos.xz += uTime * vec2(uCloud2Speed, uCloud2Speed*0.6);
+            float cl = fbm(samplePos * uCloud2Scale + 100.0); // shift for independence
+            float band = smoothstep(0.54, 0.72, cl);
+            float opticalDepth = segLen / (uCloud2Thickness*2.0);
+            float alpha = 1.0 - exp(-band * opticalDepth * uCloud2Density);
+            // Fake shadow from underlying layer:
+            alpha *= 1.0 - 0.15 * totalAlpha;
+            // Colorize high clouds to be bluish at zenith, pink at sunset:
+            float sunset = pow(smoothstep(0.05, -0.4, sunAlt), 1.4);
+            vec3 cirrusColor = mix(vec3(0.8,0.85,1.0), vec3(1.0,0.5,0.6), sunset);
+            cloudSum += alpha * cirrusColor.r;
+            totalAlpha += alpha;
+        }
+    }
+
+    // --- Cloud color/alpha composition ---
+    cloudSum = clamp(cloudSum, 0.0, 1.0);
+    base = mix(base, vec3(1.0), 0.45 * cloudSum);
+
+
+
+    // --- sunset horizon warmth ---
+    float warm = pow(clamp(1.0 - sunAlt, 0.0, 1.0), 2.0) * hS * uHorizonWarmth;
+    vec3 sunsetWarm = vec3(1.0, 0.55, 0.25);
+    base = mix(base, sunsetWarm, clamp(warm, 0.0, 0.65));
 
     // --- Ostali efekti ---
     float milkBand = exp(-pow(abs(dir.y - 1.0)/max(uMilkBandWidth,0.001), 2.0));
@@ -331,16 +353,14 @@ base = mix(base, sunsetWarm, clamp(warm, 0.0, 0.65));
     base *= mix(0.7, 1.0, uRayleighStrength);
     base = mix(base, vec3(0.035, 0.03, 0.03), clamp(uTurbidity*(1.0-hS), 0.0, 1.0));
 
-// --- Vertikalni "color curve": hladniji zenit, topliji horizont ---
-float skyFade = smoothstep(0.0, 0.55, dir.y);
-vec3 coldZenith  = vec3(0.80, 0.90, 1.05);  // blago hladnija nijansa gore
-vec3 warmHorizon = vec3(1.02, 0.94, 0.88);  // topliji ton pri horizontu
-base *= mix(warmHorizon, coldZenith, skyFade);
+    // Vertikalni "color curve": hladniji zenit, topliji horizont
+    float skyFade = smoothstep(0.0, 0.55, dir.y);
+    vec3 coldZenith  = vec3(0.80, 0.90, 1.05);
+    vec3 warmHorizon = vec3(1.02, 0.94, 0.88);
+    base *= mix(warmHorizon, coldZenith, skyFade);
 
-// --- Blaga ozon/blue-shift ton korekcija ka visini ---
-float ozone = smoothstep(0.35, 0.95, dir.y);
-base = mix(base, base * vec3(0.92, 0.96, 1.06), 0.25 * ozone);
-
+    float ozone = smoothstep(0.35, 0.95, dir.y);
+    base = mix(base, base * vec3(0.92, 0.96, 1.06), 0.25 * ozone);
 
     // === 3. Sun disk & Mie halo ===
     float cosToSun = dot(dir, sunV);
@@ -348,9 +368,8 @@ base = mix(base, base * vec3(0.92, 0.96, 1.06), 0.25 * ozone);
     float ang      = acos(cosToSun);
 
     float disk = exp(-pow(ang/(sunSize*0.9), 2.0));
-float limb = exp(-pow(ang/(sunSize*2.2), 2.0)); // uže, izraženije
-vec3  sunLight = uSunColor * (disk*uSunIntensity + limb*(uSunIntensity*0.18));
-
+    float limb = exp(-pow(ang/(sunSize*2.2), 2.0));
+    vec3  sunLight = uSunColor * (disk*uSunIntensity + limb*(uSunIntensity*0.18));
 
     float g = 0.8;
     float mie = (1.0 - g*g) / pow(1.0 + g*g - 2.0*g*cosToSun, 1.5);
@@ -372,20 +391,19 @@ vec3  sunLight = uSunColor * (disk*uSunIntensity + limb*(uSunIntensity*0.18));
                  groundBase +
                  groundBounce;
 
-    // Fade celo nebo kad je noć (noć je nightAmt)
+    // Fade celo nebo kad je noć
     color = mix(color, nightZenith, nightAmt*0.95);
 
-vec3 mapped = color * uExposure;
+    vec3 mapped = color * uExposure;
 
-if (uUseTonemap == 1) {
-    mapped = ACESFilm(mapped);
-    mapped = pow(mapped, vec3(1.0/2.2));
-} else {
-    mapped = clamp(mapped, 0.0, 1.0);
-}
+    if (uUseTonemap == 1) {
+        mapped = ACESFilm(mapped);
+        mapped = pow(mapped, vec3(1.0/2.2));
+    } else {
+        mapped = clamp(mapped, 0.0, 1.0); 
+    }
 
-fragColor = vec4(mapped, 1.0);
-
+    fragColor = vec4(mapped, 1.0);
 }
 
 `;
@@ -406,11 +424,18 @@ function applySkyUniforms(gl, view, proj, sunDir, opts) {
     gl.getUniformLocation(skyProg, "uSunIntensity"),
     opts.sunIntensity
   );
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uCameraHeight"), 20.0); // tvoja visina u svetu
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloudHeight"), 180.0); // centar sloja u istoj skali!
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloudThickness"), 3.0); // pola debljine
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloudSpeed"), 0.0); // m/s ili šta god
+  gl.uniform1f(gl.getUniformLocation(skyProg, "uCameraHeight"), 2.0); // tvoja visina u svetu
+  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud1Height"), 50.0);
+  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud1Thickness"), 7.0);
+  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud1Speed"), 0.0);
+  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud1Density"), 0.5);
+  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud1Scale"), 0.005);
 
+  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud2Height"), 220.0);
+  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud2Thickness"), 14.0);
+  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud2Speed"), 0.0);
+  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud2Density"), 0.5);
+  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud2Scale"), 0.0005);
   gl.uniform3fv(gl.getUniformLocation(skyProg, "uZenith"), o.zenith);
   gl.uniform3fv(gl.getUniformLocation(skyProg, "uHorizon"), o.horizon);
   gl.uniform3fv(gl.getUniformLocation(skyProg, "uGround"), o.ground);

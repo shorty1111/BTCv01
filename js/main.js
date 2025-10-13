@@ -25,7 +25,7 @@ import {
 // CENTRALNO SUNCE
 // CENTRALNO SUNCE
 const SUN = {
-  dir: v3.norm([-0.8, 0.1, 0.9]), // položaj
+  dir: v3.norm([-0.8, 0.2, 0.9]), // položaj
   color: [1.0, 0.92, 0.76],
   intensity: 1.0, // jačina
 };
@@ -574,6 +574,7 @@ const canvas = document.getElementById("glCanvas");
 const gl = canvas.getContext("webgl2", { alpha: true, antialias: true });
 
 if (!gl) alert("WebGL2 nije podržan u ovom pregledaču.");
+
 // OVAJ KOD DODAJ OVDE:
 if (!gl.getExtension("EXT_color_buffer_float")) {
   alert(
@@ -2109,7 +2110,42 @@ function render() {
       mat4mul(proj, reflView)
     );
   }
+  // === 11. Overlay / dimenzije (ako su uključene) ===
+  if (showDimensions && boatLengthLine && boatMin && boatMax) {
+    gl.useProgram(lineProgram);
+    setMatrices(lineProgram);
+    gl.uniform3fv(gl.getUniformLocation(lineProgram, "uColor"), [1, 1, 1]);
+    gl.bindVertexArray(boatLengthLine.vao);
+    gl.drawArrays(gl.LINES, 0, boatLengthLine.count);
+    gl.bindVertexArray(null);
 
+    // render label na 2D overlay (dužina u metrima)
+    const leftPt = [boatMin[0], boatMin[1], boatMax[2]];
+    const rightPt = [boatMax[0], boatMin[1], boatMax[2]];
+    const viewProj = mat4mul(proj, view);
+    const canvasEl = document.getElementById("glCanvas");
+    const p1 = projectToScreen(leftPt, viewProj, canvasEl);
+    const p2 = projectToScreen(rightPt, viewProj, canvasEl);
+    if (p1.visible && p2.visible) {
+      const midX = (p1.x + p2.x) / 2;
+      const midY = (p1.y + p2.y) / 2;
+      const length = (boatMax[0] - boatMin[0]).toFixed(2);
+      let labelsDiv = document.getElementById("labels");
+      let lbl = document.getElementById("lengthLabel");
+      if (!lbl) {
+        lbl = document.createElement("div");
+        lbl.id = "lengthLabel";
+        lbl.className = "label";
+        labelsDiv.appendChild(lbl);
+      }
+      lbl.innerText = length + " m";
+      const rect = canvasEl.getBoundingClientRect();
+      const scaleX = rect.width / canvasEl.width;
+      const scaleY = rect.height / canvasEl.height;
+      lbl.style.left = `${rect.left + midX * scaleX}px`;
+      lbl.style.top = `${rect.top + (midY + 40) * scaleY}px`;
+    }
+  }
   // === 9. ACES TONEMAP POSTPROCESS (na ekran) ===
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.viewport(0, 0, canvas.width, canvas.height);
@@ -2121,10 +2157,12 @@ function render() {
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   // === 10. Transparent/Overlay/Dimenzije ===
   // (ostavi kao što je, posle tonemap-a!)
-
+  // === fix za nestajanje providnih meshova ===
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  gl.depthMask(true);
+  gl.depthFunc(gl.LEQUAL);
   if (transparentMeshes.length) {
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.enable(gl.DEPTH_TEST);
     gl.depthMask(false);
     gl.depthFunc(gl.LESS);
@@ -2192,43 +2230,6 @@ function render() {
     gl.depthMask(true);
     gl.enable(gl.CULL_FACE);
     gl.disable(gl.BLEND);
-  }
-
-  // === 11. Overlay / dimenzije (ako su uključene) ===
-  if (showDimensions && boatLengthLine && boatMin && boatMax) {
-    gl.useProgram(lineProgram);
-    setMatrices(lineProgram);
-    gl.uniform3fv(gl.getUniformLocation(lineProgram, "uColor"), [1, 1, 1]);
-    gl.bindVertexArray(boatLengthLine.vao);
-    gl.drawArrays(gl.LINES, 0, boatLengthLine.count);
-    gl.bindVertexArray(null);
-
-    // render label na 2D overlay (dužina u metrima)
-    const leftPt = [boatMin[0], boatMin[1], boatMax[2]];
-    const rightPt = [boatMax[0], boatMin[1], boatMax[2]];
-    const viewProj = mat4mul(proj, view);
-    const canvasEl = document.getElementById("glCanvas");
-    const p1 = projectToScreen(leftPt, viewProj, canvasEl);
-    const p2 = projectToScreen(rightPt, viewProj, canvasEl);
-    if (p1.visible && p2.visible) {
-      const midX = (p1.x + p2.x) / 2;
-      const midY = (p1.y + p2.y) / 2;
-      const length = (boatMax[0] - boatMin[0]).toFixed(2);
-      let labelsDiv = document.getElementById("labels");
-      let lbl = document.getElementById("lengthLabel");
-      if (!lbl) {
-        lbl = document.createElement("div");
-        lbl.id = "lengthLabel";
-        lbl.className = "label";
-        labelsDiv.appendChild(lbl);
-      }
-      lbl.innerText = length + " m";
-      const rect = canvasEl.getBoundingClientRect();
-      const scaleX = rect.width / canvasEl.width;
-      const scaleY = rect.height / canvasEl.height;
-      lbl.style.left = `${rect.left + midX * scaleX}px`;
-      lbl.style.top = `${rect.top + (midY + 40) * scaleY}px`;
-    }
   }
 }
 

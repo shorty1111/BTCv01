@@ -4,7 +4,7 @@ in vec2 vUV;
 out vec4 fragColor;
 
 uniform sampler2D ssaoInput;
-const int blurSize =2; // probaj sa 2
+const int blurSize = 2; // probaj sa 2
 
 void main() {
     vec2 texelSize = 1.0 / vec2(textureSize(ssaoInput, 0));

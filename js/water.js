@@ -27,7 +27,7 @@ function createSmartAdaptiveGrid(
   const inds = [];
   const uvScale = 1.0 / tileSize; // world-based UV
 
-  // pomočna funkcija za dodavanje jednog patcha
+  // === pomoćna funkcija za dodavanje jednog patcha ===
   function addPatch(x0, z0, div) {
     const startIndex = verts.length / 6;
     const step = tileSize / div;
@@ -56,12 +56,15 @@ function createSmartAdaptiveGrid(
     }
   }
 
-  // === CENTRALNI PATCH (C) ===
+  // === CENTRALNI PATCH (uvek pun rezolucije) ===
   addPatch(-tileSize * 0.5, -tileSize * 0.5, baseDiv);
 
   // === RINGOVI OKO CENTRA ===
+  let currentDiv = baseDiv;
   for (let ring = 1; ring <= ringCount; ring++) {
-    const div = Math.max(2, Math.floor(baseDiv * Math.pow(lodFalloff, ring)));
+    // progresivno smanjenje, ne direktni stepen
+    currentDiv *= lodFalloff;
+    const div = Math.max(2, Math.floor(currentDiv));
     const offset = tileSize * ring;
 
     for (let iz = -ring; iz <= ring; iz++) {
@@ -201,7 +204,7 @@ export async function initWater(gl) {
   waterProgram = createShaderProgram(gl, vsSource, fsSource);
 
   // generiši adaptivni grid
-  const grid = createSmartAdaptiveGrid(100.0, 320, 15, 0.7);
+  const grid = createSmartAdaptiveGrid(100.0, 200, 8, 0.5);
   console.log(
     "Vertex count:",
     grid.vertices.length / 6, // 6 float-ova po verteksu

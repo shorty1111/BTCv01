@@ -131,7 +131,7 @@ reflectionFade = max(reflectionFade, 0.6); // nikad 0
 
     float fadeAA   = clamp(1.0 - smoothstep(0.0, 1000.0, dist), 0.0, 1.0);
     float roughFade   = mix(uRoughness, uRoughness * 0.0, 1.0 - fadeAA);
-    float fresnelFade = mix(0.0, 0.9, fadeAA);
+    float fresnelFade = mix(0.0, 0.5, fadeAA);
 
     // --- Bazna boja ---
     vec3 baseColor = mix(uShallowColor, uDeepColor, pow(depthFactor, DEPTH_CURVE));
@@ -149,7 +149,7 @@ reflectionFade = max(reflectionFade, 0.6); // nikad 0
     vec3 planarReflection = texture(uReflectionTex, reflUV).rgb;
 
     // --- Environment refleksija ---
-    const float MAX_MIP_ENV = 2.0;
+    const float MAX_MIP_ENV = 1.0;
     float lodEnv = clamp(uRoughness, 0.0, 1.0) * MAX_MIP_ENV;
     vec3 envRefl = textureLod(uEnvTex, normalize(R), lodEnv).rgb;
 
@@ -180,7 +180,7 @@ reflectionFade = max(reflectionFade, 0.6); // nikad 0
     // --- Specular highlight od sunca ---
     vec3  H          = normalize(V + L);
     float NdotH      = max(dot(N, H), 0.0);
-    float highlight  = pow(NdotH, 1200.0) * mix(0.6, 1.0, fresnel);
+    float highlight  = pow(NdotH, 1200.0) * mix(0.9, 1.0, fresnel);
     vec3  sunHighlight = uSunColor * highlight;
 
     // --- Crest ---
