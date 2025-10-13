@@ -17,6 +17,6 @@ vec3 ACESFilm(vec3 x) {
 void main() {
     vec3 col = texture(uInput, vUV).rgb;
     col = ACESFilm(col);
-    col = pow(col, vec3(1.0 / 2.0)); // gamma
+    col = pow(col, vec3(1.0 / 1.8)); // gamma
     fragColor = vec4(col, 1.0);
 }

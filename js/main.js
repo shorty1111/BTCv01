@@ -25,14 +25,16 @@ import {
 // CENTRALNO SUNCE
 // CENTRALNO SUNCE
 const SUN = {
-  dir: v3.norm([-0.8, 0.2, 0.9]), // položaj
+  dir: v3.norm([-0.8, 1.96, 0.9]), // položaj
   color: [1.0, 0.92, 0.76],
-  intensity: 1.0, // jačina
+  intensity: 2.0, // jačina
 };
 let acesProgram = null;
 let finalFBO = null;
 let finalColorTex = null;
+
 updateSun();
+
 function updateSun() {
   const alt = Math.max(-1.0, Math.min(1.0, SUN.dir[1]));
 
@@ -48,7 +50,7 @@ function updateSun() {
 
   // === 2️⃣  Fade postojećeg intenziteta (bez maxIntensity) ===
   const fade = smoothstep(-0.1, 0.3, alt);
-  SUN.intensity *= fade;
+  SUN.intensity = Math.pow(Math.max(alt, 0.0), 0.4);
 
   // === 3️⃣  Afterglow — refleks ispod horizonta ===
   if (alt < 0.0) {

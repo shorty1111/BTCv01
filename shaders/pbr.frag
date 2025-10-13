@@ -136,10 +136,10 @@ void main(){
     float G = geometrySmith(NdotV, NdotL, roughness);
     vec3  F = fresnelSchlickRoughness(max(dot(H, V), 0.0), F0, roughness);
     vec3  numerator = D * G * F;
-    float denominator = 4.0 * NdotV * NdotL + 0.001;
+    float denominator = 1.5 * NdotV * NdotL + 0.001;
     vec3  specularBRDF = numerator / denominator;
 
-    vec3 kd = (1.0 - F) * (1.0 - metalness);
+    vec3 kd = (1.5 - F) * (1.0 - metalness);
     vec3 diffuse = kd * baseColor / 3.141592;
 
     vec3 radiance = uSunColor;
@@ -159,21 +159,13 @@ void main(){
     vec3 diffuseIBL  = envDiffuse * baseColor * (1.0 - metalness);
     vec3 specularIBL = envSpecular * (F_IBL * brdf.x + brdf.y);
 
-    float aoBoost = pow(ao, 1.5); // ili 2.5, ili 3.0
-    // === Ambient ===
-    vec3 ambient = (diffuseIBL + specularIBL) * aoBoost;
 
-    // === Fake GI bounce iz environmenta ===
-    vec3 bounceDir = bentNormal; // ili vec3(0.0, 1.0, 0.0) ako nemaš bent normal
-    vec3 envGI = textureLod(uEnvMap, bounceDir, uCubeMaxMip).rgb;
-    float bounceVisibility = clamp(dot(N, bounceDir), 0.0, 1.0);
-    envGI *= baseColor * bounceVisibility * ENV_GI_BOUNCE_STRENGTH;
-    envGI *= aoBoost; // opcionalno, ali dobro za SSAO interakciju
+    vec3 ambient = (diffuseIBL + specularIBL) * ao;
 
 
     // === Finalna kompozicija ===
     vec3 color = directLight + ambient;
-    color += envGI;
+
     color += specularIBL * metalness;
 
 

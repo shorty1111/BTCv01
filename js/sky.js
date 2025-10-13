@@ -8,7 +8,7 @@ let skyIdxCount = 0;
 
 // ===== Default sky params (bez SUN — njega prosleđuje main.js) =====
 export const DEFAULT_SKY = {
-  exposure: 1.6,
+  exposure: 1.0,
 
   // Nebo: čisto letnje nebo (Unreal Engine style)
   zenith: [0.12, 0.25, 0.6], // sky blue
@@ -25,7 +25,7 @@ export const DEFAULT_SKY = {
   sunHaloScale: 0.25,
   horizonSoft: 0.18,
   horizonLift: -0.02,
-  saturation: 1.1, // malo ispod 1.0
+  saturation: 1.5, // malo ispod 1.0
   horizonDesat: 0.05,
   horizonWarmth: 1.35,
 
@@ -36,7 +36,7 @@ export const DEFAULT_SKY = {
   warmBandWidth: 0.15,
 
   // Atmosfera
-  rayleighStrength: 1.0,
+  rayleighStrength: 0.5,
   mieStrength: 0.8,
   zenithDesat: 0.12,
   groundScatter: 0.85,
@@ -323,7 +323,7 @@ void main(){
             // Fake shadow from underlying layer:
             alpha *= 1.0 - 0.15 * totalAlpha;
             // Colorize high clouds to be bluish at zenith, pink at sunset:
-            float sunset = pow(smoothstep(0.05, -0.4, sunAlt), 1.4);
+            float sunset = pow(smoothstep(0.05, -0.4, sunAlt), 2.2);
             vec3 cirrusColor = mix(vec3(0.8,0.85,1.0), vec3(1.0,0.5,0.6), sunset);
             cloudSum += alpha * cirrusColor.r;
             totalAlpha += alpha;
@@ -339,7 +339,8 @@ void main(){
     // --- sunset horizon warmth ---
     float warm = pow(clamp(1.0 - sunAlt, 0.0, 1.0), 2.0) * hS * uHorizonWarmth;
     vec3 sunsetWarm = vec3(1.0, 0.55, 0.25);
-    base = mix(base, sunsetWarm, clamp(warm, 0.0, 0.65));
+    base = mix(base, sunsetWarm, clamp(warm * 1.8, 0.0, 0.8)); // 0.65 → 0.75
+
 
     // --- Ostali efekti ---
     float milkBand = exp(-pow(abs(dir.y - 1.0)/max(uMilkBandWidth,0.001), 2.0));

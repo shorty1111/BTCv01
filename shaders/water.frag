@@ -35,14 +35,14 @@ uniform float       uBottomOffsetM;
 uniform vec2        uReflectionTexSize;
 
 // === PARAMETRI ===
-const float DEPTH_SCALE     = 2.11;
+const float DEPTH_SCALE     = 2.25;
 const float DEPTH_CURVE     = 0.015;
 const float SSS_STRENGTH    = 50.0;
 const float SSS_WRAP        = 0.6;
 const vec3  SSS_FALLOFF     = vec3(0.0431, 0.0667, 0.0667);
 const float CREST_INTENSITY = 0.01;
 const float CREST_BLEND     = 0.05;
-const float FRESNEL_POWER   = 0.6;
+const float FRESNEL_POWER   = 0.3;
 const float DEPTH_CONTRAST  = 1.1;
 const float HORIZON_REFL_STRENGTH = 0.4; // 0.0 = ništa, 1.0 = puna refleksija
 
@@ -119,6 +119,8 @@ void main() {
 
     // --- Horizon fade ---
     float dist = length(uCameraPos - vWorldPos);
+
+    
     float horizonFade = clamp(1.0 - abs(dot(N, V)), 0.0, 1.0);
     float distFade = clamp(1.0 - smoothstep(500.0, 5000.0, dist), 0.0, 1.0);
     float reflectionFadeRaw = horizonFade * distFade;
@@ -154,7 +156,7 @@ reflectionFade = max(reflectionFade, 0.6); // nikad 0
     vec3 envRefl = textureLod(uEnvTex, normalize(R), lodEnv).rgb;
 
     // --- Kombinuj planar + env ---
-    envRefl = mix(envRefl, planarReflection, fresnelFade * reflectionFade);
+    envRefl = mix(envRefl, planarReflection, fresnelFade * reflectionFade) * 0.8; // ovde prigusi refelskiju kao u wows
 
     // --- IBL BRDF integracija ---
     vec2 brdf = texture(uBRDFLUT, vec2(NdotV, uRoughness)).rg;
