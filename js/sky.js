@@ -566,12 +566,12 @@ export function bakeSkyToCubemap(
   })(90, 1, 0.1, 2000);
 
   const views = [
-    lookAt([0, 0, 0], [1, 0, 0], [0, -1, 0]),
-    lookAt([0, 0, 0], [-1, 0, 0], [0, -1, 0]),
-    lookAt([0, 0, 0], [0, 1, 0], [0, 0, 1]),
-    lookAt([0, 0, 0], [0, -1, 0], [0, 0, -1]),
-    lookAt([0, 0, 0], [0, 0, 1], [0, -1, 0]),
-    lookAt([0, 0, 0], [0, 0, -1], [0, -1, 0]),
+    lookAt([0, 0, 0], [1, 0, 0], [0, -1, 0]), // +X
+    lookAt([0, 0, 0], [-1, 0, 0], [0, -1, 0]), // -X
+    lookAt([0, 0, 0], [0, 1, 0], [0, 0, 1]), // +Y
+    lookAt([0, 0, 0], [0, -1, 0], [0, 0, -1]), // -Y
+    lookAt([0, 0, 0], [0, 0, 1], [0, -1, 0]), // +Z
+    lookAt([0, 0, 0], [0, 0, -1], [0, -1, 0]), // -Z
   ];
 
   gl.viewport(0, 0, size, size);
@@ -600,7 +600,7 @@ export function bakeSkyToCubemap(
 
     drawSkyGeneric(gl, views[face], proj, sunDir, {
       ...opts,
-      worldLocked: 0,
+      worldLocked: 1,
       useTonemap: false,
     });
   }

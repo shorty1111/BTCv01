@@ -1387,12 +1387,18 @@ void main() {
 
   // ✅ Proceduralni env iz neba
 
-  envTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
-    ...DEFAULT_SKY,
-    sunColor: SUN.color,
-    sunIntensity: SUN.intensity,
-    useTonemap: false,
-  });
+  envTex = bakeSkyToCubemap(
+    gl,
+    envSize,
+    [-SUN.dir[0], SUN.dir[1], SUN.dir[2]],
+    {
+      ...DEFAULT_SKY,
+      sunColor: SUN.color,
+      sunIntensity: SUN.intensity,
+      useTonemap: false,
+    }
+  );
+
   cubeMaxMip = Math.floor(Math.log2(envSize));
 
   updateView();
