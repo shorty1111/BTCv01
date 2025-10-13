@@ -22,16 +22,16 @@ import {
   v3,
 } from "./math.js";
 
-// CENTRALNO SUNCE
-// CENTRALNO SUNCE
-const SUN = {
-  dir: v3.norm([-0.8, 1.96, 0.9]), // položaj
-  color: [1.0, 0.92, 0.76],
-  intensity: 2.0, // jačina
-};
 let acesProgram = null;
 let finalFBO = null;
 let finalColorTex = null;
+
+// CENTRALNO SUNCE
+const SUN = {
+  dir: v3.norm([-0.8, 0.3, 0.9]), // položaj
+  color: [1.0, 0.92, 0.76],
+  intensity: 2.0, // jačina
+};
 
 updateSun();
 

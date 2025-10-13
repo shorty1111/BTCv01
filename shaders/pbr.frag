@@ -106,6 +106,9 @@ void main(){
     // === BENT NORMAL + AO iz SSAO ===
     vec4 bentNormalAO = texture(tBentNormalAO, vUV);
     vec3 bentNormal = normalize(bentNormalAO.rgb * 2.0 - 1.0);
+    // PREBACI BENT NORMAL IZ VIEW U WORLD SPACE
+mat3 invViewMat = transpose(mat3(uView));
+vec3 bentNormalWorld = invViewMat * bentNormal;
     float ao = bentNormalAO.a;
 
     // === Kamera i orijentacija ===
@@ -158,15 +161,17 @@ void main(){
     vec3 F_IBL = fresnelSchlickRoughness(NdotV, F0, roughness);
     vec3 diffuseIBL  = envDiffuse * baseColor * (1.0 - metalness);
     vec3 specularIBL = envSpecular * (F_IBL * brdf.x + brdf.y);
+    // === Specular occlusion (npr. GTAO-like) ===
+    float specOcclusion = clamp(pow(dot(N, bentNormal), 1.0), 0.0, 1.0);
+    specularIBL *= specOcclusion;
 
-
-    vec3 ambient = (diffuseIBL + specularIBL) * ao;
+    vec3 ambient = (diffuseIBL + specularIBL) * ao ;
 
 
     // === Finalna kompozicija ===
-    vec3 color = directLight + ambient;
+    vec3 color = directLight + ambient ;
 
-    color += specularIBL * metalness;
+    color += specularIBL * metalness ;
 
 
 

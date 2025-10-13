@@ -12,7 +12,7 @@ in vec3 vTBN_B;
 in vec3 vTBN_N;
 
 out vec4 fragColor;
-
+uniform bool uIsReflectionPass;
 // === UNIFORMI ===
 uniform samplerCube uEnvTex;
 uniform sampler2D   uReflectionTex;
@@ -37,7 +37,7 @@ uniform vec2        uReflectionTexSize;
 // === PARAMETRI ===
 const float DEPTH_SCALE     = 2.25;
 const float DEPTH_CURVE     = 0.015;
-const float SSS_STRENGTH    = 50.0;
+const float SSS_STRENGTH    = 100.0;
 const float SSS_WRAP        = 0.6;
 const vec3  SSS_FALLOFF     = vec3(0.0431, 0.0667, 0.0667);
 const float CREST_INTENSITY = 0.01;
@@ -91,6 +91,7 @@ vec3 ACESFilm(vec3 x) {
 
 // === MAIN ===
 void main() {
+    
     // --- Dubina ---
     float depthM      = abs((vWorldPos.y - uWaterLevel) - uBottomOffsetM);
     float depthFactor = clamp(depthM / DEPTH_SCALE, 0.0, 1.0);
@@ -125,10 +126,10 @@ void main() {
     float distFade = clamp(1.0 - smoothstep(500.0, 5000.0, dist), 0.0, 1.0);
     float reflectionFadeRaw = horizonFade * distFade;
 
-// Fade samo blizu horizonta, ne blizu kamere
-float horizonSoftFade = mix(HORIZON_REFL_STRENGTH, 1.0, clamp(dot(N, V), 0.0, 1.0));
-float reflectionFade = reflectionFadeRaw * horizonSoftFade;
-reflectionFade = max(reflectionFade, 0.6); // nikad 0
+    // Fade samo blizu horizonta, ne blizu kamere
+    float horizonSoftFade = mix(HORIZON_REFL_STRENGTH, 1.0, clamp(dot(N, V), 0.0, 1.0));
+    float reflectionFade = reflectionFadeRaw * horizonSoftFade;
+    reflectionFade = max(reflectionFade, 0.6); // nikad 0
 
 
     float fadeAA   = clamp(1.0 - smoothstep(0.0, 1000.0, dist), 0.0, 1.0);
@@ -166,7 +167,7 @@ reflectionFade = max(reflectionFade, 0.6); // nikad 0
     // --- Fake SSS ---
     float backLit   = clamp((dot(-L, N) + SSS_WRAP) / (1.0 + SSS_WRAP), 0.0, 1.0);
     backLit         = smoothstep(0.0, 1.0, backLit);
-    float sunFacing = pow(clamp(dot(V, -L), 0.0, 1.0), 2.0);
+    float sunFacing = pow(clamp(dot(V, -L), 0.0, 1.0), 15.0);
 
     vec3 warmTint  = vec3(1.0, 0.65, 0.3);
     vec3 sssColor  = mix(uShallowColor, warmTint, sunFacing * 0.8);
@@ -192,7 +193,7 @@ reflectionFade = max(reflectionFade, 0.6); // nikad 0
     baseColor         = mix(baseColor, crestColor, CREST_BLEND);
 
     // --- Dubinski gradient ---
-    baseColor = mix(baseColor, baseColor * vec3(0.25, 0.3, 0.35), depthFactor);
+    baseColor = mix(baseColor, baseColor * vec3(0.25, 0.3, 0.35), depthFactor) * uSunIntensity;
 
     // --- Final miks ---
     vec3 color = baseColor;

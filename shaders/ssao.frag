@@ -42,9 +42,9 @@ vec3 randomVec  = normalize(texture(tNoise, vUV * noiseScale + fract(uView[3].xy
         float sampleDepth = texture(gPosition, offset.xy).z;
         
        // adaptivni raspon na osnovu udaljenosti kamere
-float depth = abs(fragPos.z);
-float adapt = mix(6.0, 10.0, clamp(depth / 100.0, 0.0, 1.0));
-float rangeCheck = smoothstep(0.0, adapt, radius / abs(fragPos.z - sampleDepth));
+    float depth = abs(fragPos.z);
+    float adapt = mix(6.0, 10.0, clamp(depth / 100.0, 0.0, 1.0));
+    float rangeCheck = smoothstep(0.0, adapt, radius / abs(fragPos.z - sampleDepth));
 
 
         // == ISPRAVLJENO: Saberi occ kao 1.0, NE 6.0!
