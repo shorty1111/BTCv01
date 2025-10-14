@@ -12,6 +12,7 @@ in vec3 vTBN_B;
 in vec3 vTBN_N;
 
 out vec4 fragColor;
+
 // === UNIFORMI ===
 uniform samplerCube uEnvTex;
 uniform sampler2D   uReflectionTex;
@@ -36,7 +37,7 @@ uniform vec2        uReflectionTexSize;
 // === PARAMETRI ===
 const float DEPTH_SCALE     = 2.25;
 const float DEPTH_CURVE     = 0.015;
-const float SSS_STRENGTH    = 100.0;
+const float SSS_STRENGTH    = 50.0;
 const float SSS_WRAP        = 0.6;
 const vec3  SSS_FALLOFF     = vec3(0.0431, 0.0667, 0.0667);
 const float CREST_INTENSITY = 0.01;
@@ -90,7 +91,6 @@ vec3 ACESFilm(vec3 x) {
 
 // === MAIN ===
 void main() {
-    
     // --- Dubina ---
     float depthM      = abs((vWorldPos.y - uWaterLevel) - uBottomOffsetM);
     float depthFactor = clamp(depthM / DEPTH_SCALE, 0.0, 1.0);
@@ -147,7 +147,7 @@ void main() {
     // --- Planarna refleksija ---
     vec2 reflUV = getPlanarReflectionUV(vWorldPos);
     float uvPerturb = mix(0.1, 0.01, 1.0 - reflectionFade);
-    reflUV += tangentNormal.xy * 0.3; // adaptiraj na dubinu, itd.
+    reflUV += normalize(N).xz * uvPerturb;
     vec3 planarReflection = texture(uReflectionTex, reflUV).rgb;
 
     // --- Environment refleksija ---
@@ -156,8 +156,7 @@ void main() {
     vec3 envRefl = textureLod(uEnvTex, normalize(R), lodEnv).rgb;
 
     // --- Kombinuj planar + env ---
-
-    envRefl = mix(envRefl, planarReflection, reflectionFade);// ovde prigusi refelskiju kao u wows
+    envRefl = mix(envRefl, planarReflection, fresnelFade * reflectionFade) * 0.6; // ovde prigusi refelskiju kao u wows
 
     // --- IBL BRDF integracija ---
     vec2 brdf = texture(uBRDFLUT, vec2(NdotV, uRoughness)).rg;
@@ -167,7 +166,7 @@ void main() {
     // --- Fake SSS ---
     float backLit   = clamp((dot(-L, N) + SSS_WRAP) / (1.0 + SSS_WRAP), 0.0, 1.0);
     backLit         = smoothstep(0.0, 1.0, backLit);
-    float sunFacing = pow(clamp(dot(V, -L), 0.3, 1.0),45.0);
+    float sunFacing = pow(clamp(dot(V, -L), 0.0, 1.0), 20.0);
 
     vec3 warmTint  = vec3(1.0, 0.65, 0.3);
     vec3 sssColor  = mix(uShallowColor, warmTint, sunFacing * 0.8);
@@ -183,7 +182,7 @@ void main() {
     // --- Specular highlight od sunca ---
     vec3  H          = normalize(V + L);
     float NdotH      = max(dot(N, H), 0.0);
-    float highlight  = pow(NdotH, 1500.0) * mix(0.8, 1.0, fresnel);
+    float highlight  = pow(NdotH, 1200.0) * mix(0.9, 1.0, fresnel);
     vec3  sunHighlight = uSunColor * highlight;
 
     // --- Crest ---
@@ -193,7 +192,7 @@ void main() {
     baseColor         = mix(baseColor, crestColor, CREST_BLEND);
 
     // --- Dubinski gradient ---
-    baseColor = mix(baseColor, baseColor * vec3(0.25, 0.3, 0.35), depthFactor) * uSunIntensity;
+    baseColor = mix(baseColor, baseColor * vec3(0.25, 0.3, 0.35), depthFactor);
 
     // --- Final miks ---
     vec3 color = baseColor;

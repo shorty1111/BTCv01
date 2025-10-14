@@ -28,7 +28,7 @@ let finalColorTex = null;
 
 // CENTRALNO SUNCE
 const SUN = {
-  dir: v3.norm([-0.8, 1.2, -0.6]), // položaj
+  dir: v3.norm([-0.8, 0.9, -0.6]), // položaj
   color: [1.0, 0.92, 0.76],
   intensity: 0.0, // jačina
 };
