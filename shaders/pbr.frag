@@ -90,7 +90,7 @@ void main(){
 
     vec3 normalV = normalize(texture(gNormal, vUV).rgb);
     vec4 albedoTex = texture(gAlbedo, vUV);
-    vec3 baseColor = albedoTex.rgb;
+    vec3 baseColor = albedoTex.rgb * 1.52;
     float opacity = albedoTex.a;
 
     vec4 matTex = texture(gMaterial, vUV);

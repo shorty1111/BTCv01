@@ -38,7 +38,11 @@ function createSmartAdaptiveGrid(
         const x = x0 + ix * step;
         const u = x * uvScale;
         const v = z * uvScale;
-        verts.push(x, 0, z, u, v, 1.0);
+        const dist = Math.hypot(x0 + ix * step, z0 + iz * step);
+        const maxDist = tileSize * ringCount * 0.05;
+        const mask = Math.max(0.0, 1.0 - dist / maxDist);
+
+        verts.push(x, 0, z, u, v, mask);
       }
     }
 
@@ -88,47 +92,48 @@ function createSmartAdaptiveGrid(
 
 function generateWaveSet(
   {
-    largeAmp = 0.02,
-    largeCount = 2,
-    midAmp = 0.08,
+    largeAmp = 0.03,
+    largeCount = 3,
+    midAmp = 0.015,
     midCount = 10,
-    smallAmp = 0.015,
-    smallCount = 6,
+    smallAmp = 0.005,
+    smallCount = 8,
   } = {},
-  seed = 1234
+  seed = 1234,
+  windAngle = Math.PI * 0.25
 ) {
   const waves = [];
   const rnd = makeRNG(seed);
 
   function randomDir() {
-    const a = rnd() * Math.PI * 2;
+    const a = windAngle + (rnd() - 0.5) * Math.PI * 5.1; // ograniči oko glavnog pravca
     return [Math.cos(a), Math.sin(a)];
   }
 
   function addWave(A, Lbase, Qbase) {
-    const Avar = A * (0.4 + rnd() * 1.5); // amplitude raznolikost
-    const L = Lbase * (0.5 + rnd() * 1.8); // dužina talasa
-    const Q = Qbase * (0.5 + rnd() * 2.0); // choppiness
+    const Avar = A * (1.5 + rnd() * 0.6); // veća raznolikost
+    const L = Lbase * (2.5 + rnd() * 1.2); // realni rasponi dužina
+    const Q = Qbase * (2.6 + rnd() * 1.8); // choppiness varijacija
     const dir = randomDir();
     const phase = rnd() * Math.PI * 2;
-    const speedJitter = 0.5 + rnd() * 1.5;
+    const speedJitter = 0.5 + rnd() * 2.0;
 
     waves.push({ A: Avar, L, Q, dir, phase, speedJitter });
   }
 
-  // Veći swell talasi — masivni ali spori
+  // Spori, dugi swells
   for (let i = 0; i < largeCount; i++) {
-    addWave(largeAmp, 50 + rnd() * 50, 0.4 + rnd() * 0.4);
+    addWave(largeAmp, 2 + rnd() * 5, 0.1 + rnd() * 0.5);
   }
 
-  // Srednji chop talasi
+  // Glavni chop
   for (let i = 0; i < midCount; i++) {
-    addWave(midAmp, 8 + rnd() * 25, 0.5 + rnd() * 0.6);
+    addWave(midAmp, 5 + rnd() * 15, 0.5 + rnd() * 1.5);
   }
 
-  // Sitni ripples
+  // Mikro ripples
   for (let i = 0; i < smallCount; i++) {
-    addWave(smallAmp, 0.5 + rnd() * 2.5, 0.3 + rnd() * 2.0);
+    addWave(smallAmp, 0.4 + rnd() * 1.2, 0.6 + rnd() * 1.2);
   }
 
   return waves;
@@ -136,27 +141,28 @@ function generateWaveSet(
 
 const waveSetA = generateWaveSet(
   {
-    largeAmp: 0.025,
+    largeAmp: 0.018, // duži, jedva vidljivi valovi (spori swells)
     largeCount: 3,
-    midAmp: 0.02,
-    midCount: 10,
-    smallAmp: 0.01, // <-- OVO JE KLJUČNO!
-    smallCount: 6, // <-- OVO JE KLJUČNO!
+    midAmp: 0.01, // glavni “chop”, realni pokret vode
+    midCount: 9,
+    smallAmp: 0.004, // fini mikrovalovi što daju svetlucanje
+    smallCount: 8,
   },
   12345
 );
 
 const waveSetB = generateWaveSet(
   {
-    largeAmp: 0.017,
+    largeAmp: 0.012, // sekundarni swells – malo slabiji
     largeCount: 2,
-    midAmp: 0.03,
-    midCount: 8,
-    smallAmp: 0.013,
-    smallCount: 6,
+    midAmp: 0.04, // dodatni sloj chopa za nesavršenost
+    midCount: 6,
+    smallAmp: 0.0035, // vrlo sitni ripples
+    smallCount: 8,
   },
   6789
 );
+
 // SPOJI
 const waveSet = [...waveSetA.slice(0, 16), ...waveSetB.slice(0, 16)];
 // 3. Helper za upload
@@ -204,7 +210,7 @@ export async function initWater(gl) {
   waterProgram = createShaderProgram(gl, vsSource, fsSource);
 
   // generiši adaptivni grid
-  const grid = createSmartAdaptiveGrid(50.0, 250, 20, 0.5);
+  const grid = createSmartAdaptiveGrid(100.0, 150, 20, 0.5);
   const vertices = grid.vertices;
   const indices = grid.indices;
   indexCount = indices.length;
@@ -346,7 +352,7 @@ export function drawWater(
   gl.uniform1f(gl.getUniformLocation(waterProgram, "uRoughness"), 0.09);
   gl.uniform1f(gl.getUniformLocation(waterProgram, "uSpecularStrength"), 1.0);
   gl.uniform1f(gl.getUniformLocation(waterProgram, "uWaterLevel"), 0.0);
-  gl.uniform1f(gl.getUniformLocation(waterProgram, "uBottomOffsetM"), 1.5);
+  gl.uniform1f(gl.getUniformLocation(waterProgram, "uBottomOffsetM"), 1.0);
 
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, waterNormalTex);
