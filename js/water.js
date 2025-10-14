@@ -204,13 +204,7 @@ export async function initWater(gl) {
   waterProgram = createShaderProgram(gl, vsSource, fsSource);
 
   // generiši adaptivni grid
-  const grid = createSmartAdaptiveGrid(50.0, 250, 12, 0.5);
-  console.log(
-    "Vertex count:",
-    grid.vertices.length / 6, // 6 float-ova po verteksu
-    "Triangle count:",
-    grid.indices.length / 3
-  );
+  const grid = createSmartAdaptiveGrid(50.0, 250, 20, 0.5);
   const vertices = grid.vertices;
   const indices = grid.indices;
   indexCount = indices.length;

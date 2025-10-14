@@ -10,7 +10,8 @@ uniform sampler2D tBentNormalAO;        // BENT NORMAL + AO
 uniform samplerCube uEnvMap;
 uniform sampler2D uBRDFLUT;
 uniform sampler2D uShadowMap;
-
+uniform sampler2D uReflectionTex;
+uniform mat4 uReflectionMatrix;
 uniform mat4 uView, uLightVP, uProjection;
 uniform vec3 uCameraPos;
 uniform vec3 uSunDir, uSunColor;
@@ -20,7 +21,6 @@ uniform float uBiasBase, uBiasSlope;
 uniform float uLightSize;
 uniform float uCubeMaxMip;
 uniform vec2 uShadowMapSize;
-const float ENV_GI_BOUNCE_STRENGTH = 0.5; // tweakuj između 0.1 i 0.4
 // === Helper funkcije ===
 float hash12(vec2 p){ return fract(sin(dot(p, vec2(27.167,91.453)))*43758.5453); }
 mat2 rotFromHash(float h){ float a = h * 6.283185; return mat2(cos(a), -sin(a), sin(a), cos(a)); }
@@ -49,12 +49,6 @@ float distributionGGX(vec3 N, vec3 H, float roughness){
     float denom = (NdotH2 * (a2 - 1.0) + 1.0);
     return a2 / (3.141592 * denom * denom);
 }
-
-vec3 ACESFilm(vec3 x){
-    const float a=2.91,b=0.03,c=2.43,d=0.59,e=0.14;
-    return clamp((x*(a*x+b))/(x*(c*x+d)+e),0.0,1.0);
-}
-
 // === PCSS senke ===
 float findBlocker(vec2 uv, float receiverDepth){
     float avg=0.0, num=0.0;
@@ -107,8 +101,8 @@ void main(){
     vec4 bentNormalAO = texture(tBentNormalAO, vUV);
     vec3 bentNormal = normalize(bentNormalAO.rgb * 2.0 - 1.0);
     // PREBACI BENT NORMAL IZ VIEW U WORLD SPACE
-mat3 invViewMat = transpose(mat3(uView));
-vec3 bentNormalWorld = invViewMat * bentNormal;
+    mat3 invViewMat = transpose(mat3(uView));
+    vec3 bentNormalWorld = invViewMat * bentNormal;
     float ao = bentNormalAO.a;
 
     // === Kamera i orijentacija ===
@@ -116,6 +110,7 @@ vec3 bentNormalWorld = invViewMat * bentNormal;
     vec3 V = normalize(-fragPosV);
     vec3 Rv = reflect(V, N);
     vec3 Rw = transpose(mat3(uView)) * Rv;
+    
     Rw.y = -Rw.y;
     Rw.z = -Rw.z;
 
@@ -127,6 +122,7 @@ vec3 bentNormalWorld = invViewMat * bentNormal;
 
     // === Shadows ===
     float shadow = getShadow(P, N);
+    float shadowFade = mix(0.1, 1.0, shadow); // 0.3 = koliko refleksije ostane u senci
     float NdotL = max(dot(normalize(mix(N, bentNormal, 0.5)), L), 0.0);
     float NdotV = max(dot(N, V), 0.0);
 
@@ -139,19 +135,17 @@ vec3 bentNormalWorld = invViewMat * bentNormal;
     float G = geometrySmith(NdotV, NdotL, roughness);
     vec3  F = fresnelSchlickRoughness(max(dot(H, V), 0.0), F0, roughness);
     vec3  numerator = D * G * F;
-    float denominator = 1.5 * NdotV * NdotL + 0.001;
+    float denominator = 4.0 * NdotV * NdotL + 0.001;
     vec3  specularBRDF = numerator / denominator;
 
-    vec3 kd = (1.5 - F) * (1.0 - metalness);
+    vec3 kd = (1.0 - F) * (1.0 - metalness);
     vec3 diffuse = kd * baseColor / 3.141592;
 
-    vec3 radiance = uSunColor;
-    vec3 directLight = (diffuse + specularBRDF ) * radiance * NdotL * shadow;
-
-
-
+    vec3 radiance = uSunColor * uSunIntensity;
+    vec3 directLight = (diffuse + specularBRDF) * radiance * NdotL * shadow;
+    
     // === IBL refleksije ===
-    vec3 envDiffuse  = textureLod(uEnvMap, bentNormal, uCubeMaxMip).rgb;
+    vec3 envDiffuse  = textureLod(uEnvMap, bentNormal, uCubeMaxMip).rgb * 1.5;
 
 
 
@@ -162,18 +156,16 @@ vec3 bentNormalWorld = invViewMat * bentNormal;
     vec3 diffuseIBL  = envDiffuse * baseColor * (1.0 - metalness);
     vec3 specularIBL = envSpecular * (F_IBL * brdf.x + brdf.y);
     // === Specular occlusion (npr. GTAO-like) ===
-    float specOcclusion = clamp(pow(dot(N, bentNormal), 1.0), 0.0, 1.0);
-    specularIBL *= specOcclusion;
-
-    vec3 ambient = (diffuseIBL + specularIBL) * ao ;
 
 
-    // === Finalna kompozicija ===
-    vec3 color = directLight + ambient ;
-
-    color += specularIBL * metalness ;
-
-
+// boost specular "oiliness"
+    float glossBoost = smoothstep(0.0, 0.4, 1.0 - roughness);
+    specularIBL *= 1.0 + glossBoost * 1.8;
+    specularIBL *= shadowFade;
+        vec3 ambient = diffuseIBL * ao + specularIBL * mix(ao, 1.0, 0.6);
+        // === Finalna kompozicija ===
+        
+        vec3 color = directLight + ambient ;
 
 fragColor = vec4(vec3(color), 1.0);
    

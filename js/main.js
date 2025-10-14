@@ -28,9 +28,9 @@ let finalColorTex = null;
 
 // CENTRALNO SUNCE
 const SUN = {
-  dir: v3.norm([-0.8, 0.3, 0.9]), // položaj
+  dir: v3.norm([-0.8, 1.2, -0.6]), // položaj
   color: [1.0, 0.92, 0.76],
-  intensity: 2.0, // jačina
+  intensity: 0.0, // jačina
 };
 
 updateSun();
@@ -49,8 +49,8 @@ function updateSun() {
   ];
 
   // === 2️⃣  Fade postojećeg intenziteta (bez maxIntensity) ===
-  const fade = smoothstep(-0.1, 0.3, alt);
-  SUN.intensity = Math.pow(Math.max(alt, 0.0), 0.4);
+  const fade = Math.pow(Math.max(alt, 0.0), 0.4);
+  SUN.intensity = 1.0 * fade; // ili tvoj faktor
 
   // === 3️⃣  Afterglow — refleks ispod horizonta ===
   if (alt < 0.0) {
@@ -1338,7 +1338,6 @@ void main() {
 
   // kreiraj program
   depthOnlyProgram = createShaderProgram(gl, depthOnlyVert, depthOnlyFrag);
-  console.log("depthOnlyProgram compiled OK");
   const quadVertSrc = await fetch("../shaders/quad.vert").then((r) => r.text());
 
   const ssaoFragSrc = await fetch("../shaders/ssao.frag").then((r) => r.text());
@@ -1396,6 +1395,7 @@ void main() {
       sunColor: SUN.color,
       sunIntensity: SUN.intensity,
       useTonemap: false,
+      hideSun: true, // 👈 NOVO
     }
   );
 
@@ -2946,9 +2946,8 @@ async function preloadAllVariants() {
               buf,
               variant.src
             );
-            console.log("✅ Preloaded:", variant.src);
           } catch (e) {
-            console.warn("⚠️ Skip preload:", variant.src, e);
+            // preload preskočen zbog greške — ignoriši
           }
         })();
 
@@ -3217,12 +3216,10 @@ init().then(async () => {
   // 3️⃣  Pokreni generisanje thumbnaila (ne blokira)
   generateAllThumbnails()
     .then(() => {
-      console.log("✅ Thumbnaili generisani");
       refreshThumbnailsInUI();
       hideLoading();
     })
-    .catch((err) => {
-      console.error("❌ Thumbnail generisanje puklo:", err);
+    .catch(() => {
       hideLoading();
     });
 
@@ -3230,7 +3227,7 @@ init().then(async () => {
   //    (ovo je ključno — odlažemo malo da ne koči inicijalni fetch)
   setTimeout(() => {
     preloadAllVariants().then(() => {
-      console.log("✅ Sve varijante preloadovane");
+      // preload gotov
     });
   }, 2000); // ⬅️ 2 sekunde posle starta
 });

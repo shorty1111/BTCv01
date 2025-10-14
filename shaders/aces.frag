@@ -16,7 +16,17 @@ vec3 ACESFilm(vec3 x) {
 
 void main() {
     vec3 col = texture(uInput, vUV).rgb;
+
+    // --- ACES tonemap ---
     col = ACESFilm(col);
-    col = pow(col, vec3(1.0 / 1.8)); // gamma
+
+    // --- EVE-like filmic tweaks ---
+    col = pow(col, vec3(1.0));                 // zgnječi midtone, oštriji kontrast
+    col *= vec3(1.25, 1.2, 1.15);               // lagano topli bias (kao EVE)
+    float lift = 0.04;                          // minimalni “fog” u crnim
+    col = mix(vec3(lift), col, 0.780);            
+    col = mix(col, ACESFilm(col * 1.2), 0.85);  // punch saturacija + rolloff
+    col = pow(col, vec3(1.0 / 2.2));            // gamma
+
     fragColor = vec4(col, 1.0);
 }

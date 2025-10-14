@@ -7,22 +7,23 @@ out vec4 fragColor;
 uniform sampler2D gPosition;
 uniform sampler2D gNormal;
 uniform sampler2D tNoise;
-uniform mat4 uView; // dodaj u uniform sekciju
+uniform mat4 uView;
 uniform vec3 samples[128];
 uniform mat4 uProjection;
 
 const int KERNEL_SIZE = 128;
 const float radius = 3.6;
-const float bias = 0.045;
+const float bias = 0.065;
 const float power = 4.2;
 
 void main() {
     vec3 fragPos = texture(gPosition, vUV).rgb;
     vec3 normal  = normalize(texture(gNormal, vUV).rgb);
 
-vec2 noiseScale = vec2(textureSize(gPosition, 0)) / 4.0;  // 4.0 → 16.0
-vec3 randomVec  = normalize(texture(tNoise, vUV * noiseScale + fract(uView[3].xy)).rgb);
-    // --- TBN iz normal + random ---
+    vec2 noiseScale = vec2(textureSize(gPosition, 0)) / 4.0;
+    vec3 randomVec  = normalize(texture(tNoise, vUV * noiseScale + fract(uView[3].xy)).rgb);
+
+    // --- TBN
     vec3 tangent   = normalize(randomVec - normal * dot(randomVec, normal));
     vec3 bitangent = cross(normal, tangent);
     mat3 TBN       = mat3(tangent, bitangent, normal);
@@ -31,7 +32,10 @@ vec3 randomVec  = normalize(texture(tNoise, vUV * noiseScale + fract(uView[3].xy
     vec3 bentNormal = vec3(0.0);
     float visibleSamples = 0.0;
 
-    for(int i = 0; i < KERNEL_SIZE; ++i) {
+    float camDepth = -fragPos.z;
+    float adapt = mix(6.0, 10.0, clamp(camDepth / 100.0, 0.0, 1.0));
+
+    for (int i = 0; i < KERNEL_SIZE; ++i) {
         vec3 sampleVec = TBN * samples[i];
         vec3 samplePos = fragPos + sampleVec * radius;
 
@@ -39,19 +43,25 @@ vec3 randomVec  = normalize(texture(tNoise, vUV * noiseScale + fract(uView[3].xy
         offset.xyz /= offset.w;
         offset.xyz = offset.xyz * 0.5 + 0.5;
 
+        // Skipuj ako je van ekrana
+        if (offset.x < 0.0 || offset.x > 1.0 || offset.y < 0.0 || offset.y > 1.0)
+            continue;
+
         float sampleDepth = texture(gPosition, offset.xy).z;
-        
-       // adaptivni raspon na osnovu udaljenosti kamere
-    float depth = abs(fragPos.z);
-    float adapt = mix(6.0, 10.0, clamp(depth / 100.0, 0.0, 1.0));
-    float rangeCheck = smoothstep(0.0, adapt, radius / abs(fragPos.z - sampleDepth));
 
+        // Skipuj ako je depth nevalidan (0.0)
+        if (abs(sampleDepth) < 1e-4)
+            continue;
 
-        // == ISPRAVLJENO: Saberi occ kao 1.0, NE 6.0!
+        // Odbaci ako je predaleko u dubini
+        if (abs(sampleDepth - fragPos.z) > adapt * 1.2)
+            continue;
+
+        float rangeCheck = smoothstep(0.0, adapt, radius / max(abs(fragPos.z - sampleDepth), 1e-4));
         float occ = step(samplePos.z + bias, sampleDepth) * rangeCheck;
-        occlusion += occ ;
+        occlusion += occ;
 
-        // == Bent normal: akumuliraj SAMO VIDLJIVE uzorke!
+        // Ako je occlusion mali → sample je vidljiv → akumuliraj bent normalu
         if (occ < 0.5) {
             bentNormal += sampleVec;
             visibleSamples += 1.0;
@@ -60,15 +70,21 @@ vec3 randomVec  = normalize(texture(tNoise, vUV * noiseScale + fract(uView[3].xy
 
     occlusion = 1.0 - (occlusion / float(KERNEL_SIZE));
     occlusion = clamp(occlusion, 0.0, 1.0);
-    occlusion = pow(occlusion, power);  // pojačaj kontrast (menjaj power po potrebi)
+    occlusion = pow(occlusion, power);
 
-    // == Normalize bent normal: ako nema vidljivih, vrati originalnu normalu
+    // === Bent normal finalizacija ===
     if (visibleSamples > 0.0) {
         bentNormal = normalize(bentNormal / visibleSamples);
+
+        // Clampuj ugao ako bent ode predaleko
+        float angle = dot(bentNormal, normal);
+        if (angle < 0.2) {
+            bentNormal = normal;
+        }
     } else {
         bentNormal = normal;
     }
 
-    // == EKSPORT: RGB = bent normal ([0,1]), A = AO
+    // EKSPORT: RGB = bent normal u [0,1], A = AO
     fragColor = vec4(bentNormal * 0.5 + 0.5, occlusion);
 }

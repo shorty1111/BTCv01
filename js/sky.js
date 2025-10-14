@@ -199,9 +199,10 @@ uniform float uCameraHeight;
 uniform int   uUseTonemap;
 
 uniform vec3  uSunDir;
+uniform vec3 uGround;
 uniform vec3  uSunColor;
 uniform float uSunIntensity;
-
+uniform int uHideSun;
 uniform float uExposure;
 uniform float uSunSizeDeg, uSunHaloScale;
 uniform float uHorizonSoft, uHorizonLift;
@@ -278,7 +279,7 @@ void main(){
 
     vec3 base = mix(curZenith, curHorizon, hS);
     float gMix = smoothstep(-0.25, 0.05, dir.y);
-    vec3 groundColor = mix(vec3(0.10, 0.07, 0.05), vec3(0.16, 0.11, 0.07), 1.0 - sunAlt);
+    vec3 groundColor = uGround;
     base = mix(groundColor, base, gMix);
 
     // === 2. Procedural MULTI-LAYER clouds ===
@@ -363,28 +364,35 @@ void main(){
     float ozone = smoothstep(0.35, 0.95, dir.y);
     base = mix(base, base * vec3(0.92, 0.96, 1.06), 0.25 * ozone);
 
-    // === 3. Sun disk & Mie halo ===
+// === 3. Sun disk & Mie halo ===
+vec3 sunLight = vec3(0.0);
+
+if (uHideSun == 0) {
     float cosToSun = dot(dir, sunV);
     float sunSize  = radians(uSunSizeDeg);
     float ang      = acos(cosToSun);
 
     float disk = exp(-pow(ang/(sunSize*0.9), 2.0));
     float limb = exp(-pow(ang/(sunSize*2.2), 2.0));
-    vec3  sunLight = uSunColor * (disk*uSunIntensity + limb*(uSunIntensity*0.18));
+    sunLight = uSunColor * (disk*uSunIntensity + limb*(uSunIntensity*0.18));
 
     float g = 0.8;
     float mie = (1.0 - g*g) / pow(1.0 + g*g - 2.0*g*cosToSun, 1.5);
     mie *= 0.015 * (1.0 + 2.0*(1.0 - sunAlt)) * uSunHaloScale * uMieStrength;
     sunLight += uSunColor * mie * uSunIntensity;
-
+}
     // === 4. Ground & bounce ===
     float skyMask    = smoothstep(-0.04, 0.02, dir.y);
     float groundMask = 1.0 - skyMask;
 
-    vec3 groundBase   = vec3(0.035,0.03,0.03) * groundMask * uSunIntensity;
-    float below       = smoothstep(0.0, 0.25, max(0.0, -dir.y));
-    vec3 groundBounce = vec3(0.035,0.03,0.03) * (0.3 + 0.7*(1.0 - sunAlt)) *
-                        below * (uGroundScatter*1.5) * uSunIntensity;
+vec3 groundBase   = uGround * groundMask * uSunIntensity;
+float below       = smoothstep(0.0, 0.25, max(0.0, -dir.y));
+vec3 groundBounce = uGround * (0.3 + 0.7*(1.0 - sunAlt)) *
+                    below * (uGroundScatter*1.5) * uSunIntensity;
+
+// opciono: topliji odsjaj pri zalasku
+groundBounce *= mix(vec3(1.0), vec3(1.3, 0.8, 0.6), smoothstep(0.1, -0.3, sunAlt));
+
 
     // === 5. Finalna kompozicija ===
     vec3 color = (base * skyMask * uSunIntensity) +
@@ -498,6 +506,7 @@ function applySkyUniforms(gl, view, proj, sunDir, opts) {
     gl.getUniformLocation(skyProg, "uUseTonemap"),
     o.useTonemap ? 1 : 0
   );
+  gl.uniform1i(gl.getUniformLocation(skyProg, "uHideSun"), o.hideSun ? 1 : 0);
 }
 
 // ===== Render =====
@@ -588,13 +597,6 @@ export function bakeSkyToCubemap(
 
     // ✅ ubaci sanity check
     const fbStatus = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
-    console.log(
-      `Face ${face}: framebuffer status = 0x${fbStatus.toString(16)}`
-    );
-    if (fbStatus !== gl.FRAMEBUFFER_COMPLETE) {
-      console.error("❌ HDR framebuffer incomplete:", fbStatus.toString(16));
-    }
-
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
