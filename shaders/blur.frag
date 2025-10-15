@@ -8,7 +8,7 @@ uniform sampler2D ssaoInput;
 uniform sampler2D gPosition;
 uniform sampler2D gNormal;
 
-const int blurSize = 2; // 2 = 5x5 blur
+const int blurSize = 1; // 2 = 5x5 blur
 const float depthThreshold = 0.2;
 const float normalThreshold = 0.5;
 

@@ -82,7 +82,7 @@ function createSmartAdaptiveGrid(
       }
     }
   }
-
+  console.log("VERTEX COUNT:", verts.length / 3);
   return {
     vertices: new Float32Array(verts),
     indices:
@@ -123,12 +123,12 @@ function generateWaveSet(
 
   // Spori, dugi swells
   for (let i = 0; i < largeCount; i++) {
-    addWave(largeAmp, 2 + rnd() * 5, 0.1 + rnd() * 0.5);
+    addWave(largeAmp, 5 + rnd() * 10, 0.1 + rnd() * 0.5);
   }
 
   // Glavni chop
   for (let i = 0; i < midCount; i++) {
-    addWave(midAmp, 5 + rnd() * 15, 0.5 + rnd() * 1.5);
+    addWave(midAmp, 2 + rnd() * 6, 0.5 + rnd() * 0.5);
   }
 
   // Mikro ripples
@@ -155,7 +155,7 @@ const waveSetB = generateWaveSet(
   {
     largeAmp: 0.012, // sekundarni swells – malo slabiji
     largeCount: 2,
-    midAmp: 0.04, // dodatni sloj chopa za nesavršenost
+    midAmp: 0.015, // dodatni sloj chopa za nesavršenost
     midCount: 6,
     smallAmp: 0.0035, // vrlo sitni ripples
     smallCount: 8,
@@ -210,7 +210,7 @@ export async function initWater(gl) {
   waterProgram = createShaderProgram(gl, vsSource, fsSource);
 
   // generiši adaptivni grid
-  const grid = createSmartAdaptiveGrid(100.0, 150, 20, 0.5);
+  const grid = createSmartAdaptiveGrid(100.0, 150, 20, 0.3);
   const vertices = grid.vertices;
   const indices = grid.indices;
   indexCount = indices.length;

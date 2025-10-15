@@ -24,7 +24,7 @@ export const DEFAULT_SKY = {
   sunSizeDeg: 0.9, // može i 0.53
   sunHaloScale: 0.25,
   horizonSoft: 0.18,
-  horizonLift: -0.02,
+  horizonLift: 0.0,
   saturation: 1.5, // malo ispod 1.0
   horizonDesat: 0.05,
   horizonWarmth: 1.35,
@@ -302,7 +302,19 @@ void main(){
             float alpha = 1.0 - exp(-band * opticalDepth * uCloud1Density);
             // Fake soft shadow from higher layer:
             alpha *= 1.0 - 0.3 * totalAlpha;
-            cloudSum += alpha * 1.0; // belina
+            // Dodaj debeljinu: tamniji centar, svetlije ivice
+float shape = smoothstep(0.4, 0.85, cl); // cl je fbm vrednost
+vec3 volCloudColor = mix(vec3(0.7, 0.75, 0.85), vec3(1.0), shape);
+
+// Boostuj masu prema horizonu
+float horizonBoost = pow(1.0 - clamp(dir.y, 0.0, 1.0), 1.5);
+volCloudColor *= 1.0 + 1.4 * horizonBoost; // više difuzne svetlosti
+
+cloudSum += alpha * volCloudColor.r;
+// Fake amb. occlusion na nebo ispod oblaka
+float under = smoothstep(0.0, 0.25, dir.y); // gledamo skoro horizontalno
+vec3 occlusionTint = vec3(0.8, 0.85, 0.9); // desaturisano plavičasto
+base = mix(base, occlusionTint, alpha * under * 0.35);
             totalAlpha += alpha;
         }
     }
@@ -332,9 +344,28 @@ void main(){
     }
 
     // --- Cloud color/alpha composition ---
-    cloudSum = clamp(cloudSum, 0.0, 1.0);
-    base = mix(base, vec3(1.0), 0.45 * cloudSum);
+cloudSum = clamp(cloudSum, 0.0, 1.0);
 
+// Pametnija boja oblaka — svetli visoko, prljavi pri horizontu
+vec3 cloudColor = mix(vec3(0.9, 0.9, 0.95), vec3(0.75, 0.78, 0.85), hS);
+base = mix(base, cloudColor, 0.45 * cloudSum);
+// Dodatni volumetrijski raspršeni sloj
+float volFade = pow(1.0 - clamp(dir.y, 0.0, 1.0), 2.2);
+vec3 scatterColor = vec3(0.55, 0.65, 0.85); // dusty blue
+base = mix(base, scatterColor, volFade * 0.3);
+
+// === Horizon fade/haze ===
+float fogAmount = pow(1.0 - clamp(dir.y, 0.0, 1.0), 2.5);
+vec3 fogColor = mix(curHorizon, vec3(0.6, 0.7, 0.8), sunsetAmt);
+base = mix(base, fogColor, fogAmount * 0.2); // jačina haze-a
+
+// === Horizon blur dodatak ===
+float horizBlur = pow(1.0 - abs(dir.y), 3.0);
+base = mix(base, vec3(0.6, 0.65, 0.75), horizBlur * 0.05);
+
+// === Vertikalna saturacija — manje pri horizontu ===
+float satFalloff = mix(0.7, 1.0, pow(clamp(dir.y, 0.0, 1.0), 1.5));
+base = applySaturation(base, uSaturation * satFalloff);
 
 
     // --- sunset horizon warmth ---
@@ -350,7 +381,6 @@ void main(){
     float warmBand = exp(-pow(abs(dir.y)/max(uWarmBandWidth,0.001), 2.0));
     base += uWarmBandStrength * warmBand * vec3(1.0, 0.58, 0.15);
 
-    base  = applySaturation(base, uSaturation);
     base  = mix(base, applySaturation(base, 0.9), uZenithDesat);
     base *= mix(0.7, 1.0, uRayleighStrength);
     base = mix(base, vec3(0.035, 0.03, 0.03), clamp(uTurbidity*(1.0-hS), 0.0, 1.0));
@@ -433,18 +463,18 @@ function applySkyUniforms(gl, view, proj, sunDir, opts) {
     gl.getUniformLocation(skyProg, "uSunIntensity"),
     opts.sunIntensity
   );
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uCameraHeight"), 2.0); // tvoja visina u svetu
+  gl.uniform1f(gl.getUniformLocation(skyProg, "uCameraHeight"), 1.0); // tvoja visina u svetu
   gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud1Height"), 50.0);
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud1Thickness"), 7.0);
+  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud1Thickness"), 35.0);
   gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud1Speed"), 0.0);
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud1Density"), 0.5);
+  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud1Density"), 0.15);
   gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud1Scale"), 0.005);
 
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud2Height"), 220.0);
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud2Thickness"), 14.0);
+  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud2Height"), 200.0);
+  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud2Thickness"), 20.0);
   gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud2Speed"), 0.0);
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud2Density"), 0.5);
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud2Scale"), 0.0005);
+  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud2Density"), 0.15);
+  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloud2Scale"), 0.001);
   gl.uniform3fv(gl.getUniformLocation(skyProg, "uZenith"), o.zenith);
   gl.uniform3fv(gl.getUniformLocation(skyProg, "uHorizon"), o.horizon);
   gl.uniform3fv(gl.getUniformLocation(skyProg, "uGround"), o.ground);

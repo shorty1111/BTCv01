@@ -120,6 +120,7 @@ vec3 N = normalize(
     // --- Kamera, refleksija, svetlo ---
     vec3 V = normalize(uCameraPos - vWorldPos);
     vec3 R = normalize(reflect(-V, N) + N * 0.1);
+    
     vec3 L = normalize(uSunDir);
 
     // --- Horizon fade ---
@@ -127,13 +128,13 @@ vec3 N = normalize(
 
     
     float horizonFade = clamp(1.0 - abs(dot(N, V)), 0.0, 1.0);
-    float distFade = clamp(1.0 - smoothstep(500.0, 5000.0, dist), 0.0, 1.0);
+    float distFade = clamp(1.0 - smoothstep(100.0, 800.0, dist), 0.0, 1.0);
     float reflectionFadeRaw = horizonFade * distFade;
 
     // Fade samo blizu horizonta, ne blizu kamere
     float horizonSoftFade = mix(HORIZON_REFL_STRENGTH, 1.0, clamp(dot(N, V), 0.0, 1.0));
     float reflectionFade = reflectionFadeRaw * horizonSoftFade;
-    reflectionFade = max(reflectionFade, 0.6); // nikad 0
+    reflectionFade = max(reflectionFade, 0.75); // nikad 0
 
 
     float fadeAA   = clamp(1.0 - smoothstep(0.0, 1000.0, dist), 0.0, 1.0);
@@ -150,18 +151,20 @@ vec3 N = normalize(
     fresnel = clamp(fresnel, 0.0, 0.8);
 
     // --- Planarna refleksija ---
-    vec2 reflUV = getPlanarReflectionUV(vWorldPos);
-    float uvPerturb = mix(0.01, 0.01, 1.0 - reflectionFade);
-    reflUV += normalize(N).xz * uvPerturb;
-    vec3 planarReflection = texture(uReflectionTex, reflUV).rgb;
+    vec3 viewRefl = reflect(-V, N);
+    vec4 rp = uReflectionMatrix * vec4(vWorldPos + viewRefl * 0.5, 1.0);
+    rp.xyz /= rp.w;
+    vec2 reflUV = rp.xy * 0.5 + 0.5;
+    vec3 planarReflection = textureLod(uReflectionTex, reflUV, uRoughness * 5.0).rgb;
 
-    // --- Environment refleksija ---
-    const float MAX_MIP_ENV = 1.0;
-    float lodEnv = clamp(uRoughness, 0.0, 1.0) * MAX_MIP_ENV;
-    vec3 envRefl = textureLod(uEnvTex, normalize(R), lodEnv).rgb;
+        // --- Environment refleksija ---
+    const float MAX_MIP_ENV = 5.0;                  // imaš 512x512 cubemap → ~9 mipova, koristi 5
+    float lodEnv = uRoughness * MAX_MIP_ENV;
+    vec3 envRefl = textureLod(uEnvTex, R, lodEnv).rgb; // R je vec reflektovani vektor u world space-u
+
 
     // --- Kombinuj planar + env ---
-    envRefl = mix(envRefl, planarReflection, fresnelFade * reflectionFade) * 0.8; // ovde prigusi refelskiju kao u wows
+    envRefl = mix(envRefl, planarReflection, fresnelFade * reflectionFade) * 0.85; // ovde prigusi refelskiju kao u wows
 
     // --- IBL BRDF integracija ---
     vec2 brdf = texture(uBRDFLUT, vec2(NdotV, uRoughness)).rg;
@@ -171,7 +174,7 @@ vec3 N = normalize(
     // --- Fake SSS ---
     float backLit   = clamp((dot(-L, N) + SSS_WRAP) / (1.0 + SSS_WRAP), 0.0, 1.0);
     backLit         = smoothstep(0.15, 0.98, backLit);
-    float sunFacing = pow(clamp(dot(V, -L), 0.0, 1.0), 4.0);
+    float sunFacing = pow(clamp(dot(V, -L), 0.0, 1.0), 8.0);
 
     vec3 warmTint  = vec3(1.0, 0.65, 0.3);
     vec3 sssColor  = mix(uShallowColor, warmTint, sunFacing * 0.8);
@@ -197,7 +200,7 @@ vec3 N = normalize(
     vec3 crestColor = mix(baseColor, crestTint, crest * CREST_INTENSITY);
     baseColor = mix(baseColor, crestColor, CREST_BLEND);
     // --- Dubinski gradient ---
-    baseColor = mix(baseColor, baseColor * vec3(0.25, 0.3, 0.35), depthFactor * DEPTH_CONTRAST);
+    baseColor = mix(baseColor, baseColor * vec3(0.25, 0.3, 0.35), depthFactor * DEPTH_CONTRAST) * uSunIntensity;
 
     // --- Final miks ---
     vec3 color = baseColor;

@@ -123,7 +123,7 @@ void main(){
     // === Shadows ===
     float shadow = getShadow(P, N);
     float shadowFade = mix(0.1, 1.0, shadow); // 0.3 = koliko refleksije ostane u senci
-    float NdotL = max(dot(normalize(mix(N, bentNormal, 0.5)), L), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
     float NdotV = max(dot(N, V), 0.0);
 
     // === F0 kao Blender principled ===
@@ -145,11 +145,12 @@ void main(){
     vec3 directLight = (diffuse + specularBRDF) * radiance * NdotL * shadow;
     
     // === IBL refleksije ===
-    vec3 envDiffuse  = textureLod(uEnvMap, bentNormal, uCubeMaxMip).rgb * 1.5;
+    vec3 envDiffuse = textureLod(uEnvMap, bentNormalWorld, uCubeMaxMip).rgb;
 
 
 
-    vec3 envSpecular = textureLod(uEnvMap, normalize(Rw), roughness * uCubeMaxMip).rgb;
+    float mip = clamp(roughness * uCubeMaxMip, 0.0, uCubeMaxMip);
+vec3 envSpecular = textureLod(uEnvMap, normalize(Rw), mip).rgb;
     vec2 brdf = texture(uBRDFLUT, vec2(NdotV, roughness)).rg;
 
     vec3 F_IBL = fresnelSchlickRoughness(NdotV, F0, roughness);
@@ -162,7 +163,7 @@ void main(){
     float glossBoost = smoothstep(0.0, 0.4, 1.0 - roughness);
     specularIBL *= 1.0 + glossBoost * 1.8;
     specularIBL *= shadowFade;
-        vec3 ambient = diffuseIBL * ao + specularIBL * mix(ao, 1.0, 0.6);
+        vec3 ambient = diffuseIBL * ao + specularIBL * ao;
         // === Finalna kompozicija ===
         
         vec3 color = directLight + ambient ;

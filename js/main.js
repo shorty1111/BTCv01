@@ -28,7 +28,7 @@ let finalColorTex = null;
 
 // CENTRALNO SUNCE
 const SUN = {
-  dir: v3.norm([-0.8, 1.6, 0.6]), // položaj
+  dir: v3.norm([-0.8, 1.1, 0.6]), // položaj
   color: [1.0, 0.92, 0.76],
   intensity: 0.0, // jačina
 };
@@ -416,6 +416,9 @@ function focusCameraOnNode(node) {
   distTarget = newDist * 0.7; // samo cilj, dist neka interpolira
   rxTarget = Math.PI / 6;
   ryTarget = 0;
+  minDist = newDist * 0.2;
+  maxDist = newDist * 3.0;
+  distTarget = Math.min(Math.max(distTarget, minDist), maxDist);
 }
 
 function renderBoatInfo(infoObj) {
@@ -1024,15 +1027,15 @@ function setMatrices(p) {
 let rx = 0,
   ry = 0,
   dist = 5;
-
+let minDist = 0.1;
+let maxDist = 100.0;
 let pan = [0, 0, 0]; // target point
 let rxTarget = rx,
   ryTarget = ry,
   distTarget = dist;
 
 function animateCamera() {
-  // Clamp target vrednosti (da ne možeš gledati ispod ili preblizu)
-  const minRx = -Math.PI / 2 + 0.01;
+  const minRx = 0.05; // ~6 stepeni iznad horizonta
   const maxRx = Math.PI / 2 - 0.01;
   rxTarget = Math.max(minRx, Math.min(maxRx, rxTarget));
   if (rxTarget > maxRx) rxTarget += (maxRx - rxTarget) * 0.25;
@@ -1040,12 +1043,19 @@ function animateCamera() {
   ry += (ryTarget - ry) * 0.16;
 
   // Clamp zoom
-  const minDist =
-    (window.currentBoundingRadius || window.sceneBoundingRadius || 1.5) * 0.8;
+  const fovY = Math.PI / 4;
+  let minDistDynamic =
+    ((window.currentBoundingRadius || window.sceneBoundingRadius || 1.5) /
+      Math.tan(fovY / 2)) *
+    0.3;
+  let maxDistDynamic =
+    (window.currentBoundingRadius || window.sceneBoundingRadius || 5) * 10.0;
 
-  const maxDist = 20;
-  if (distTarget < minDist) distTarget += (minDist - distTarget) * 0.2;
-  if (distTarget > maxDist) distTarget += (maxDist - distTarget) * 0.2;
+  if (distTarget < minDistDynamic)
+    distTarget += (minDistDynamic - distTarget) * 0.2;
+  if (distTarget > maxDistDynamic)
+    distTarget += (maxDistDynamic - distTarget) * 0.2;
+
   dist += (distTarget - dist) * 0.14;
 }
 
@@ -1104,12 +1114,8 @@ canvas.addEventListener("mousemove", (e) => {
   if (e.buttons === 1) {
     ryTarget += e.movementX * 0.001;
     rxTarget += e.movementY * 0.005;
-    // NEMA updateView ovde!
   } else if (e.buttons === 4) {
-    /* PAN (middle-button) */
     const panSpeed = 0.001 * dist; // brže kad je kamera dalje
-
-    // ponovno izračunaj trenutne eye/target i vektore kamere
     const eye = [
       dist * Math.cos(rx) * Math.sin(ry) + pan[0],
       dist * Math.sin(rx) + pan[1],
@@ -1119,8 +1125,6 @@ canvas.addEventListener("mousemove", (e) => {
     const viewDir = v3.norm(v3.sub(target, eye)); // pogled
     const right = v3.norm(v3.cross([0, 1, 0], viewDir)); // čisto desno
     const up = v3.cross(viewDir, right); // čisto gore
-
-    // Δ pan u svjetskom prostoru
     pan[0] += (e.movementX * right[0] + e.movementY * up[0]) * panSpeed;
     pan[1] += (e.movementX * right[1] + e.movementY * up[1]) * panSpeed;
     pan[2] += (e.movementX * right[2] + e.movementY * up[2]) * panSpeed;
@@ -1234,11 +1238,8 @@ canvas.addEventListener(
       ((window.currentBoundingRadius || window.sceneBoundingRadius || 1) /
         Math.tan(fovY / 2)) *
       0.3;
-
-    const maxDist = 20;
-
+    const maxDist = (window.currentBoundingRadius || 5) * 10.0;
     distTarget += e.deltaY * 0.01;
-
     // OGRANIČI ZOOM NA 70% boundinga
     if (distTarget < minDist) distTarget += (minDist - distTarget) * 0.3;
     if (distTarget > maxDist) distTarget += (maxDist - distTarget) * 0.3;
@@ -3206,14 +3207,9 @@ async function prepareVariantPreview(variant, partName, gl2) {
 }
 
 init().then(async () => {
-  // 1️⃣  Skini i prikaži glavni model odmah
   await loadDefaultModel(DEFAULT_MODEL);
-
-  // 2️⃣  Pokreni render čim se pojavi glavni model
   renderLoop();
   renderBoatInfo(BOAT_INFO);
-
-  // 3️⃣  Pokreni generisanje thumbnaila (ne blokira)
   generateAllThumbnails()
     .then(() => {
       refreshThumbnailsInUI();
@@ -3222,12 +3218,7 @@ init().then(async () => {
     .catch(() => {
       hideLoading();
     });
-
-  // 4️⃣  Nakon što sve krene i render radi — tek tada preload
-  //    (ovo je ključno — odlažemo malo da ne koči inicijalni fetch)
   setTimeout(() => {
-    preloadAllVariants().then(() => {
-      // preload gotov
-    });
-  }, 2000); // ⬅️ 2 sekunde posle starta
+    preloadAllVariants().then(() => {});
+  }, 2000);
 });

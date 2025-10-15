@@ -13,8 +13,8 @@ uniform mat4 uProjection;
 
 const int KERNEL_SIZE = 128;
 const float radius = 3.6;
-const float bias = 0.065;
-const float power = 4.2;
+const float bias = 0.025;
+const float power = 0.5;
 
 void main() {
     vec3 fragPos = texture(gPosition, vUV).rgb;
@@ -70,20 +70,21 @@ void main() {
 
     occlusion = 1.0 - (occlusion / float(KERNEL_SIZE));
     occlusion = clamp(occlusion, 0.0, 1.0);
-    occlusion = pow(occlusion, power);
+    occlusion = pow(occlusion, 6.5);
+// === Bent normal samo za PBR, stabilna verzija ===
+if (visibleSamples > 0.0) {
+    // prosečna u tangent prostoru
+    bentNormal = normalize(bentNormal / visibleSamples);
 
-    // === Bent normal finalizacija ===
-    if (visibleSamples > 0.0) {
-        bentNormal = normalize(bentNormal / visibleSamples);
+    // prebaci iz tangent u view-space (isti prostor kao gNormal)
+    bentNormal = normalize(TBN * bentNormal);
 
-        // Clampuj ugao ako bent ode predaleko
-        float angle = dot(bentNormal, normal);
-        if (angle < 0.2) {
-            bentNormal = normal;
-        }
-    } else {
-        bentNormal = normal;
-    }
+    // izbegni ekstremne devijacije (flicker)
+    float angle = max(dot(bentNormal, normal), 0.0);
+    bentNormal = normalize(mix(normal, bentNormal, smoothstep(0.4, 1.0, angle)));
+} else {
+    bentNormal = normal;
+}
 
     // EKSPORT: RGB = bent normal u [0,1], A = AO
     fragColor = vec4(bentNormal * 0.5 + 0.5, occlusion);
