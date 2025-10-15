@@ -210,7 +210,7 @@ export async function initWater(gl) {
   waterProgram = createShaderProgram(gl, vsSource, fsSource);
 
   // generiši adaptivni grid
-  const grid = createSmartAdaptiveGrid(100.0, 150, 20, 0.3);
+  const grid = createSmartAdaptiveGrid(100.0, 150, 15, 0.3);
   const vertices = grid.vertices;
   const indices = grid.indices;
   indexCount = indices.length;
@@ -349,7 +349,7 @@ export function drawWater(
   );
 
   gl.uniform1f(gl.getUniformLocation(waterProgram, "uOpacity"), 1.0);
-  gl.uniform1f(gl.getUniformLocation(waterProgram, "uRoughness"), 0.09);
+  gl.uniform1f(gl.getUniformLocation(waterProgram, "uRoughness"), 0.8);
   gl.uniform1f(gl.getUniformLocation(waterProgram, "uSpecularStrength"), 1.0);
   gl.uniform1f(gl.getUniformLocation(waterProgram, "uWaterLevel"), 0.0);
   gl.uniform1f(gl.getUniformLocation(waterProgram, "uBottomOffsetM"), 1.0);

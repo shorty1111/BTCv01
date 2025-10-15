@@ -158,7 +158,7 @@ vec3 N = normalize(
     vec3 planarReflection = textureLod(uReflectionTex, reflUV, uRoughness * 5.0).rgb;
 
         // --- Environment refleksija ---
-    const float MAX_MIP_ENV = 5.0;                  // imaš 512x512 cubemap → ~9 mipova, koristi 5
+    const float MAX_MIP_ENV = 2.0;                  // imaš 512x512 cubemap → ~9 mipova, koristi 5
     float lodEnv = uRoughness * MAX_MIP_ENV;
     vec3 envRefl = textureLod(uEnvTex, R, lodEnv).rgb; // R je vec reflektovani vektor u world space-u
 
@@ -167,9 +167,11 @@ vec3 N = normalize(
     envRefl = mix(envRefl, planarReflection, fresnelFade * reflectionFade) * 0.85; // ovde prigusi refelskiju kao u wows
 
     // --- IBL BRDF integracija ---
+    
     vec2 brdf = texture(uBRDFLUT, vec2(NdotV, uRoughness)).rg;
     vec3 F = fresnelSchlick(NdotV, F0);
     vec3 specIBL = envRefl * (F * brdf.r + brdf.g);
+    
 
     // --- Fake SSS ---
     float backLit   = clamp((dot(-L, N) + SSS_WRAP) / (1.0 + SSS_WRAP), 0.0, 1.0);
