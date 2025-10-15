@@ -28,7 +28,7 @@ let finalColorTex = null;
 
 // CENTRALNO SUNCE
 const SUN = {
-  dir: v3.norm([-0.8, 1.1, 0.6]), // položaj
+  dir: v3.norm([-0.8, 1.8, 0.6]), // položaj
   color: [1.0, 0.92, 0.76],
   intensity: 0.0, // jačina
 };
@@ -1387,18 +1387,13 @@ void main() {
 
   // ✅ Proceduralni env iz neba
 
-  envTex = bakeSkyToCubemap(
-    gl,
-    envSize,
-    [-SUN.dir[0], SUN.dir[1], SUN.dir[2]],
-    {
-      ...DEFAULT_SKY,
-      sunColor: SUN.color,
-      sunIntensity: SUN.intensity,
-      useTonemap: false,
-      hideSun: true, // 👈 NOVO
-    }
-  );
+  envTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
+    ...DEFAULT_SKY,
+    sunColor: SUN.color,
+    sunIntensity: SUN.intensity,
+    useTonemap: false,
+    hideSun: true, // 👈 NOVO
+  });
 
   cubeMaxMip = Math.floor(Math.log2(envSize));
 
@@ -1831,6 +1826,7 @@ function render() {
     // ✅ DODAJ OVO — prvo nacrtaj nebo u reflection FBO
     drawSky(gl, reflectionFBO, reflView, reflProj, SUN.dir, {
       ...DEFAULT_SKY,
+      worldLocked: 1,
       sunColor: SUN.color,
       sunIntensity: SUN.intensity,
       useTonemap: false,

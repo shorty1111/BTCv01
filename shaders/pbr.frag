@@ -145,7 +145,8 @@ void main(){
     vec3 directLight = (diffuse + specularBRDF) * radiance * NdotL * shadow;
     
     // === IBL refleksije ===
-    vec3 envDiffuse = textureLod(uEnvMap, bentNormalWorld, uCubeMaxMip).rgb;
+    vec3 envDiffuse = textureLod(uEnvMap, bentNormalWorld, uCubeMaxMip * 0.98).rgb;
+
 
 
 

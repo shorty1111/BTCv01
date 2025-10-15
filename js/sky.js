@@ -8,7 +8,7 @@ let skyIdxCount = 0;
 
 // ===== Default sky params (bez SUN — njega prosleđuje main.js) =====
 export const DEFAULT_SKY = {
-  exposure: 1.0,
+  exposure: 1.5,
 
   // Nebo: čisto letnje nebo (Unreal Engine style)
   zenith: [0.12, 0.25, 0.6], // sky blue
@@ -25,7 +25,7 @@ export const DEFAULT_SKY = {
   sunHaloScale: 0.25,
   horizonSoft: 0.18,
   horizonLift: 0.0,
-  saturation: 1.5, // malo ispod 1.0
+  saturation: 1.0, // malo ispod 1.0
   horizonDesat: 0.05,
   horizonWarmth: 1.35,
 
@@ -258,7 +258,7 @@ void main(){
     float sunAlt = clamp(sunV.y, -1.0, 1.0);
 
     // === 1. Dynamic sky colors by sunAlt ===
-    vec3 dayZenith   = vec3(0.12, 0.25, 0.60);
+    vec3 dayZenith = vec3(0.20, 0.42, 0.95);
     vec3 dayHorizon  = vec3(0.80, 0.90, 1.00);
     vec3 sunsetZenith   = vec3(0.18, 0.23, 0.55);
     vec3 sunsetHorizon  = vec3(1.00, 0.35, 0.10);
@@ -278,7 +278,7 @@ void main(){
     curHorizon = mix(curHorizon, nightHorizon, nightAmt);
 
     vec3 base = mix(curZenith, curHorizon, hS);
-    float gMix = smoothstep(-0.25, 0.05, dir.y);
+    float gMix = smoothstep(-0.01, 0.01, dir.y);
     vec3 groundColor = uGround;
     base = mix(groundColor, base, gMix);
 
@@ -303,19 +303,20 @@ void main(){
             // Fake soft shadow from higher layer:
             alpha *= 1.0 - 0.3 * totalAlpha;
             // Dodaj debeljinu: tamniji centar, svetlije ivice
-float shape = smoothstep(0.4, 0.85, cl); // cl je fbm vrednost
-vec3 volCloudColor = mix(vec3(0.7, 0.75, 0.85), vec3(1.0), shape);
+            
+          float shape = smoothstep(0.4, 0.85, cl); // cl je fbm vrednost
+          vec3 volCloudColor = mix(vec3(0.8, 0.82, 0.88), vec3(1.0), shape);
 
-// Boostuj masu prema horizonu
-float horizonBoost = pow(1.0 - clamp(dir.y, 0.0, 1.0), 1.5);
-volCloudColor *= 1.0 + 1.4 * horizonBoost; // više difuzne svetlosti
+          // Boostuj masu prema horizonu
+          float horizonBoost = pow(1.0 - clamp(dir.y, 0.0, 1.0), 1.5);
+          volCloudColor *= 1.0 + 0.4 * horizonBoost; // više difuzne svetlosti
 
-cloudSum += alpha * volCloudColor.r;
-// Fake amb. occlusion na nebo ispod oblaka
-float under = smoothstep(0.0, 0.25, dir.y); // gledamo skoro horizontalno
-vec3 occlusionTint = vec3(0.8, 0.85, 0.9); // desaturisano plavičasto
-base = mix(base, occlusionTint, alpha * under * 0.35);
-            totalAlpha += alpha;
+          cloudSum += alpha * volCloudColor.r;
+          // Fake amb. occlusion na nebo ispod oblaka
+          float under = smoothstep(0.0, 0.25, dir.y); // gledamo skoro horizontalno
+          vec3 occlusionTint = vec3(0.9, 0.95, 1.0);
+base = mix(base, occlusionTint, alpha * under * 3.5);
+                      totalAlpha += alpha;
         }
     }
 
@@ -356,12 +357,12 @@ base = mix(base, scatterColor, volFade * 0.3);
 
 // === Horizon fade/haze ===
 float fogAmount = pow(1.0 - clamp(dir.y, 0.0, 1.0), 2.5);
-vec3 fogColor = mix(curHorizon, vec3(0.6, 0.7, 0.8), sunsetAmt);
-base = mix(base, fogColor, fogAmount * 0.2); // jačina haze-a
+vec3 fogColor = mix(curHorizon, vec3(0.75, 0.85, 0.95), sunsetAmt);
+base = mix(base, fogColor, fogAmount * 0.08);
 
 // === Horizon blur dodatak ===
-float horizBlur = pow(1.0 - abs(dir.y), 3.0);
-base = mix(base, vec3(0.6, 0.65, 0.75), horizBlur * 0.05);
+float horizBlur = pow(1.0 - abs(dir.y), 2.0);
+base = mix(base, vec3(0.7, 0.8, 0.9), horizBlur * 0.02);
 
 // === Vertikalna saturacija — manje pri horizontu ===
 float satFalloff = mix(0.7, 1.0, pow(clamp(dir.y, 0.0, 1.0), 1.5));
@@ -431,6 +432,7 @@ groundBounce *= mix(vec3(1.0), vec3(1.3, 0.8, 0.6), smoothstep(0.1, -0.3, sunAlt
                  groundBounce;
 
     // Fade celo nebo kad je noć
+    
     color = mix(color, nightZenith, nightAmt*0.95);
 
     vec3 mapped = color * uExposure;
@@ -599,16 +601,16 @@ export function bakeSkyToCubemap(
     out[5] = f;
     out[10] = (far + near) * nf;
     out[11] = -1;
-    out[14] = 2 * far * near * nf;
-    out[15] = 1;
+    out[14] = 2.0 * far * near * nf;
+    out[15] = 0.0;
     return out;
-  })(90, 1, 0.1, 2000);
+  })(90.0, 1.0, 0.01, 10000.0);
 
   const views = [
     lookAt([0, 0, 0], [1, 0, 0], [0, -1, 0]), // +X
     lookAt([0, 0, 0], [-1, 0, 0], [0, -1, 0]), // -X
-    lookAt([0, 0, 0], [0, 1, 0], [0, 0, 1]), // +Y
-    lookAt([0, 0, 0], [0, -1, 0], [0, 0, -1]), // -Y
+    lookAt([0, 0, 0], [0, 1, 0], [0, 0, -1]), // +Y   ✅ korigovan up
+    lookAt([0, 0, 0], [0, -1, 0], [0, 0, 1]), // -Y   ✅ korigovan up
     lookAt([0, 0, 0], [0, 0, 1], [0, -1, 0]), // +Z
     lookAt([0, 0, 0], [0, 0, -1], [0, -1, 0]), // -Z
   ];

@@ -33,7 +33,7 @@ uniform mat4        uReflectionMatrix;
 uniform float       uWaterLevel;
 uniform float       uBottomOffsetM;
 uniform vec2        uReflectionTexSize;
-
+uniform float uCubeMaxMip;
 // === PARAMETRI ===
 const float DEPTH_SCALE     = 2.00;
 const float DEPTH_CURVE     = 0.015;
@@ -120,7 +120,6 @@ vec3 N = normalize(
     // --- Kamera, refleksija, svetlo ---
     vec3 V = normalize(uCameraPos - vWorldPos);
     vec3 R = normalize(reflect(-V, N) + N * 0.1);
-    
     vec3 L = normalize(uSunDir);
 
     // --- Horizon fade ---
@@ -128,7 +127,7 @@ vec3 N = normalize(
 
     
     float horizonFade = clamp(1.0 - abs(dot(N, V)), 0.0, 1.0);
-    float distFade = clamp(1.0 - smoothstep(100.0, 800.0, dist), 0.0, 1.0);
+    float distFade = clamp(1.0 - smoothstep(100.0, 2000.0, dist), 0.0, 1.0);
     float reflectionFadeRaw = horizonFade * distFade;
 
     // Fade samo blizu horizonta, ne blizu kamere
@@ -137,7 +136,7 @@ vec3 N = normalize(
     reflectionFade = max(reflectionFade, 0.75); // nikad 0
 
 
-    float fadeAA   = clamp(1.0 - smoothstep(0.0, 1000.0, dist), 0.0, 1.0);
+    float fadeAA   = clamp(1.0 - smoothstep(0.0, 100.0, dist), 0.0, 1.0);
     float roughFade   = mix(uRoughness, uRoughness * 0.0, 1.0 - fadeAA);
     float fresnelFade = mix(0.0, 0.5, fadeAA);
 
@@ -158,16 +157,15 @@ vec3 N = normalize(
     vec3 planarReflection = textureLod(uReflectionTex, reflUV, uRoughness * 5.0).rgb;
 
         // --- Environment refleksija ---
-    const float MAX_MIP_ENV = 2.0;                  // imaš 512x512 cubemap → ~9 mipova, koristi 5
-    float lodEnv = uRoughness * MAX_MIP_ENV;
-    vec3 envRefl = textureLod(uEnvTex, R, lodEnv).rgb; // R je vec reflektovani vektor u world space-u
+    float lodEnv = clamp(uRoughness * uCubeMaxMip, 0.0, uCubeMaxMip);
+    vec3 envRefl = textureLod(uEnvTex, R, lodEnv).rgb;
+
 
 
     // --- Kombinuj planar + env ---
-    envRefl = mix(envRefl, planarReflection, fresnelFade * reflectionFade) * 0.85; // ovde prigusi refelskiju kao u wows
+     envRefl = mix(envRefl, planarReflection, fresnelFade * reflectionFade) * 1.0; // ovde prigusi refelskiju kao u wows
 
     // --- IBL BRDF integracija ---
-    
     vec2 brdf = texture(uBRDFLUT, vec2(NdotV, uRoughness)).rg;
     vec3 F = fresnelSchlick(NdotV, F0);
     vec3 specIBL = envRefl * (F * brdf.r + brdf.g);
@@ -214,5 +212,5 @@ vec3 N = normalize(
     // Sun highlight
     color += sunHighlight * fadeAA * reflectionFade;
 
-    fragColor = vec4(vec3(color), 1.0);
+    fragColor = vec4(vec3(envRefl), 1.0);
 }
