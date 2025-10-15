@@ -1,0 +1,4 @@
+{
+    "editor.defaultFormatter": "kuba-p.glsl-lsp",
+    "editor.formatOnSave": false
+}

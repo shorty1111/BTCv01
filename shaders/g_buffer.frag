@@ -1,8 +1,9 @@
 #version 300 es
 precision highp float;
 
-in vec3 vNormalView;
-in vec3 vFragPosView;
+
+smooth in vec3 vNormalView;    // <-- isto "smooth"
+smooth in vec3 vFragPosView;
 in vec2 vUV_out;
 
 uniform vec3 uBaseColor;
@@ -19,7 +20,7 @@ layout(location = 3) out vec4 outGMaterial;
 void main() {
     // pozicija i normala u view-space
     outGPosition = vec4(vFragPosView, 1.0);
-    outGNormal   = vec4(normalize(vNormalView), 1.0);
+   outGNormal = vec4(normalize(vNormalView), 1.0);
 
     // albedo (GLTF teksture su sRGB → linearizuj)
     vec3 albedo;

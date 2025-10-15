@@ -349,11 +349,11 @@ export function drawWater(
   );
 
   gl.uniform1f(gl.getUniformLocation(waterProgram, "uOpacity"), 1.0);
-  gl.uniform1f(gl.getUniformLocation(waterProgram, "uRoughness"), 0.0);
+  gl.uniform1f(gl.getUniformLocation(waterProgram, "uRoughness"), 0.02);
   gl.uniform1f(gl.getUniformLocation(waterProgram, "uSpecularStrength"), 1.0);
   gl.uniform1f(gl.getUniformLocation(waterProgram, "uWaterLevel"), 0.0);
-  gl.uniform1f(gl.getUniformLocation(waterProgram, "uBottomOffsetM"), 1.0);
-  gl.uniform1f(gl.getUniformLocation(waterProgram, "uCubeMaxMip"), 8.0);
+  gl.uniform1f(gl.getUniformLocation(waterProgram, "uBottomOffsetM"), 1.5);
+  gl.uniform1f(gl.getUniformLocation(waterProgram, "uCubeMaxMip"), 5.0);
 
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, waterNormalTex);

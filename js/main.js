@@ -28,7 +28,7 @@ let finalColorTex = null;
 
 // CENTRALNO SUNCE
 const SUN = {
-  dir: v3.norm([-0.8, 1.8, 0.6]), // položaj
+  dir: v3.norm([-0.8, 1.40, 0.9]), // položaj
   color: [1.0, 0.92, 0.76],
   intensity: 0.0, // jačina
 };
@@ -1767,9 +1767,9 @@ function render() {
   gl.enable(gl.POLYGON_OFFSET_FILL);
   gl.polygonOffset(4.0, 4.0);
 
-  const lightPos = [SUN.dir[0] * 20, SUN.dir[1] * 20, SUN.dir[2] * 20];
+  const lightPos = [SUN.dir[0] * 15, SUN.dir[1] * 15, SUN.dir[2] * 15];
   const lightView = look(lightPos, [0, 0, 0], [0, 1, 0]);
-  const SHADOW_EXPAND = 1.0;
+  const SHADOW_EXPAND = 0.5;
   const minBB = [
     boatMin[0] - SHADOW_EXPAND,
     boatMin[1] - SHADOW_EXPAND,
@@ -2061,15 +2061,15 @@ function render() {
   gl.uniform3fv(gl.getUniformLocation(program, "uSunDir"), SUN.dir);
   gl.uniform3fv(gl.getUniformLocation(program, "uSunColor"), SUN.color);
   gl.uniform1f(gl.getUniformLocation(program, "uSunIntensity"), SUN.intensity);
-  gl.uniform1f(gl.getUniformLocation(program, "uLightSize"), 0.05);
+  gl.uniform1f(gl.getUniformLocation(program, "uLightSize"), 0.025);
   gl.uniform2f(
     gl.getUniformLocation(program, "uShadowMapSize"),
     SHADOW_RES,
     SHADOW_RES
   );
-  gl.uniform1f(gl.getUniformLocation(program, "uBiasBase"), 0.0005);
-  gl.uniform1f(gl.getUniformLocation(program, "uBiasSlope"), 0.002);
-  gl.uniform1f(gl.getUniformLocation(program, "uLightRadiusUV"), 1.0);
+  gl.uniform1f(gl.getUniformLocation(program, "uBiasBase"), 0.001);
+  gl.uniform1f(gl.getUniformLocation(program, "uBiasSlope"), 0.001);
+
   gl.bindVertexArray(quadVAO);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   if (showWater) {
