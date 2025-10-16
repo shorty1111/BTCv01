@@ -28,7 +28,7 @@ let finalColorTex = null;
 
 // CENTRALNO SUNCE
 const SUN = {
-  dir: v3.norm([-0.8, 0.2, 0.8]), // položaj
+  dir: v3.norm([-0.8, 1.8, 0.9]), // položaj
   color: [1.0, 0.92, 0.76],
   intensity: 0.0, // jačina
 };
@@ -104,8 +104,8 @@ function createReflectionTarget(gl, width, height) {
     gl.UNSIGNED_INT,
     null
   );
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
@@ -1758,18 +1758,20 @@ function render() {
     gl.bindVertexArray(null);
   }
 
-  // === 3. Shadow map pass ===
-  gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFBO);
-  gl.viewport(0, 0, SHADOW_RES, SHADOW_RES);
-  gl.clear(gl.DEPTH_BUFFER_BIT);
-  gl.enable(gl.CULL_FACE);
-  gl.cullFace(gl.BACK);
-  gl.enable(gl.POLYGON_OFFSET_FILL);
-  gl.polygonOffset(4.0, 4.0);
+// === 3. Shadow map pass ===
+gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFBO);
+gl.viewport(0, 0, SHADOW_RES, SHADOW_RES);
+gl.clear(gl.DEPTH_BUFFER_BIT);
 
-  const lightPos = [SUN.dir[0] * 15, SUN.dir[1] * 15, SUN.dir[2] * 15];
+// --- shadow render state ---
+gl.enable(gl.CULL_FACE);
+gl.cullFace(gl.BACK);             // 👈 backface culling zamenjen front-face
+gl.enable(gl.POLYGON_OFFSET_FILL);
+gl.polygonOffset(6.0, 8.0);        // 👈 blaži offset, dovoljno za acne
+
+  const lightPos = [SUN.dir[0] * 20, SUN.dir[1] * 20, SUN.dir[2] * 20];
   const lightView = look(lightPos, [0, 0, 0], [0, 1, 0]);
-  const SHADOW_EXPAND = 0.5;
+  const SHADOW_EXPAND = 0.0;
   const minBB = [
     boatMin[0] - SHADOW_EXPAND,
     boatMin[1] - SHADOW_EXPAND,
@@ -1807,8 +1809,7 @@ function render() {
     gl.bindVertexArray(modelVAOs[i]);
     gl.drawElements(gl.TRIANGLES, idxCounts[i], idxTypes[i], 0);
   }
-  gl.disable(gl.POLYGON_OFFSET_FILL);
-  gl.cullFace(gl.BACK);
+
 
   // === 3B. Reflection pass ===
   if (showWater) {
@@ -2067,8 +2068,8 @@ function render() {
     SHADOW_RES,
     SHADOW_RES
   );
-  gl.uniform1f(gl.getUniformLocation(program, "uBiasBase"), 0.001);
-  gl.uniform1f(gl.getUniformLocation(program, "uBiasSlope"), 0.001);
+  gl.uniform1f(gl.getUniformLocation(program, "uBiasBase"), 0.0001);
+  gl.uniform1f(gl.getUniformLocation(program, "uBiasSlope"), 0.0001);
 
   gl.bindVertexArray(quadVAO);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);

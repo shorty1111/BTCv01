@@ -35,7 +35,7 @@ uniform float       uBottomOffsetM;
 uniform vec2        uReflectionTexSize;
 
 // === PARAMETRI ===
-const float DEPTH_SCALE     = 2.4;
+const float DEPTH_SCALE     = 6.4;
 const float DEPTH_CURVE     = 0.03;
 const float SSS_STRENGTH    = 100.0;
 const float SSS_WRAP        = 1.9;
@@ -46,25 +46,6 @@ const float CREST_BLEND     = 0.05;
 const float DEPTH_CONTRAST  = 1.9;
 const float HORIZON_REFL_STRENGTH = 1.0;
 
-// === FUNKCIJE ===
-float sampleShadow(sampler2D sm, mat4 vp, vec3 wp) {
-    vec4 lp = vp * vec4(wp, 1.0);
-    vec3 pc = lp.xyz / max(lp.w, 1e-4) * 0.5 + 0.5;
-    if (pc.x < 0.0 || pc.x > 1.0 || pc.y < 0.0 || pc.y > 1.0 || pc.z < 0.0 || pc.z > 1.0)
-        return 1.0;
-    float sh = 0.0;
-    float texel = 1.0 / 64.0;
-    int k = 2, c = 0;
-    float bias = 0.002;
-    float cd = pc.z - bias;
-    for (int y = -k; y <= k; ++y)
-    for (int x = -k; x <= k; ++x) {
-        float sd = texture(sm, pc.xy + vec2(x, y) * texel).r;
-        sh += step(cd, sd);
-        c++;
-    }
-    return sh / float(c);
-}
 
 vec2 getPlanarReflectionUV(vec3 worldPos) {
     vec4 rc = uReflectionMatrix * vec4(worldPos, 1.0);
@@ -160,10 +141,7 @@ planarReflection *= 0.6;                              // globalni damping
     vec3 sssLight   = uSunColor * sssColor * backLit * (1.0 - falloff) * sunFacing * 0.05;
     sssLight       *= SSS_STRENGTH * uSunIntensity;
 
-    // --- Senke ---
-    float shadow         = sampleShadow(uShadowMap, uLightVP, vWorldPos);
-    float shadowStrength = mix(0.35, 1.0, shadow);
-    vec3 shadowTint      = mix(vec3(0.07, 0.1, 0.15), vec3(1.0), shadowStrength);
+
 
     // --- Sun highlight ---
     vec3  H          = normalize(V + L);
@@ -184,8 +162,8 @@ planarReflection *= 0.6;                              // globalni damping
     // === FINAL MIX ===
     vec3 refracted = mix(baseColor, baseColor + sssLight, 0.4);
     vec3 reflected = envRefl * uSpecularStrength * reflectionFade;
-    vec3 color = mix(refracted * shadowTint, reflected, fresnel);
+    vec3 color = mix(refracted , reflected, fresnel);
 
     color += sunHighlight * reflectionFade;
-    fragColor = vec4(color, 1.0);
+    fragColor = vec4(vec3(color), 1.0);
 }
