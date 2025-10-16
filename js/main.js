@@ -28,7 +28,7 @@ let finalColorTex = null;
 
 // CENTRALNO SUNCE
 const SUN = {
-  dir: v3.norm([-0.8, 1.40, 0.9]), // položaj
+  dir: v3.norm([-0.8, 0.2, 0.8]), // položaj
   color: [1.0, 0.92, 0.76],
   intensity: 0.0, // jačina
 };
@@ -1035,7 +1035,7 @@ let rxTarget = rx,
   distTarget = dist;
 
 function animateCamera() {
-  const minRx = 0.05; // ~6 stepeni iznad horizonta
+  const minRx = 0.025; // ~6 stepeni iznad horizonta
   const maxRx = Math.PI / 2 - 0.01;
   rxTarget = Math.max(minRx, Math.min(maxRx, rxTarget));
   if (rxTarget > maxRx) rxTarget += (maxRx - rxTarget) * 0.25;

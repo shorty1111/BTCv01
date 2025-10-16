@@ -277,6 +277,7 @@ void main(){
     curHorizon = mix(curHorizon, nightHorizon, nightAmt);
 
     vec3 base = mix(curZenith, curHorizon, hS);
+    
     // --- Ground gradient (toplija baza ispod horizonta) ---
     float gMix = smoothstep(-0.25, 0.05, dir.y);
     vec3 groundColor = mix(vec3(0.10, 0.07, 0.05), vec3(0.16, 0.11, 0.07), 1.0 - sunAlt);
@@ -292,32 +293,67 @@ void main(){
     float tExit   = max(max(tTop, tBottom), 0.0);
     float segLen  = max(tExit - tEnter, 0.0);
     float cloudAlpha = 0.0;
-    if (segLen > 0.0){
-        vec3 samplePos = dir * (tEnter + segLen * 0.5);
-        samplePos.xz += uTime * vec2(uCloudSpeed, uCloudSpeed*0.8);
+    
+// === volumetric-like clouds with layered depth ===
+if (segLen > 0.0) {
+    float layers = 1.0;
+    float totalDensity = 0.0;
+    vec3 colorAcc = vec3(0.0);
+    vec3 ray = dir * (segLen / layers);
+
+    for (float i = 0.0; i < layers; i += 1.0) {
+        vec3 samplePos = dir * (tEnter + segLen * (i / layers));
+        samplePos.xz += uTime * vec2(uCloudSpeed, uCloudSpeed * 0.7);
+
+        // parallax – gornji slojevi se pomeraju brže
+        samplePos.xz += i * 10.0;
 
         float cl = 0.0, amp = 1.0;
-        vec3 p = samplePos * 0.002;
-        for(int i=0; i<3; ++i) {
+        vec3 p = samplePos * 0.0015;
+        for (int o = 0; o < 5; ++o) {
             cl += noise3d(p) * amp;
-            p *= 2.0;
-            amp *= 0.5;
+            p *= 2.2;
+            amp *= 0.55;
         }
-        cl /= 1.75;
-        float density = smoothstep(0.48, 0.68, cl);
-        float opticalDepth = segLen / (uCloudThickness*2.0);
-        cloudAlpha         = 1.0 - exp(-density * opticalDepth * 1.8);
-        float fadeHor   = smoothstep(0.1, 0.18, dir.y);
-        float fadeZen   = 1.0 - smoothstep(0.01, 1.0, dir.y);
-        cloudAlpha     *= fadeHor * fadeZen;
-        cloudAlpha      = clamp(cloudAlpha, 0.0, 1.0);
-        base = mix(base, vec3(1.0), 0.30 * cloudAlpha);
+        cl /= 1.6;
+
+        float density = smoothstep(0.4, 0.8, cl);
+        float heightMix = i / layers;
+
+// --- osnovna senka i belina ---
+vec3 lightDir = normalize(uSunDir);
+float shade = max(dot(lightDir, normalize(vec3(0.0,1.0,0.0))), 0.0);
+vec3 cloudCol = mix(vec3(0.35,0.36,0.4), vec3(1.0), shade);
+
+// --- tamniji centar oblaka, svetlije ivice ---
+float core = smoothstep(0.45, 0.9, cl);        // 0 = ivice, 1 = centar
+float edge = 1.0 - core;                       // svetle ivice
+cloudCol = mix(cloudCol * 0.6, cloudCol, edge); // centar tamniji, ivice belje
+
+// --- lagani highlight prema suncu ---
+float sunFacing = pow(max(dot(lightDir, vec3(0.0,1.0,0.0)), 0.0), 8.0);
+cloudCol += vec3(1.0, 0.95, 0.9) * sunFacing * 0.25;
+
+// --- visinska nijansa ---
+cloudCol = mix(cloudCol, vec3(0.9, 0.9, 0.95), 1.0 - heightMix);
+
+
+        totalDensity += density * (1.0 - totalDensity);
+        colorAcc += cloudCol * density * (1.0 - totalDensity);
     }
 
+    float fadeHor = smoothstep(0.05, 0.8, dir.y * 15.5);
+    float fadeZen = 1.0 - smoothstep(0.0, 0.9, dir.y);
+    totalDensity *= fadeHor * fadeZen;
+
+    base = mix(base, colorAcc, clamp(totalDensity * 0.3, 0.0, 1.0));
+}
+
+
     // --- sunset horizon warmth (neka ostane)
-float warm = pow(clamp(1.0 - sunAlt, 0.0, 1.0), 2.0) * hS * uHorizonWarmth;
-vec3 sunsetWarm = vec3(1.0, 0.55, 0.25);
-base = mix(base, sunsetWarm, clamp(warm, 0.0, 0.65));
+    float warm = pow(clamp(1.0 - sunAlt, 0.0, 1.0), 2.0) * hS * uHorizonWarmth;
+    vec3 sunsetWarm = vec3(1.0, 0.55, 0.25);
+    base = mix(base, sunsetWarm, clamp(warm, 0.0, 0.65));
 
     // --- Ostali efekti ---
     float milkBand = exp(-pow(abs(dir.y - 1.0)/max(uMilkBandWidth,0.001), 2.0));
@@ -331,15 +367,6 @@ base = mix(base, sunsetWarm, clamp(warm, 0.0, 0.65));
     base *= mix(0.7, 1.0, uRayleighStrength);
     base = mix(base, vec3(0.035, 0.03, 0.03), clamp(uTurbidity*(1.0-hS), 0.0, 1.0));
 
-// --- Vertikalni "color curve": hladniji zenit, topliji horizont ---
-float skyFade = smoothstep(0.0, 0.55, dir.y);
-vec3 coldZenith  = vec3(0.80, 0.90, 1.05);  // blago hladnija nijansa gore
-vec3 warmHorizon = vec3(1.02, 0.94, 0.88);  // topliji ton pri horizontu
-base *= mix(warmHorizon, coldZenith, skyFade);
-
-// --- Blaga ozon/blue-shift ton korekcija ka visini ---
-float ozone = smoothstep(0.35, 0.95, dir.y);
-base = mix(base, base * vec3(0.92, 0.96, 1.06), 0.25 * ozone);
 
 
     // === 3. Sun disk & Mie halo ===
