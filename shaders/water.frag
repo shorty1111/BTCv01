@@ -37,7 +37,7 @@ uniform vec2        uReflectionTexSize;
 // === PARAMETRI ===
 const float DEPTH_SCALE     = 6.4;
 const float DEPTH_CURVE     = 0.03;
-const float SSS_STRENGTH    = 100.0;
+const float SSS_STRENGTH    = 60.0;
 const float SSS_WRAP        = 1.9;
 const vec3  SSS_FALLOFF     = vec3(0.0431, 0.0667, 0.0667);
 const float CREST_INTENSITY = 0.21;
@@ -141,14 +141,12 @@ planarReflection *= 0.6;                              // globalni damping
     vec3 sssLight   = uSunColor * sssColor * backLit * (1.0 - falloff) * sunFacing * 0.05;
     sssLight       *= SSS_STRENGTH * uSunIntensity;
 
-
-
     // --- Sun highlight ---
     vec3  H          = normalize(V + L);
     float NdotH      = max(dot(N, H), 0.0);
     float highlight  = pow(NdotH, 1500.0) * mix(0.6, 1.0, fresnel);
     vec3  sunHighlight = uSunColor * highlight;
-
+    
     // --- Crest ---
     float h = clamp(vWaveHeight * 0.5 + 0.5, 0.0, 1.0);
     float crest = smoothstep(0.0, 0.9, h) * vWaveMask;

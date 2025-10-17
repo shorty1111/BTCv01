@@ -28,7 +28,7 @@ let finalColorTex = null;
 
 // CENTRALNO SUNCE
 const SUN = {
-  dir: v3.norm([-0.8, 1.8, 0.9]), // položaj
+  dir: v3.norm([-0.8,0.8, 0.9]), // položaj
   color: [1.0, 0.92, 0.76],
   intensity: 0.0, // jačina
 };
@@ -111,6 +111,7 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
   reflectionFBO = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, reflectionFBO);
+  
   gl.framebufferTexture2D(
     gl.FRAMEBUFFER,
     gl.COLOR_ATTACHMENT0,
@@ -1810,10 +1811,13 @@ gl.polygonOffset(6.0, 8.0);        // 👈 blaži offset, dovoljno za acne
     gl.drawElements(gl.TRIANGLES, idxCounts[i], idxTypes[i], 0);
   }
 
+// posle shadow passa
+gl.disable(gl.POLYGON_OFFSET_FILL);
 
   // === 3B. Reflection pass ===
   if (showWater) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, reflectionFBO);
+    
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -1860,7 +1864,7 @@ gl.polygonOffset(6.0, 8.0);        // 👈 blaži offset, dovoljno za acne
     );
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
-    gl.uniform1i(gl.getUniformLocation(reflectionColorProgram, "uEnvTex"), 1);
+    gl.uniform1i(gl.getUniformLocation(reflectionColorProgram, "uEnvMap"), 1);
     gl.uniformMatrix4fv(
       gl.getUniformLocation(reflectionColorProgram, "uProjection"),
       false,
@@ -2152,92 +2156,116 @@ gl.polygonOffset(6.0, 8.0);        // 👈 blaži offset, dovoljno za acne
       lbl.style.top = `${rect.top + (midY + 40) * scaleY}px`;
     }
   }
-  // === 9. ACES TONEMAP POSTPROCESS (na ekran) ===
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-  gl.viewport(0, 0, canvas.width, canvas.height);
-  gl.useProgram(acesProgram);
-  gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, finalColorTex);
-  gl.uniform1i(gl.getUniformLocation(acesProgram, "uInput"), 0);
-  gl.bindVertexArray(quadVAO);
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-  // === 10. Transparent/Overlay/Dimenzije ===
-  // (ostavi kao što je, posle tonemap-a!)
-  // === fix za nestajanje providnih meshova ===
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-  gl.depthMask(true);
-  gl.depthFunc(gl.LEQUAL);
-  if (transparentMeshes.length) {
-    gl.enable(gl.DEPTH_TEST);
-    gl.depthMask(false);
-    gl.depthFunc(gl.LESS);
-    gl.disable(gl.CULL_FACE);
 
-    transparentMeshes.sort((a, b) => {
-      const ca = mulMat4Vec4([], a.modelMat, [0, 0, 0, 1]);
-      const cb = mulMat4Vec4([], b.modelMat, [0, 0, 0, 1]);
-      const da = Math.hypot(
-        ca[0] - camWorld[0],
-        ca[1] - camWorld[1],
-        ca[2] - camWorld[2]
-      );
-      const db = Math.hypot(
-        cb[0] - camWorld[0],
-        cb[1] - camWorld[1],
-        cb[2] - camWorld[2]
-      );
-      return db - da;
-    });
+    // === 10. Transparent/Overlay/Dimenzije ===
+  // --- prebaci depth iz G-buffera u finalFBO ---
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, gBuffer);
+  gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, finalFBO);
+  gl.blitFramebuffer(
+    0, 0, canvas.width, canvas.height,
+    0, 0, canvas.width, canvas.height,
+    gl.DEPTH_BUFFER_BIT,
+    gl.NEAREST
+  );
+// 1) copy depth iz gBuffer u finalFBO (već radiš odmah iznad)
+// 2) priprema za staklo
+gl.bindFramebuffer(gl.FRAMEBUFFER, finalFBO);
+gl.viewport(0, 0, canvas.width, canvas.height);
 
-    gl.useProgram(programGlass);
-    gl.uniformMatrix4fv(
-      gl.getUniformLocation(programGlass, "uView"),
-      false,
-      view
+gl.enable(gl.BLEND);
+gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+gl.enable(gl.DEPTH_TEST);
+gl.depthFunc(gl.LEQUAL);
+gl.depthMask(false);
+
+gl.enable(gl.CULL_FACE);
+gl.frontFace(gl.CCW);   // ako su modeli CCW; promeni u CW ako treba
+
+// (bolje sortiranje: po „najdaljem z“ duž pravca pogleda)
+const V = v3.norm(v3.sub(pan, camWorld)); // view dir: target - eye
+transparentMeshes.forEach(m => {
+  if (!m._bbComputed) {
+    const b = computeBounds(m.pos);
+    m._centerLocal = [
+      (b.min[0]+b.max[0]) * 0.5,
+      (b.min[1]+b.max[1]) * 0.5,
+      (b.min[2]+b.max[2]) * 0.5
+    ];
+    // gruba sfera: poluprečnik kao max odstupanje od centra
+    m._radiusLocal = Math.hypot(
+      b.max[0]-m._centerLocal[0],
+      b.max[1]-m._centerLocal[1],
+      b.max[2]-m._centerLocal[2]
     );
-    gl.uniformMatrix4fv(
-      gl.getUniformLocation(programGlass, "uProjection"),
-      false,
-      proj
-    );
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
-    gl.uniform1i(gl.getUniformLocation(programGlass, "uEnv"), 0);
-
-    for (const m of transparentMeshes) {
-      if (!m.count) continue;
-      gl.uniformMatrix4fv(
-        gl.getUniformLocation(programGlass, "uModel"),
-        false,
-        m.modelMat
-      );
-      gl.uniform3fv(
-        gl.getUniformLocation(programGlass, "uBaseColor"),
-        m.baseColor || [1, 1, 1]
-      );
-      gl.uniform1f(
-        gl.getUniformLocation(programGlass, "uRoughness"),
-        m.roughness ?? 1.0
-      );
-      gl.uniform1f(
-        gl.getUniformLocation(programGlass, "uMetallic"),
-        m.metallic ?? 0.0
-      );
-      gl.uniform1f(
-        gl.getUniformLocation(programGlass, "uOpacity"),
-        m.opacity ?? 1.0
-      );
-      gl.bindVertexArray(m.vao);
-      gl.drawElements(gl.TRIANGLES, m.count, m.type, 0);
-    }
-
-    gl.depthFunc(gl.LESS);
-    gl.depthMask(true);
-    gl.enable(gl.CULL_FACE);
-    gl.disable(gl.BLEND);
+    m._bbComputed = true;
   }
+  const cw = mulMat4Vec4([], m.modelMat, [m._centerLocal[0], m._centerLocal[1], m._centerLocal[2], 1]);
+  // projekcija na pravac pogleda + radius → „najdalja tačka“
+  m._farDepth = (cw[0]-camWorld[0])*V[0] + (cw[1]-camWorld[1])*V[1] + (cw[2]-camWorld[2])*V[2] + m._radiusLocal;
+});
+// sort: od najdaljeg ka najbližem (Painter)
+transparentMeshes.sort((a,b) => b._farDepth - a._farDepth);
+
+// bind program + zajednički uniformi
+gl.useProgram(programGlass);
+gl.uniformMatrix4fv(gl.getUniformLocation(programGlass, "uView"), false, view);
+gl.uniformMatrix4fv(gl.getUniformLocation(programGlass, "uProjection"), false, proj);
+gl.activeTexture(gl.TEXTURE0);
+gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
+gl.uniform1i(gl.getUniformLocation(programGlass, "uEnvMap"), 0);
+gl.uniform3fv(gl.getUniformLocation(programGlass, "uCameraPos"), camWorld);
+
+// PASS 1: BACK-FACES PRVI
+gl.cullFace(gl.FRONT);
+for (const m of transparentMeshes) {
+  if (!m.count) continue;
+  gl.uniformMatrix4fv(gl.getUniformLocation(programGlass, "uModel"), false, m.modelMat);
+  gl.uniform3fv(gl.getUniformLocation(programGlass, "uBaseColor"), m.baseColor || [1,1,1]);
+  gl.uniform1f(gl.getUniformLocation(programGlass, "uRoughness"), m.roughness ?? 1.0);
+  gl.uniform1f(gl.getUniformLocation(programGlass, "uMetallic"),  m.metallic  ?? 0.0);
+  gl.uniform1f(gl.getUniformLocation(programGlass, "uOpacity"),   m.opacity   ?? 1.0);
+  gl.bindVertexArray(m.vao);
+  gl.drawElements(gl.TRIANGLES, m.count, m.type, 0);
 }
+
+// PASS 2: FRONT-FACES POSLE
+gl.cullFace(gl.BACK);
+for (const m of transparentMeshes) {
+  if (!m.count) continue;
+  gl.uniformMatrix4fv(gl.getUniformLocation(programGlass, "uModel"), false, m.modelMat);
+  gl.uniform3fv(gl.getUniformLocation(programGlass, "uBaseColor"), m.baseColor || [1,1,1]);
+  gl.uniform1f(gl.getUniformLocation(programGlass, "uRoughness"), m.roughness ?? 1.0);
+  gl.uniform1f(gl.getUniformLocation(programGlass, "uMetallic"),  m.metallic  ?? 0.0);
+  gl.uniform1f(gl.getUniformLocation(programGlass, "uOpacity"),   m.opacity   ?? 1.0);
+  gl.bindVertexArray(m.vao);
+  gl.drawElements(gl.TRIANGLES, m.count, m.type, 0);
+}
+
+// cleanup
+gl.disable(gl.BLEND);
+gl.depthMask(true);
+gl.depthFunc(gl.LESS);
+gl.cullFace(gl.BACK);
+
+  
+// --- tonemap ---
+gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+gl.viewport(0, 0, canvas.width, canvas.height);
+gl.useProgram(acesProgram);
+gl.activeTexture(gl.TEXTURE0);
+gl.bindTexture(gl.TEXTURE_2D, finalColorTex);
+gl.uniform1i(gl.getUniformLocation(acesProgram, "uInput"), 0);
+gl.bindVertexArray(quadVAO);
+gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+// ✅ tek sada resetuj GL stanje
+gl.disable(gl.BLEND);
+gl.depthMask(true);
+gl.depthFunc(gl.LESS);
+gl.enable(gl.CULL_FACE);
+
+}
+
 
 function renderLoop() {
   const FRAME_INTERVAL = 1000 / MAX_FPS; // uvek koristi trenutni MAX_FPS

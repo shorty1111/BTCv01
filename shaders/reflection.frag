@@ -13,7 +13,7 @@ uniform vec3 uSunDir;
 uniform vec3 uSunColor;
 uniform float uSunIntensity;
 
-uniform samplerCube uEnvTex;
+uniform samplerCube uEnvMap;
 uniform float uRoughness;
 uniform float uSpecularStrength;
 uniform vec3 uCameraPos;
@@ -68,8 +68,8 @@ void main() {
 
     // Environment (refleksija i difuzno)
     float envMip = 7.0;
-    vec3 envDiffuse = textureLod(uEnvTex, N, envMip).rgb;
-    vec3 envSpecular = textureLod(uEnvTex, R, roughness * envMip).rgb;
+    vec3 envDiffuse = textureLod(uEnvMap, N, envMip).rgb;
+    vec3 envSpecular = textureLod(uEnvMap, R, roughness * envMip).rgb;
 
     // Pojačaj ambient refleksiju
     vec3 color = direct + envDiffuse * kd * albedo * 0.50 + envSpecular * F * 1.05;

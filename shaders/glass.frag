@@ -5,50 +5,47 @@ in vec3 vWorldPos;
 in vec3 vNormal;
 out vec4 fragColor;
 
-// UNIFORMI
-uniform samplerCube uEnvTex;
+uniform samplerCube uEnvMap;
 uniform vec3  uCameraPos;
 uniform vec3  uSunDir;
 uniform vec3  uSunColor;
 uniform float uSunIntensity;
 
-uniform vec3  uBaseColor;    // koristi NIKAD (1,1,1) ni (0,0,0), neka bude 0.8-0.98
-uniform float uRoughness;    // 0.01-0.15
-uniform float uOpacity;      // 0.04-0.12 za staklo
-uniform float uExposure;     // 0.7 - 1.0 za normalno osvetljenje
+uniform mat4 uView; // view matrica iz CPU, ista kao u PBR shaderu
+uniform vec3  uBaseColor;
+uniform float uRoughness;
+uniform float uOpacity;
+uniform float uIOR;
+uniform float uExposure;
 
-// === ACES tonemap ===
-vec3 ACESFilm(vec3 x){
-    const float a=2.51, b=0.03, c=2.43, d=0.59, e=0.14;
-    return clamp((x*(a*x+b))/(x*(c*x+d)+e),0.0,1.0);
-}
-vec3 fresnelSchlick(float cosT, vec3 F0){
-    return F0 + (1.0 - F0) * pow(1.0 - cosT, 5.0);
+vec3 fresnelSchlick(float cosTheta, vec3 F0) {
+    return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
 }
 
 void main() {
-    vec3 N = normalize(vNormal);
-    vec3 V = normalize(uCameraPos - vWorldPos);
-    vec3 L = normalize(-uSunDir);
-    float NoV = max(dot(N, V), 0.0);
+    
+    mat3 view3 = mat3(uView);
+    mat3 invView3 = transpose(view3);
 
-    // Refleksija iz okoline (HDR sky cubemap)
-    vec3 R = reflect(-V, N);
+    vec3 Nw = normalize(vNormal);
+    
+    vec3 Vw = normalize(uCameraPos - vWorldPos);
+
+    vec3 Nv = normalize(view3 * Nw);
+    vec3 Vv = normalize(view3 * -Vw);
+    vec3 Rv = reflect(Vv, Nv);
+
+    vec3 Rw = normalize(invView3 * Rv);
+
+    // 🔹 ispravan flip za left-handed env map
+    Rw.x = -Rw.x;
+
     float lod = mix(0.0, 6.0, clamp(uRoughness, 0.0, 1.0));
-    vec3 envCol = textureLod(uEnvTex, normalize(R), lod).rgb;
+    vec3 reflected = textureLod(uEnvMap, Rw, lod).rgb;
 
-    // Fresnel
-    vec3 F0 = vec3(0.04); // staklo
-    float fres = pow(1.0 - NoV, 5.0);
-    vec3 fresCol = mix(uBaseColor, envCol, fres);
+    float NoV = clamp(dot(Nw, Vw), 0.0, 1.0);
+    float f0 = pow((1.0 - uIOR) / (1.0 + uIOR), 2.0);
+    vec3 F = fresnelSchlick(NoV, mix(vec3(f0), uBaseColor, 0.05));
 
-    // Dodatni sun specular
-    float sunDot = clamp(dot(R, L), 0.0, 1.0);
-    fresCol += uSunColor * pow(sunDot, 256.0) * uSunIntensity * 0.17;
-
-    // ACES tonemapping + gamma
-    vec3 mapped = ACESFilm(fresCol * uExposure);
-    mapped = pow(mapped, vec3(1.0/2.2));
-
-    fragColor = vec4(mapped, uOpacity);
+    fragColor = vec4(reflected * F, uOpacity);
 }
