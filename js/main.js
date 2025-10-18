@@ -1066,10 +1066,10 @@ function updateView() {
   if (useOrtho) {
     // 👇 ortho projekcija
     let size = (window.sceneBoundingRadius || 5) * 0.8;
-    proj = ortho(-size * aspect, size * aspect, -size, size, -100, 100);
+    proj = ortho(-size * aspect, size * aspect, -size, size, -1000, 1000);
 
     // 👇 fiksni pogledi
-    const d = (window.sceneBoundingRadius || 5) * 3;
+    const d = (window.sceneBoundingRadius || 5) * 60.0;
     let eye, up;
     switch (currentView) {
       case "front":
@@ -1093,7 +1093,7 @@ function updateView() {
     camWorld = eye.slice();
   } else {
     // 👇 perspektiva (orbit)
-    proj = persp(60, aspect, 0.1, 100000);
+    proj = persp(70, aspect, 0.1, 10000);
 
     const eye = [
       dist * Math.cos(rx) * Math.sin(ry) + pan[0],
@@ -1928,7 +1928,8 @@ gl.disable(gl.POLYGON_OFFSET_FILL);
   gl.viewport(0, 0, canvas.width, canvas.height);
   gl.bindFramebuffer(gl.FRAMEBUFFER, gBuffer);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
+gl.enable(gl.DEPTH_TEST);
+gl.depthMask(true);
   gl.useProgram(gBufferProgram);
   gl.uniformMatrix4fv(
     gl.getUniformLocation(gBufferProgram, "uProjection"),
@@ -2046,6 +2047,9 @@ gl.disable(gl.POLYGON_OFFSET_FILL);
   gl.bindTexture(gl.TEXTURE_2D, brdfTex);
   gl.activeTexture(gl.TEXTURE7);
   gl.bindTexture(gl.TEXTURE_2D, shadowDepthTex);
+// === SSR depth ===
+
+gl.uniform2f(gl.getUniformLocation(program, "uResolution"), canvas.width, canvas.height);
 
   gl.uniform1i(gl.getUniformLocation(program, "gPosition"), 0);
   gl.uniform1i(gl.getUniformLocation(program, "gNormal"), 1);
@@ -2057,23 +2061,17 @@ gl.disable(gl.POLYGON_OFFSET_FILL);
   gl.uniform1i(gl.getUniformLocation(program, "uBRDFLUT"), 6);
   gl.uniform1i(gl.getUniformLocation(program, "uShadowMap"), 7);
   gl.uniformMatrix4fv(gl.getUniformLocation(program, "uView"), false, view);
-  gl.uniformMatrix4fv(
-    gl.getUniformLocation(program, "uLightVP"),
-    false,
-    lightVP
-  );
+  gl.uniformMatrix4fv(gl.getUniformLocation(program, "uLightVP"), false, lightVP);
   gl.uniform3fv(gl.getUniformLocation(program, "uCameraPos"), camWorld);
   gl.uniform3fv(gl.getUniformLocation(program, "uSunDir"), SUN.dir);
   gl.uniform3fv(gl.getUniformLocation(program, "uSunColor"), SUN.color);
   gl.uniform1f(gl.getUniformLocation(program, "uSunIntensity"), SUN.intensity);
   gl.uniform1f(gl.getUniformLocation(program, "uLightSize"), 0.025);
-  gl.uniform2f(
-    gl.getUniformLocation(program, "uShadowMapSize"),
-    SHADOW_RES,
-    SHADOW_RES
-  );
-  gl.uniform1f(gl.getUniformLocation(program, "uBiasBase"), 0.0001);
-  gl.uniform1f(gl.getUniformLocation(program, "uBiasSlope"), 0.0001);
+  gl.uniform2f(gl.getUniformLocation(program, "uShadowMapSize"),SHADOW_RES,SHADOW_RES);
+  gl.uniform1f(gl.getUniformLocation(program, "uBiasBase"), 0.00005);
+  gl.uniform1f(gl.getUniformLocation(program, "uBiasSlope"), 0.002);
+
+  
 
   gl.bindVertexArray(quadVAO);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -2158,7 +2156,6 @@ gl.disable(gl.POLYGON_OFFSET_FILL);
   }
 
     // === 10. Transparent/Overlay/Dimenzije ===
-  // --- prebaci depth iz G-buffera u finalFBO ---
   gl.bindFramebuffer(gl.READ_FRAMEBUFFER, gBuffer);
   gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, finalFBO);
   gl.blitFramebuffer(
@@ -2167,11 +2164,8 @@ gl.disable(gl.POLYGON_OFFSET_FILL);
     gl.DEPTH_BUFFER_BIT,
     gl.NEAREST
   );
-// 1) copy depth iz gBuffer u finalFBO (već radiš odmah iznad)
-// 2) priprema za staklo
 gl.bindFramebuffer(gl.FRAMEBUFFER, finalFBO);
 gl.viewport(0, 0, canvas.width, canvas.height);
-
 gl.enable(gl.BLEND);
 gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 gl.enable(gl.DEPTH_TEST);
@@ -2179,7 +2173,7 @@ gl.depthFunc(gl.LEQUAL);
 gl.depthMask(false);
 
 gl.enable(gl.CULL_FACE);
-gl.frontFace(gl.CCW);   // ako su modeli CCW; promeni u CW ako treba
+gl.frontFace(gl.CCW);  
 
 // (bolje sortiranje: po „najdaljem z“ duž pravca pogleda)
 const V = v3.norm(v3.sub(pan, camWorld)); // view dir: target - eye
@@ -2551,6 +2545,19 @@ function loadGLB(buf) {
   window.sceneBoundingRadius =
     Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2]) * 0.5;
   boatLengthLine = makeLengthLine(min, max);
+  window.envBox = {
+  min: [
+    sceneBoundingCenter[0] - sceneBoundingRadius * 2.0,
+    sceneBoundingCenter[1] - sceneBoundingRadius * 1.0,
+    sceneBoundingCenter[2] - sceneBoundingRadius * 2.0,
+  ],
+  max: [
+    sceneBoundingCenter[0] + sceneBoundingRadius * 2.0,
+    sceneBoundingCenter[1] + sceneBoundingRadius * 2.0,
+    sceneBoundingCenter[2] + sceneBoundingRadius * 2.0,
+  ],
+};
+
   buildVariantSidebar();
   buildPartsTable();
   updateTotalPrice();

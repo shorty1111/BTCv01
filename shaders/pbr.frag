@@ -47,28 +47,6 @@ float distributionGGX(vec3 N, vec3 H, float roughness){
     return a2 / (3.141592 * denom * denom);
 }
 
-// === Senke (world varijanta - ne koristi se ovde, ali ispravljena) ===
-float getShadow(vec3 Pw, vec3 Nw) {
-    vec3 L = normalize(uSunDir);
-    float cosTheta = max(dot(Nw, L), 0.0);
-    float bias = max(uBiasBase, uBiasSlope * (1.0 - cosTheta));
-
-    vec4 lp = uLightVP * vec4(Pw, 1.0); // bez pomeranja pozicije
-    vec3 uvw = lp.xyz / lp.w * 0.5 + 0.5;
-    if (uvw.x < 0.0 || uvw.x > 1.0 || uvw.y < 0.0 || uvw.y > 1.0 || uvw.z > 1.0)
-        return 1.0;
-
-    float shadow = 0.0;
-    vec2 texel = 1.0 / uShadowMapSize;
-    for (int y = -1; y <= 1; y++)
-    for (int x = -1; x <= 1; x++) {
-        vec2 offs = vec2(x, y) * texel;
-        float d = texture(uShadowMap, uvw.xy + offs).r;
-        shadow += step(uvw.z - bias, d);
-    }
-    shadow /= 9.0;               // bez smoothstep-a
-    return shadow;
-}
 
 // === Senke (view → light) ===
 float getShadowView(vec3 Pv, vec3 Nw) {
@@ -135,6 +113,7 @@ void main(){
     float ao = bentNormalAO.a;
 
     // --- prostori ---
+    
     vec3 N = normalize(normalV);                 // view-space normal
     mat3 view3    = mat3(uView);
     mat3 invView3 = transpose(view3);            // pretpostavka: ortonormalan view
@@ -144,6 +123,7 @@ void main(){
 
     vec3 V = normalize(-fragPosV);               // view-space
     // KLJUČNO: Sunce u view-space
+    
     vec3 Lv = normalize(view3 * normalize(uSunDir));
     vec3 H  = normalize(V + Lv);
 
@@ -177,6 +157,7 @@ void main(){
     vec3 envDiffuse = textureLod(uEnvMap, normalize(bentNormalWorld), uCubeMaxMip * 0.98).rgb;
     float mip = clamp(roughness * uCubeMaxMip, 0.0, uCubeMaxMip);
     vec3 envSpecular = textureLod(uEnvMap, normalize(Rw), mip).rgb;
+    
     vec2 brdf = texture(uBRDFLUT, vec2(NdotV, roughness)).rg;
 
     vec3 F_IBL = fresnelSchlickRoughness(NdotV, F0, roughness);
@@ -185,9 +166,8 @@ void main(){
 
     float glossBoost = smoothstep(0.0, 0.4, 1.0 - roughness);
     specularIBL *= 1.0 + glossBoost * 1.8;
-    specularIBL *=shadow;
     vec3 ambient = (diffuseIBL + specularIBL) * ao;
     vec3 color = directLight + ambient;
 
-    fragColor = vec4(vec3(color), 1.0);
+    fragColor = vec4(vec3(envSpecular), 1.0);
 }
