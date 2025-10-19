@@ -8,7 +8,7 @@ let skyIdxCount = 0;
 
 // ===== Default sky params (bez SUN — njega prosleđuje main.js) =====
 export const DEFAULT_SKY = {
-  exposure: 1.0,
+  exposure: 1.2,
 
   // Nebo: čisto letnje nebo (Unreal Engine style)
   zenith: [0.12, 0.25, 0.6], // sky blue

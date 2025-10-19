@@ -32,12 +32,12 @@ uniform mat4        uLightVP;
 uniform mat4        uReflectionMatrix;
 uniform float       uWaterLevel;
 uniform float       uBottomOffsetM;
-uniform vec2        uReflectionTexSize;
+
 
 // === PARAMETRI ===
 const float DEPTH_SCALE     = 6.4;
 const float DEPTH_CURVE     = 0.03;
-const float SSS_STRENGTH    = 60.0;
+const float SSS_STRENGTH    = 100.0;
 const float SSS_WRAP        = 1.9;
 const vec3  SSS_FALLOFF     = vec3(0.0431, 0.0667, 0.0667);
 const float CREST_INTENSITY = 0.21;

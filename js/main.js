@@ -28,7 +28,7 @@ let finalColorTex = null;
 
 // CENTRALNO SUNCE
 const SUN = {
-  dir: v3.norm([-0.8,0.8, 0.9]), // položaj
+  dir: v3.norm([-0.8,0.3, 0.3]), // položaj
   color: [1.0, 0.92, 0.76],
   intensity: 0.0, // jačina
 };
@@ -73,6 +73,7 @@ let reflectionFBO = null;
 let reflectionTex = null;
 let reflectionColorProgram = null;
 function createReflectionTarget(gl, width, height) {
+  
   reflectionTex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, reflectionTex);
   gl.texImage2D(
@@ -132,109 +133,6 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
 
-// === BOAT MASK ===
-
-let boatMaskFBO = null;
-let boatMaskTex = null;
-window.boatMaskTex = null;
-window.boatMaskVP = null; // 👈 dodaćemo i VP matricu
-const MASK_RES = 512;
-function createBoatMaskTarget(gl, size = 512) {
-  // Kreiraj 1-kanalnu (RED) teksturu koja sadrži masku trupa
-  boatMaskTex = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, boatMaskTex);
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.R8, // 1 kanal
-    size,
-    size,
-    0,
-    gl.RED,
-    gl.UNSIGNED_BYTE,
-    null
-  );
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-  boatMaskFBO = gl.createFramebuffer();
-  gl.bindFramebuffer(gl.FRAMEBUFFER, boatMaskFBO);
-  gl.framebufferTexture2D(
-    gl.FRAMEBUFFER,
-    gl.COLOR_ATTACHMENT0,
-    gl.TEXTURE_2D,
-    boatMaskTex,
-    0
-  );
-  gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
-
-  // Proveri da li je sve kompletno
-  const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
-  if (status !== gl.FRAMEBUFFER_COMPLETE) {
-    console.error("❌ Boat mask FBO nije kompletan!", status.toString(16));
-  }
-
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-  window.boatMaskTex = boatMaskTex; // globalni pristup za water.js
-}
-function renderBoatMask() {
-  if (!boatMaskFBO || !depthOnlyProgram) return;
-
-  gl.bindFramebuffer(gl.FRAMEBUFFER, boatMaskFBO);
-  gl.viewport(0, 0, MASK_RES, MASK_RES);
-  gl.clearColor(0.0, 0.0, 0.0, 1.0);
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  gl.enable(gl.DEPTH_TEST);
-
-  const min = boatMin;
-  const max = boatMax;
-  const center = [
-    (min[0] + max[0]) * 0.5,
-    (min[1] + max[1]) * 0.5,
-    (min[2] + max[2]) * 0.5,
-  ];
-
-  // kamera iznad po Y, gleda ka -Y, "up" = +Z
-  const eye = [center[0], max[1] + 20.0, center[2]];
-  const target = [center[0], center[1], center[2]];
-  const view = look(eye, target, [0, 1, 1]); // <-- +Z gore!
-
-  const half = Math.max(max[0] - min[0], max[2] - min[2]) * 0.5 + 2.0;
-  const proj = ortho(-half, half, half, -half, -200, 200);
-
-  gl.useProgram(depthOnlyProgram);
-  gl.uniform1f(gl.getUniformLocation(depthOnlyProgram, "uClipY"), 0.0);
-  gl.uniformMatrix4fv(
-    gl.getUniformLocation(depthOnlyProgram, "uProjection"),
-    false,
-    proj
-  );
-  gl.uniformMatrix4fv(
-    gl.getUniformLocation(depthOnlyProgram, "uView"),
-    false,
-    view
-  );
-
-  for (let i = 0; i < modelVAOs.length; ++i) {
-    if (!idxCounts[i]) continue;
-    gl.uniformMatrix4fv(
-      gl.getUniformLocation(depthOnlyProgram, "uModel"),
-      false,
-      modelMatrices[i]
-    );
-    gl.bindVertexArray(modelVAOs[i]);
-    gl.drawElements(gl.TRIANGLES, idxCounts[i], idxTypes[i], 0);
-  }
-
-  gl.uniform1f(gl.getUniformLocation(depthOnlyProgram, "uClipY"), -999.0);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-  gl.viewport(0, 0, canvas.width, canvas.height);
-
-  window.boatMaskVP = mat4mul(proj, view); // pazi redosled
-}
-
 let envSize = 512; // kontrola kvaliteta/performansi
 let cubeMaxMip = Math.floor(Math.log2(envSize));
 let showWater = true;
@@ -249,6 +147,9 @@ let boatMin = null;
 let boatMax = null;
 let showDimensions = false;
 let gBuffer, gPosition, gNormal, gAlbedo, gMaterial;
+
+let ssrTex = null;
+
 let ssaoFBO, ssaoBlurFBO, ssaoColorBuffer, ssaoBlurBuffer;
 let ssaoKernel = [];
 let ssaoNoiseTexture;
@@ -377,21 +278,23 @@ function createFinalColorTarget(w, h) {
   gl.bindTexture(gl.TEXTURE_2D, null);
 }
 
+
 function focusCameraOnNode(node) {
   if (!node) return;
+
   let min = [Infinity, Infinity, Infinity];
   let max = [-Infinity, -Infinity, -Infinity];
 
-  // PROĐI KROZ SVE SLOTVE TOG DELA, I UZMI AKTUELNI MESH
   for (const r of node.renderIdxs) {
-    // Preferiraj blend (staklo/plastika), pa ako nema, uzmi običan mesh
-    let mesh = transparentMeshes.find(m => m.renderIdx === r.idx && m.partName === node.name);
-    if (!mesh && originalParts[r.idx]) mesh = originalParts[r.idx];
-    if (!mesh || !mesh.pos) continue;
-    const mat = modelMatrices[r.idx] || mesh.modelMatrix;
-    for (let i = 0; i < mesh.pos.length; i += 3) {
-      const p = [mesh.pos[i], mesh.pos[i + 1], mesh.pos[i + 2], 1];
-      const w = vec4.transformMat4([], p, mat);
+    if (!r.matName || r.matName.toLowerCase().includes("dummy")) continue;
+
+    const orig = originalParts[r.idx];
+    if (!orig || !orig.pos) continue;
+
+    const modelMat = modelMatrices[r.idx] || orig.modelMatrix;
+    for (let i = 0; i < orig.pos.length; i += 3) {
+      const p = [orig.pos[i], orig.pos[i + 1], orig.pos[i + 2], 1];
+      const w = vec4.transformMat4([], p, modelMat);
       min[0] = Math.min(min[0], w[0]);
       min[1] = Math.min(min[1], w[1]);
       min[2] = Math.min(min[2], w[2]);
@@ -400,44 +303,26 @@ function focusCameraOnNode(node) {
       max[2] = Math.max(max[2], w[2]);
     }
   }
-  if (min[0] === Infinity) return;
 
-  // IZRACUNAJ CENTAR I DIMENZIJE
-  const width  = max[0] - min[0];
-  const height = max[1] - min[1];
-  const depth  = max[2] - min[2];
-
-  // -- PRAVI CENTAR --
   const center = [
-    (min[0] + max[0]) * 0.5,
-    (min[1] + max[1]) * 0.5,
-    (min[2] + max[2]) * 0.5
+    (min[0] + max[0]) / 2,
+    (min[1] + max[1]) / 2,
+    (min[2] + max[2]) / 2,
   ];
+  const size = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2]);
 
-  // -- FITOVANJE: KAMERU STAVI TAKO DA OBA OSI STANU U FRUSTUM --
-  const fovY = Math.PI / 4; // 45°
-  const aspect = canvas.width / canvas.height;
-  // 1. Vertikalni fit (klasičan)
-  const distForHeight = (height / 2) / Math.tan(fovY / 2);
-  // 2. Horizontalni fit (računaj horizontalni FOV)
-  const fovX = 2 * Math.atan(Math.tan(fovY / 2) * aspect);
-  const distForWidth = (width / 2) / Math.tan(fovX / 2);
-  // 3. Uzmi veću distancu
-  const newDist = Math.max(distForHeight, distForWidth);
+  const fovY = Math.PI / 4;
+  const newDist = size / (2 * Math.tan(fovY / 2));
 
-  // -- POSTAVI SVE PARAMETRE KAMERE --
+  window.currentBoundingRadius = size / 2;
   pan = center;
-  window.currentBoundingRadius = Math.max(width, height, depth) * 0.5;
-
-  distTarget = newDist * 1.1;           // Dodaj marginu da ne bude preblizu
-  rxTarget = Math.PI / 6;              // Ugao kamere (18° odozgo)
+  distTarget = newDist * 0.7; // samo cilj, dist neka interpolira
+  rxTarget = Math.PI / 6;
   ryTarget = 0;
-
   minDist = newDist * 0.2;
   maxDist = newDist * 3.0;
   distTarget = Math.min(Math.max(distTarget, minDist), maxDist);
 }
-
 
 
 function renderBoatInfo(infoObj) {
@@ -659,7 +544,7 @@ function resizeCanvas() {
   let targetW = Math.min(cssW, maxRenderW);
   let targetH = Math.round(targetW / aspect);
 
-  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.4);
   const realW = Math.round(targetW * ssaa * dpr);
   const realH = Math.round(targetH * ssaa * dpr);
 
@@ -679,13 +564,13 @@ function resizeCanvas() {
   createGBuffer(realW, realH);
   createSSAOBuffers(Math.round(realW * 0.5), Math.round(realH * 0.5));
   createFinalColorTarget(canvas.width, canvas.height);
+
   if (reflectionFBO) {
     gl.deleteFramebuffer(reflectionFBO);
     gl.deleteTexture(reflectionTex);
   }
 
   createReflectionTarget(gl, realW, realH);
-  createBoatMaskTarget(gl, MASK_RES);
   const resMeter = document.getElementById("res-meter");
   if (resMeter) {
     resMeter.textContent = `Render: ${targetW}x${targetH} → ${realW}x${realH} (SSAA ${ssaa.toFixed(
@@ -1055,6 +940,7 @@ let rxTarget = rx,
   distTarget = dist;
 
 function animateCamera() {
+  
   const minRx = 0.025; // ~6 stepeni iznad horizonta
   const maxRx = Math.PI / 2 - 0.01;
   rxTarget = Math.max(minRx, Math.min(maxRx, rxTarget));
@@ -1083,12 +969,12 @@ function updateView() {
   const aspect = canvas.width / canvas.height;
 
   if (useOrtho) {
-    // === ORTHO pogled ===
-    const radius = window.currentBoundingRadius || window.sceneBoundingRadius || 5;
-    const size = radius * 0.8;
+    // 👇 ortho projekcija
+    let size = (window.sceneBoundingRadius || 5) * 0.8;
     proj = ortho(-size * aspect, size * aspect, -size, size, -1000, 1000);
 
-    const d = radius * 60.0;
+    // 👇 fiksni pogledi
+    const d = (window.sceneBoundingRadius || 5) * 60.0;
     let eye, up;
     switch (currentView) {
       case "front":
@@ -1106,31 +992,23 @@ function updateView() {
       default:
         eye = [d, d, d];
         up = [0, 1, 0];
-        break;
+        break; // fallback
     }
     view.set(look(eye, pan, up));
     camWorld = eye.slice();
-
   } else {
-    // === PERSPEKTIVNI (orbit) pogled ===
+    // 👇 perspektiva (orbit)
     proj = persp(70, aspect, 0.1, 10000);
 
-    // koristi bounding radius koji postavlja focusCameraOnNode
-    const radius = window.currentBoundingRadius || window.sceneBoundingRadius || 5;
-
-    // kamera kruži oko 'pan' (centra bounding boxa)
     const eye = [
       dist * Math.cos(rx) * Math.sin(ry) + pan[0],
       dist * Math.sin(rx) + pan[1],
       dist * Math.cos(rx) * Math.cos(ry) + pan[2],
     ];
-
-    // nema offseta, samo direktan pogled u centar
     view.set(look(eye, pan, [0, 1, 0]));
     camWorld = eye.slice();
   }
 }
-
 
 // === TOUCH KONTROLE ===
 let touchDragging = false;
@@ -1258,24 +1136,19 @@ canvas.addEventListener(
   },
   { passive: false }
 );
-canvas.addEventListener(
-  "wheel",
-  (e) => {
-    const fovY = Math.PI / 4; // 45°
-    const minDist =
-      ((window.currentBoundingRadius || window.sceneBoundingRadius || 1) /
-        Math.tan(fovY / 2)) *
-      0.3;
-    const maxDist = (window.currentBoundingRadius || 5) * 10.0;
-    distTarget += e.deltaY * 0.01;
-    // OGRANIČI ZOOM NA 70% boundinga
-    if (distTarget < minDist) distTarget += (minDist - distTarget) * 0.3;
-    if (distTarget > maxDist) distTarget += (maxDist - distTarget) * 0.3;
+canvas.addEventListener("wheel", (e) => {
+  distTarget += e.deltaY * 0.01;
 
-    updateView();
-  },
-  { passive: true }
-);
+  // ograniči da ne uletiš kroz model
+  distTarget = Math.max(0.2, distTarget);
+
+  // pomeri tačku pan da uvek ostane ispred kamere (da zoom ide tamo gde gledaš)
+  const dir = v3.norm(v3.sub(pan, camWorld));
+  pan = v3.add(camWorld, v3.scale(dir, distTarget));
+
+  updateView();
+}, { passive: true });
+
 function makeLengthLine(min, max) {
   const y = min[1];
   const z = max[2];
@@ -1860,11 +1733,9 @@ function computeLightBounds(min, max, lightView) {
 
 function render() {
   let reflView = null;
-
   // === 1. Animacija kamere i matrica pogleda ===
   animateCamera();
   updateView();
-  renderBoatMask();
 
   // === 1A. CLEAR FINALNI FBO NA POČETKU (OBAVEZNO!) ===
   gl.bindFramebuffer(gl.FRAMEBUFFER, finalFBO);
@@ -2114,7 +1985,6 @@ gl.depthMask(true);
     gl.drawElements(gl.TRIANGLES, idxCounts[i], idxTypes[i], 0);
   }
 
-  // === 5. SSAO pass ===
   gl.bindFramebuffer(gl.FRAMEBUFFER, ssaoFBO);
   gl.clear(gl.COLOR_BUFFER_BIT);
   gl.useProgram(ssaoProgram);
@@ -2183,8 +2053,9 @@ gl.depthMask(true);
   gl.bindTexture(gl.TEXTURE_2D, brdfTex);
   gl.activeTexture(gl.TEXTURE7);
   gl.bindTexture(gl.TEXTURE_2D, shadowDepthTex);
-// === SSR depth ===
-
+gl.activeTexture(gl.TEXTURE9);
+gl.bindTexture(gl.TEXTURE_2D, window.sceneColorTex);
+gl.uniform1i(gl.getUniformLocation(program, "uSceneColor"), 9);
 gl.uniform2f(gl.getUniformLocation(program, "uResolution"), canvas.width, canvas.height);
 
   gl.uniform1i(gl.getUniformLocation(program, "gPosition"), 0);
@@ -2198,6 +2069,7 @@ gl.uniform2f(gl.getUniformLocation(program, "uResolution"), canvas.width, canvas
   gl.uniform1i(gl.getUniformLocation(program, "uShadowMap"), 7);
   gl.uniformMatrix4fv(gl.getUniformLocation(program, "uView"), false, view);
   gl.uniformMatrix4fv(gl.getUniformLocation(program, "uLightVP"), false, lightVP);
+  gl.uniformMatrix4fv(gl.getUniformLocation(program, "uProjection"), false, proj);
   gl.uniform3fv(gl.getUniformLocation(program, "uCameraPos"), camWorld);
   gl.uniform3fv(gl.getUniformLocation(program, "uSunDir"), SUN.dir);
   gl.uniform3fv(gl.getUniformLocation(program, "uSunColor"), SUN.color);
@@ -2210,6 +2082,34 @@ gl.uniform2f(gl.getUniformLocation(program, "uResolution"), canvas.width, canvas
 
   gl.bindVertexArray(quadVAO);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+if (!window.sceneColorTex) {
+  window.sceneColorTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, window.sceneColorTex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+}
+
+// copy current color (sky + opaque geometry) into sceneColorTex
+gl.bindFramebuffer(gl.READ_FRAMEBUFFER, finalFBO);
+gl.bindTexture(gl.TEXTURE_2D, window.sceneColorTex);
+gl.copyTexImage2D(
+  gl.TEXTURE_2D,
+  0,
+  gl.RGBA16F,
+  0,
+  0,
+  canvas.width,
+  canvas.height,
+  0
+);
+
+gl.generateMipmap(gl.TEXTURE_2D);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  // === 5. SSAO pass ===
+
   if (showWater) {
     // NEMOJ PONOVO bindFramebuffer(finalFBO)! (VEĆ SI U njemu)
     gl.viewport(0, 0, canvas.width, canvas.height);
@@ -2253,6 +2153,7 @@ gl.uniform2f(gl.getUniformLocation(program, "uResolution"), canvas.width, canvas
       mat4mul(proj, reflView)
     );
   }
+
   // === 11. Overlay / dimenzije (ako su uključene) ===
   if (showDimensions && boatLengthLine && boatMin && boatMax) {
     gl.useProgram(lineProgram);
@@ -2394,7 +2295,6 @@ gl.depthFunc(gl.LESS);
 gl.enable(gl.CULL_FACE);
 
 }
-
 
 function renderLoop() {
   const FRAME_INTERVAL = 1000 / MAX_FPS; // uvek koristi trenutni MAX_FPS
@@ -2782,6 +2682,7 @@ function loadTextureFromImage(gltf, bin, texIndex) {
 function isPowerOf2(value) {
   return (value & (value - 1)) === 0;
 }
+
 function projectToScreen(worldPos3, viewProj, canvas) {
   const v = new Float32Array([worldPos3[0], worldPos3[1], worldPos3[2], 1]);
   const clip = new Float32Array(4);
@@ -2794,9 +2695,7 @@ function projectToScreen(worldPos3, viewProj, canvas) {
   const y = (1.0 - (ndcY * 0.5 + 0.5)) * canvas.height;
   return { visible: true, x, y };
 }
-/* -------------------------------------------------------------
-   PARSE GLB  →  pripremi VAO + materijale za varijante (B, C…)
-------------------------------------------------------------- */
+
 async function parseGLBToPrepared(buf, url) {
   /* ---------- osnovno raspakivanje GLB ---------- */
   const dv = new DataView(buf);
