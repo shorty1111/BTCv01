@@ -83,7 +83,7 @@ function createReflectionTarget(gl, width, height) {
     canvas.height,
     0,
     gl.RGBA,
-    gl.HALF_FLOAT,
+    gl.FLOAT,
     null
   );
 
@@ -330,7 +330,7 @@ function createFinalColorTarget(w, h) {
     h,
     0,
     gl.RGBA,
-    gl.HALF_FLOAT,
+    gl.FLOAT,
     null
   );
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
@@ -379,20 +379,19 @@ function createFinalColorTarget(w, h) {
 
 function focusCameraOnNode(node) {
   if (!node) return;
-
   let min = [Infinity, Infinity, Infinity];
   let max = [-Infinity, -Infinity, -Infinity];
 
+  // PROĐI KROZ SVE SLOTVE TOG DELA, I UZMI AKTUELNI MESH
   for (const r of node.renderIdxs) {
-    if (!r.matName || r.matName.toLowerCase().includes("dummy")) continue;
-
-    const orig = originalParts[r.idx];
-    if (!orig || !orig.pos) continue;
-
-    const modelMat = modelMatrices[r.idx] || orig.modelMatrix;
-    for (let i = 0; i < orig.pos.length; i += 3) {
-      const p = [orig.pos[i], orig.pos[i + 1], orig.pos[i + 2], 1];
-      const w = vec4.transformMat4([], p, modelMat);
+    // Preferiraj blend (staklo/plastika), pa ako nema, uzmi običan mesh
+    let mesh = transparentMeshes.find(m => m.renderIdx === r.idx && m.partName === node.name);
+    if (!mesh && originalParts[r.idx]) mesh = originalParts[r.idx];
+    if (!mesh || !mesh.pos) continue;
+    const mat = modelMatrices[r.idx] || mesh.modelMatrix;
+    for (let i = 0; i < mesh.pos.length; i += 3) {
+      const p = [mesh.pos[i], mesh.pos[i + 1], mesh.pos[i + 2], 1];
+      const w = vec4.transformMat4([], p, mat);
       min[0] = Math.min(min[0], w[0]);
       min[1] = Math.min(min[1], w[1]);
       min[2] = Math.min(min[2], w[2]);
@@ -401,26 +400,45 @@ function focusCameraOnNode(node) {
       max[2] = Math.max(max[2], w[2]);
     }
   }
+  if (min[0] === Infinity) return;
 
+  // IZRACUNAJ CENTAR I DIMENZIJE
+  const width  = max[0] - min[0];
+  const height = max[1] - min[1];
+  const depth  = max[2] - min[2];
+
+  // -- PRAVI CENTAR --
   const center = [
-    (min[0] + max[0]) / 2,
-    (min[1] + max[1]) / 2,
-    (min[2] + max[2]) / 2,
+    (min[0] + max[0]) * 0.5,
+    (min[1] + max[1]) * 0.5,
+    (min[2] + max[2]) * 0.5
   ];
-  const size = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2]);
 
-  const fovY = Math.PI / 4;
-  const newDist = size / (2 * Math.tan(fovY / 2));
+  // -- FITOVANJE: KAMERU STAVI TAKO DA OBA OSI STANU U FRUSTUM --
+  const fovY = Math.PI / 4; // 45°
+  const aspect = canvas.width / canvas.height;
+  // 1. Vertikalni fit (klasičan)
+  const distForHeight = (height / 2) / Math.tan(fovY / 2);
+  // 2. Horizontalni fit (računaj horizontalni FOV)
+  const fovX = 2 * Math.atan(Math.tan(fovY / 2) * aspect);
+  const distForWidth = (width / 2) / Math.tan(fovX / 2);
+  // 3. Uzmi veću distancu
+  const newDist = Math.max(distForHeight, distForWidth);
 
-  window.currentBoundingRadius = size / 2;
+  // -- POSTAVI SVE PARAMETRE KAMERE --
   pan = center;
-  distTarget = newDist * 0.7; // samo cilj, dist neka interpolira
-  rxTarget = Math.PI / 6;
+  window.currentBoundingRadius = Math.max(width, height, depth) * 0.5;
+
+  distTarget = newDist * 1.1;           // Dodaj marginu da ne bude preblizu
+  rxTarget = Math.PI / 6;              // Ugao kamere (18° odozgo)
   ryTarget = 0;
+
   minDist = newDist * 0.2;
   maxDist = newDist * 3.0;
   distTarget = Math.min(Math.max(distTarget, minDist), maxDist);
 }
+
+
 
 function renderBoatInfo(infoObj) {
   const container = document.getElementById("boat-info");
@@ -580,7 +598,8 @@ const canvas = document.getElementById("glCanvas");
 const gl = canvas.getContext("webgl2", { alpha: true, antialias: true });
 
 if (!gl) alert("WebGL2 nije podržan u ovom pregledaču.");
-
+gl.getExtension("EXT_color_buffer_float");
+gl.getExtension("OES_texture_float_linear");
 // OVAJ KOD DODAJ OVDE:
 if (!gl.getExtension("EXT_color_buffer_float")) {
   alert(
@@ -1064,12 +1083,12 @@ function updateView() {
   const aspect = canvas.width / canvas.height;
 
   if (useOrtho) {
-    // 👇 ortho projekcija
-    let size = (window.sceneBoundingRadius || 5) * 0.8;
+    // === ORTHO pogled ===
+    const radius = window.currentBoundingRadius || window.sceneBoundingRadius || 5;
+    const size = radius * 0.8;
     proj = ortho(-size * aspect, size * aspect, -size, size, -1000, 1000);
 
-    // 👇 fiksni pogledi
-    const d = (window.sceneBoundingRadius || 5) * 60.0;
+    const d = radius * 60.0;
     let eye, up;
     switch (currentView) {
       case "front":
@@ -1087,27 +1106,35 @@ function updateView() {
       default:
         eye = [d, d, d];
         up = [0, 1, 0];
-        break; // fallback
+        break;
     }
     view.set(look(eye, pan, up));
     camWorld = eye.slice();
+
   } else {
-    // 👇 perspektiva (orbit)
+    // === PERSPEKTIVNI (orbit) pogled ===
     proj = persp(70, aspect, 0.1, 10000);
 
+    // koristi bounding radius koji postavlja focusCameraOnNode
+    const radius = window.currentBoundingRadius || window.sceneBoundingRadius || 5;
+
+    // kamera kruži oko 'pan' (centra bounding boxa)
     const eye = [
       dist * Math.cos(rx) * Math.sin(ry) + pan[0],
       dist * Math.sin(rx) + pan[1],
       dist * Math.cos(rx) * Math.cos(ry) + pan[2],
     ];
+
+    // nema offseta, samo direktan pogled u centar
     view.set(look(eye, pan, [0, 1, 0]));
     camWorld = eye.slice();
   }
 }
+
+
 // === TOUCH KONTROLE ===
 let touchDragging = false;
-let touchLastX = 0,
-  touchLastY = 0;
+let touchLastX = 0, touchLastY = 0;
 let pinchLastDist = null;
 let touchPanLastMid = null; // nova promenljiva za 2-prsta pan
 
@@ -1367,21 +1394,130 @@ void main() {
 
   const pbrFragSrc = await fetch("../shaders/pbr.frag").then((r) => r.text());
   program = createShaderProgram(gl, quadVertSrc, pbrFragSrc);
+// === 3. Generisanje BRDF_LUT direktno na GPU (RGBA16F, bez PNG/HDR fajla) ===
+const LUT_SIZE = 512;
 
-  // 3. Učitavanje potrebnih tekstura
-  const brdfImg = await new Promise((res) => {
-    const img = new Image();
-    img.src = "assets/BRDF_LUT.png";
-    img.onload = () => res(img);
-  });
+// 1️⃣ FBO + tekstura
+const brdfFBO = gl.createFramebuffer();
+gl.bindFramebuffer(gl.FRAMEBUFFER, brdfFBO);
 
-  brdfTex = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, brdfTex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, brdfImg);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+brdfTex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, brdfTex);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG16F, LUT_SIZE, LUT_SIZE, 0, gl.RG, gl.FLOAT, null);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, brdfTex, 0);
+
+// 2️⃣ Shader koji računa LUT
+const vsSrc = `#version 300 es
+layout(location=0) in vec2 aPos;
+out vec2 vUV;
+void main(){
+    vUV = aPos * 0.5 + 0.5;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}`;
+const fsSrc = `#version 300 es
+precision highp float;
+in vec2 vUV;
+out vec2 fragColor;
+
+// Integracija BRDF-a (Unreal-style)
+float RadicalInverse_VdC(uint bits) {
+    bits = (bits << 16u) | (bits >> 16u);
+    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+    return float(bits) * 2.3283064365386963e-10;
+}
+vec2 Hammersley(uint i, uint N) {
+    return vec2(float(i)/float(N), RadicalInverse_VdC(i));
+}
+vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness) {
+    float a = roughness*roughness;
+    float phi = 6.2831853 * Xi.x;
+    float cosTheta = sqrt((1.0 - Xi.y)/(1.0 + (a*a - 1.0)*Xi.y));
+    float sinTheta = sqrt(1.0 - cosTheta*cosTheta);
+    vec3 H = vec3(cos(phi)*sinTheta, sin(phi)*sinTheta, cosTheta);
+    vec3 up = abs(N.z) < 0.999 ? vec3(0.0,0.0,1.0) : vec3(1.0,0.0,0.0);
+    vec3 tangentX = normalize(cross(up, N));
+    vec3 tangentY = cross(N, tangentX);
+    return normalize(tangentX*H.x + tangentY*H.y + N*H.z);
+}
+float GeometrySchlickGGX(float NdotV, float roughness) {
+    float r = roughness + 1.0;
+    float k = (r*r)/8.0;
+    return NdotV / (NdotV*(1.0 - k) + k);
+}
+float GeometrySmith(float NdotV, float NdotL, float roughness) {
+    return GeometrySchlickGGX(NdotV, roughness) * GeometrySchlickGGX(NdotL, roughness);
+}
+vec2 IntegrateBRDF(float NdotV, float roughness) {
+    vec3 V;
+    V.x = sqrt(1.0 - NdotV*NdotV);
+    V.y = 0.0;
+    V.z = NdotV;
+
+    float A = 0.0;
+    float B = 0.0;
+    vec3 N = vec3(0.0,0.0,1.0);
+
+    const uint SAMPLE_COUNT = 1024u;
+    for(uint i = 0u; i < SAMPLE_COUNT; ++i) {
+        vec2 Xi = Hammersley(i, SAMPLE_COUNT);
+        vec3 H = ImportanceSampleGGX(Xi, N, roughness);
+        vec3 L = normalize(2.0 * dot(V,H) * H - V);
+        float NdotL = max(L.z, 0.0);
+        float NdotH = max(H.z, 0.0);
+        float VdotH = max(dot(V,H), 0.0);
+        if(NdotL > 0.0) {
+            float G = GeometrySmith(NdotV, NdotL, roughness);
+            float G_Vis = (G * VdotH) / (NdotH * NdotV);
+            float Fc = pow(1.0 - VdotH, 5.0);
+            A += (1.0 - Fc) * G_Vis;
+            B += Fc * G_Vis;
+        }
+    }
+    A /= float(SAMPLE_COUNT);
+    B /= float(SAMPLE_COUNT);
+    return vec2(A,B);
+}
+void main(){
+    fragColor = IntegrateBRDF(vUV.x, vUV.y);
+}`;
+
+// 3️⃣ Kompajliraj i renderuj
+const vs = gl.createShader(gl.VERTEX_SHADER);
+gl.shaderSource(vs, vsSrc);
+gl.compileShader(vs);
+const fs = gl.createShader(gl.FRAGMENT_SHADER);
+gl.shaderSource(fs, fsSrc);
+gl.compileShader(fs);
+const prog = gl.createProgram();
+gl.attachShader(prog, vs);
+gl.attachShader(prog, fs);
+gl.linkProgram(prog);
+
+const quad = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+
+gl.viewport(0,0,LUT_SIZE,LUT_SIZE);
+gl.useProgram(prog);
+gl.bindFramebuffer(gl.FRAMEBUFFER, brdfFBO);
+gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+// očisti
+gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+gl.deleteFramebuffer(brdfFBO);
+gl.deleteBuffer(quad);
+gl.deleteProgram(prog);
+
 
   await initWater(gl);
   await initSky(gl);
@@ -2014,7 +2150,6 @@ gl.depthMask(true);
   gl.bindVertexArray(quadVAO);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
-  // === 7. SVE ŠTO SLEDI CRTAS U finalFBO (NIŠTA VIŠE NE BINDUJ) ===
 
   // --- Proceduralno nebo ---
   gl.bindFramebuffer(gl.FRAMEBUFFER, finalFBO);
@@ -2041,6 +2176,7 @@ gl.depthMask(true);
   gl.activeTexture(gl.TEXTURE8);
   gl.bindTexture(gl.TEXTURE_2D, ssaoBlurBuffer);
   gl.uniform1i(gl.getUniformLocation(program, "tBentNormalAO"), 8);
+  
   gl.activeTexture(gl.TEXTURE5);
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
   gl.activeTexture(gl.TEXTURE6);
@@ -2071,7 +2207,6 @@ gl.uniform2f(gl.getUniformLocation(program, "uResolution"), canvas.width, canvas
   gl.uniform1f(gl.getUniformLocation(program, "uBiasBase"), 0.00005);
   gl.uniform1f(gl.getUniformLocation(program, "uBiasSlope"), 0.002);
 
-  
 
   gl.bindVertexArray(quadVAO);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);

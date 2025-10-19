@@ -16,7 +16,8 @@ uniform mat4 uView, uLightVP, uProjection;
 uniform vec3 uCameraPos;
 uniform vec3 uSunDir, uSunColor;
 uniform float uSunIntensity;
-
+uniform sampler2D uDepthTex; // depth iz scene (camera space)
+uniform vec2 uResolution;    // širina, visina ekrana
 uniform float uBiasBase, uBiasSlope;
 uniform float uLightSize;
 uniform float uCubeMaxMip;
@@ -46,7 +47,32 @@ float distributionGGX(vec3 N, vec3 H, float roughness){
     float denom = (NdotH2 * (a2 - 1.0) + 1.0);
     return a2 / (3.141592 * denom * denom);
 }
+float linearizeDepth(float depth, float near, float far) {
+    return (2.0 * near) / (far + near - depth * (far - near));
+}
+vec3 getSSR(vec3 fragPosV, vec3 viewDir, vec3 normalV) {
+    vec3 rayDir = normalize(reflect(-viewDir, normalV));
+    vec2 uv = vUV;
+    float stepSize = 1.0 / 64.0;  // manja vrednost = više koraka
+    float depthCurr = length(fragPosV);
+    float hitDepth = 0.0;
+    vec3 color = vec3(0.0);
 
+    for (int i = 0; i < 64; i++) {
+        uv += rayDir.xy * stepSize;
+        if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) break;
+
+        float sceneDepth = texture(uDepthTex, uv).r;
+        sceneDepth = linearizeDepth(sceneDepth, 0.1, 1000.0);
+        float t = depthCurr - sceneDepth;
+
+        if (t > 0.001 && t < 0.2) {
+            color = texture(uReflectionTex, uv).rgb;
+            break;
+        }
+    }
+    return color;
+}
 
 // === Senke (view → light) ===
 float getShadowView(vec3 Pv, vec3 Nw) {
@@ -157,7 +183,6 @@ void main(){
     vec3 envDiffuse = textureLod(uEnvMap, normalize(bentNormalWorld), uCubeMaxMip * 0.98).rgb;
     float mip = clamp(roughness * uCubeMaxMip, 0.0, uCubeMaxMip);
     vec3 envSpecular = textureLod(uEnvMap, normalize(Rw), mip).rgb;
-    
     vec2 brdf = texture(uBRDFLUT, vec2(NdotV, roughness)).rg;
 
     vec3 F_IBL = fresnelSchlickRoughness(NdotV, F0, roughness);
@@ -169,5 +194,5 @@ void main(){
     vec3 ambient = (diffuseIBL + specularIBL) * ao;
     vec3 color = directLight + ambient;
 
-    fragColor = vec4(vec3(envSpecular), 1.0);
+    fragColor = vec4(vec3(color), 1.0);
 }
