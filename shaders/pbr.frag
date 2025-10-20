@@ -1,6 +1,7 @@
 #version 300 es
 precision highp float;
-
+precision mediump float;
+precision mediump sampler2D;
 in vec2 vUV;
 out vec4 fragColor;
 
@@ -76,7 +77,7 @@ void main(){
     vec3 normalV   = normalize(texture(gNormal,  vUV).rgb);
     vec3 baseColor = texture(gAlbedo, vUV).rgb;
     vec4 m         = texture(gMaterial, vUV);
-    float rough    = clamp(m.r,0.04,1.0);
+    float rough = clamp(m.r,0.06,0.95);
     float metal    = clamp(m.g,0.0,1.0);
 
     vec4 bnAO      = texture(tBentNormalAO, vUV);
@@ -120,8 +121,7 @@ void main(){
 vec3 reflFinal = envSpec;
 if (rough < 0.8) {
     vec3 R = normalize(reflect(-V, N));
-    float rand = hash12(vUV);
-    vec3 ray = fragPosV + R * (0.05 + rand * 0.05);
+    vec3 ray = fragPosV + R * 0.005;
 
     bool hit = false;
     vec2 hitUV = vUV;
@@ -159,7 +159,7 @@ if (rough < 0.8) {
     if (hit) {
         vec3 rayA = ray - R * stepSize;
         vec3 rayB = ray;
-        for (int j = 0; j < 4; j++) {
+        for (int j = 0; j < 2; j++) {
             vec3 mid = (rayA + rayB) * 0.5;
             vec4 clip = uProjection * vec4(mid, 1.0);
             vec3 ndc = clip.xyz / clip.w;
@@ -190,12 +190,16 @@ if (rough < 0.8) {
 
         reflFinal = mix(envSpec, ssrColor, blend);
     }
+       else {
+       reflFinal = mix(envSpec, envSpec * baseColor, 0.2);
+   }
 }
 
 
 /* --- IBL composition --- */
 vec3 F_ibl   = fresnelSchlickRoughness(NdotV, F0, rough);
-vec3 diffIBL = envDiff * baseColor * (1.0 - metal);
+vec3 diffIBL = textureLod(uEnvMap, normalize(invV3 * bentN), uCubeMaxMip).rgb * baseColor * (1.0 - metal);
+
 vec3 specIBL = reflFinal * (F_ibl * brdf.x + brdf.y);
 
 vec3 color = direct + (diffIBL + specIBL) * ao;

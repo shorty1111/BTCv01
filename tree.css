@@ -119,11 +119,6 @@ body {
   background: var(--border-hover);
 }
 
-body {
-  display: flex;
-  flex-direction: row;
-}
-
 /* =========================
    GLOBAL HEADER - 0 STYLE
 ========================= */

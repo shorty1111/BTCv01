@@ -76,7 +76,7 @@ function createCubemap(gl, size, useHDR = false) {
 
   // 👉 half-float umesto 8-bit
 const internal = useHDR ? gl.RGBA16F : gl.RGBA8;
-const type = useHDR ? gl.FLOAT : gl.UNSIGNED_BYTE;
+const type = useHDR ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
 
   for (let i = 0; i < 6; i++)
     gl.texImage2D(

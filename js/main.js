@@ -88,8 +88,8 @@ function createReflectionTarget(gl, width, height) {
     null
   );
 
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
   // === DODAJ OVO ZA DEPTH ===
   window.reflectionDepthTex = gl.createTexture();
@@ -105,8 +105,8 @@ function createReflectionTarget(gl, width, height) {
     gl.UNSIGNED_INT,
     null
   );
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
@@ -280,6 +280,11 @@ function createFinalColorTarget(w, h) {
 
 
 function focusCameraOnNode(node) {
+  if (node.cachedBounds) {
+  pan = node.cachedBounds.center;
+  distTarget = node.cachedBounds.dist;
+  return;
+}
   if (!node) return;
 
   let min = [Infinity, Infinity, Infinity];
@@ -322,6 +327,7 @@ function focusCameraOnNode(node) {
   minDist = newDist * 0.2;
   maxDist = newDist * 3.0;
   distTarget = Math.min(Math.max(distTarget, minDist), maxDist);
+  node.cachedBounds = { center, dist: distTarget };
 }
 
 
@@ -1279,8 +1285,8 @@ gl.bindFramebuffer(gl.FRAMEBUFFER, brdfFBO);
 brdfTex = gl.createTexture();
 gl.bindTexture(gl.TEXTURE_2D, brdfTex);
 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG16F, LUT_SIZE, LUT_SIZE, 0, gl.RG, gl.FLOAT, null);
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, brdfTex, 0);
@@ -1339,7 +1345,7 @@ vec2 IntegrateBRDF(float NdotV, float roughness) {
     float B = 0.0;
     vec3 N = vec3(0.0,0.0,1.0);
 
-    const uint SAMPLE_COUNT = 1024u;
+    const uint SAMPLE_COUNT = 256u;
     for(uint i = 0u; i < SAMPLE_COUNT; ++i) {
         vec2 Xi = Hammersley(i, SAMPLE_COUNT);
         vec3 H = ImportanceSampleGGX(Xi, N, roughness);
@@ -2088,8 +2094,8 @@ gl.uniform2f(gl.getUniformLocation(program, "uResolution"), canvas.width, canvas
 if (!window.sceneColorTex) {
   window.sceneColorTex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, window.sceneColorTex);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 }
@@ -2285,8 +2291,8 @@ if (!window.bloomTex) {
   gl.bindTexture(gl.TEXTURE_2D, window.bloomTex);
   const black = new Uint8Array([0, 0, 0, 0]);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, black);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 }
 
 // --- tonemap ---
@@ -2689,7 +2695,7 @@ function loadTextureFromImage(gltf, bin, texIndex) {
     if (isPowerOf2(image.width) && isPowerOf2(image.height)) {
       gl.generateMipmap(gl.TEXTURE_2D);
     } else {
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     }
 
     URL.revokeObjectURL(url);
