@@ -12,9 +12,9 @@ uniform vec3 samples[128];
 uniform mat4 uProjection;
 
 const int KERNEL_SIZE = 128;
-const float radius = 3.6;
+const float radius = 1.5;
 const float bias = 0.025;
-const float power = 1.3;
+const float power = 1.0;
 
 void main() {
     vec3 fragPos = texture(gPosition, vUV).rgb;

@@ -8,7 +8,7 @@ let skyIdxCount = 0;
 
 // ===== Default sky params (bez SUN — njega prosleđuje main.js) =====
 export const DEFAULT_SKY = {
-  exposure: 1.2,
+  exposure: 0.8,
 
   // Nebo: čisto letnje nebo (Unreal Engine style)
   zenith: [0.12, 0.25, 0.6], // sky blue
@@ -70,7 +70,7 @@ function createSphere(latBands = 8, longBands = 8, radius = 10.0) {
   };
 }
 
-function createCubemap(gl, size, useHDR = true) {
+function createCubemap(gl, size, useHDR = false) {
   const tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, tex);
 

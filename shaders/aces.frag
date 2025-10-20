@@ -3,6 +3,7 @@ precision highp float;
 
 in vec2 vUV;
 uniform sampler2D uInput;
+uniform sampler2D uBloom;
 out vec4 fragColor;
 
 vec3 ACESFilm(vec3 x) {
@@ -16,17 +17,21 @@ vec3 ACESFilm(vec3 x) {
 
 void main() {
     vec3 col = texture(uInput, vUV).rgb;
+    vec3 bloom = texture(uBloom, vUV).rgb;
 
-    // --- ACES tonemap ---
+    // HDR blend pre tonemap
+    col += bloom * 0.4;
+
+    // ACES tonemap
     col = ACESFilm(col);
 
-    // --- EVE-like filmic tweaks ---
-    col = pow(col, vec3(1.0));                 // zgnječi midtone, oštriji kontrast
-    col *= vec3(1.25, 1.2, 1.15);               // lagano topli bias (kao EVE)
-    float lift = 0.05;                          // minimalni “fog” u crnim
-    col = mix(vec3(lift), col, 0.880);            
-    col = mix(col, ACESFilm(col * 1.2), 0.65);  // punch saturacija + rolloff
-    col = pow(col, vec3(1.0 / 2.2));            // gamma
+    // EVE-like filmic tweaks
+    col = pow(col, vec3(1.0));
+    col *= vec3(1.25, 1.2, 1.15);
+    float lift = 0.05;
+    col = mix(vec3(lift), col, 0.880);
+    col = mix(col, ACESFilm(col * 1.2), 0.65);
+    col = pow(col, vec3(1.0 / 2.2));
 
     fragColor = vec4(col, 1.0);
 }

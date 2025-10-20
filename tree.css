@@ -1,5 +1,4 @@
 :root {
-  /* Deep Ocean Theme - Copy from Lovable */
   --background: hsl(220, 15%, 8%);
   --background-secondary: hsl(220, 15%, 12%);
   --background-tertiary: hsl(220, 12%, 16%);
@@ -126,7 +125,7 @@ body {
 }
 
 /* =========================
-   GLOBAL HEADER - LOVABLE STYLE
+   GLOBAL HEADER - 0 STYLE
 ========================= */
 .global-header {
   position: fixed;
@@ -167,10 +166,11 @@ body {
 }
 
 /* =========================
-   CANVAS - LOVABLE STYLE
+   CANVAS - 0 STYLE
 ========================= */
 canvas,
 #glCanvas {
+  
   display: block;
   position: absolute;
   background: var(--gradient-canvas);
@@ -178,7 +178,7 @@ canvas,
 }
 
 /* =========================
-   CAMERA CONTROLS - LOVABLE STYLE
+   CAMERA CONTROLS - 0 STYLE
 ========================= */
 #camera-controls {
   position: absolute;
@@ -305,7 +305,7 @@ canvas,
 }
 
 /* =========================
-   LENGTH LABEL - LOVABLE STYLE
+   LENGTH LABEL - 0 STYLE
 ========================= */
 #lengthLabel {
   position: absolute;
@@ -324,7 +324,7 @@ canvas,
 }
 
 /* =========================
-   LOADING SCREEN - LOVABLE STYLE
+   LOADING SCREEN - 0 STYLE
 ========================= */
 #loading-screen {
   position: fixed;
@@ -437,7 +437,7 @@ canvas,
 }
 
 /* =========================
-   SIDEBAR - LOVABLE STYLE
+   SIDEBAR - 0 STYLE
 ========================= */
 .tree {
   position: fixed;
@@ -457,7 +457,7 @@ canvas,
 }
 
 /* =========================
-   VARIANT GROUPS - LOVABLE STYLE
+   VARIANT GROUPS - 0 STYLE
 ========================= */
 .variant-group {
   margin: 0;
@@ -529,7 +529,7 @@ canvas,
 }
 
 /* =========================
-   VARIANT ITEMS - LOVABLE STYLE
+   VARIANT ITEMS - 0 STYLE
 ========================= */
 .variant-items {
   max-height: 0;
@@ -548,7 +548,7 @@ canvas,
 }
 
 /* =========================
-   VARIANT CARD - LOVABLE STYLE
+   VARIANT CARD - 0 STYLE
 ========================= */
 .variant-item {
   display: flex;
@@ -687,7 +687,7 @@ canvas,
 }
 
 /* =========================
-   SIDEBAR TOTAL - LOVABLE STYLE
+   SIDEBAR TOTAL - 0 STYLE
 ========================= */
 .sidebar-total {
   position: sticky;
@@ -717,7 +717,7 @@ canvas,
 }
 
 /* =========================
-   INFO PANEL - LOVABLE STYLE
+   INFO PANEL - 0 STYLE
 ========================= */
 #info-panel {
   position: fixed;
@@ -813,7 +813,7 @@ canvas,
 }
 
 /* =========================
-   TABLES - LOVABLE STYLE
+   TABLES - 0 STYLE
 ========================= */
 #partsTable,
 #boat-info table {
@@ -862,7 +862,7 @@ canvas,
 }
 
 /* =========================
-   FPS METER - LOVABLE STYLE
+   FPS METER - 0 STYLE
 ========================= */
 #fps-meter {
   position: fixed;
@@ -912,6 +912,7 @@ canvas,
 
   canvas,
   #glCanvas {
+    
     left: 320px;
     width: calc(100vw - 320px);
   }

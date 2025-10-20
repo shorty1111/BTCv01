@@ -28,7 +28,7 @@ let finalColorTex = null;
 
 // CENTRALNO SUNCE
 const SUN = {
-  dir: v3.norm([-0.8,0.3, 0.3]), // položaj
+  dir: v3.norm([-0.8,1.3, 0.3]), // položaj
   color: [1.0, 0.92, 0.76],
   intensity: 0.0, // jačina
 };
@@ -529,7 +529,9 @@ function resizeCanvas() {
   const headerH = document.querySelector(".global-header").offsetHeight || 0;
 
   const cssW = window.innerWidth - sidebarW;
-  const cssH = window.innerHeight - headerH; // ⬅️ oduzimamo header
+  const footerH = 77;
+const cssH = window.innerHeight - headerH - footerH;
+  
 
   const aspect = cssW / cssH;
 
@@ -675,12 +677,12 @@ function createGBuffer() {
   gl.texImage2D(
     gl.TEXTURE_2D,
     0,
-    gl.RGBA16F,
+     gl.RGBA8,
     canvas.width,
     canvas.height,
     0,
     gl.RGBA,
-    gl.FLOAT,
+    gl.UNSIGNED_BYTE,
     null
   );
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
@@ -2277,16 +2279,34 @@ gl.depthMask(true);
 gl.depthFunc(gl.LESS);
 gl.cullFace(gl.BACK);
 
-  
+// Ako bloomTex ne postoji, napravi praznu teksturu da se ne ruši
+if (!window.bloomTex) {
+  window.bloomTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, window.bloomTex);
+  const black = new Uint8Array([0, 0, 0, 0]);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, black);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+}
+
 // --- tonemap ---
 gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 gl.viewport(0, 0, canvas.width, canvas.height);
 gl.useProgram(acesProgram);
+
+// sad, kad je program aktivan, postavi uniform-e
 gl.activeTexture(gl.TEXTURE0);
 gl.bindTexture(gl.TEXTURE_2D, finalColorTex);
 gl.uniform1i(gl.getUniformLocation(acesProgram, "uInput"), 0);
+
+gl.activeTexture(gl.TEXTURE1);
+gl.bindTexture(gl.TEXTURE_2D, finalColorTex);
+gl.uniform1i(gl.getUniformLocation(acesProgram, "uBloom"), 1);
+
+// nacrtaj
 gl.bindVertexArray(quadVAO);
 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
 
 // ✅ tek sada resetuj GL stanje
 gl.disable(gl.BLEND);

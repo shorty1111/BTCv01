@@ -116,8 +116,6 @@ void main(){
     vec3 envSpec = textureLod(uEnvMap, normalize(Rw), mip).rgb;
     vec2 brdf    = texture(uBRDFLUT, vec2(NdotV,rough)).rg;
 
-
-/* ---------- SSR: view-space linear march ---------- */
 /* ---------- SSR: view-space linear march (improved) ---------- */
 vec3 reflFinal = envSpec;
 if (rough < 0.8) {
