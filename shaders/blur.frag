@@ -8,45 +8,40 @@ uniform sampler2D ssaoInput;
 uniform sampler2D gPosition;
 uniform sampler2D gNormal;
 
-const int blurSize = 1; // 2 = 5x5 blur
-const float depthThreshold = 0.2;
-const float normalThreshold = 0.5;
+const int   blurSize = 2;
+const float depthSigma  = 6.0;
+const float normalSigma = 32.0;
 
 void main() {
     vec2 texelSize = 1.0 / vec2(textureSize(ssaoInput, 0));
 
     float centerDepth = texture(gPosition, vUV).z;
-    vec3 centerNormal = normalize(texture(gNormal, vUV).rgb);
-    vec4 centerColor = texture(ssaoInput, vUV);
+    vec3  centerNormal = normalize(texture(gNormal, vUV).rgb);
+    vec4  centerAO = texture(ssaoInput, vUV);
 
-    vec4 sum = vec4(0.0);
+    vec4  sum = vec4(0.0);
     float weightSum = 0.0;
 
     for (int x = -blurSize; x <= blurSize; ++x) {
         for (int y = -blurSize; y <= blurSize; ++y) {
             vec2 offset = vec2(float(x), float(y)) * texelSize;
-            vec2 sampleUV = vUV + offset;
+            vec2 uv = vUV + offset;
 
-            float sampleDepth = texture(gPosition, sampleUV).z;
-            vec3 sampleNormal = normalize(texture(gNormal, sampleUV).rgb);
-            vec4 sampleAO = texture(ssaoInput, sampleUV);
+            float sampleDepth = texture(gPosition, uv).z;
+            vec3  sampleNormal = normalize(texture(gNormal, uv).rgb);
+            vec4  sampleAO = texture(ssaoInput, uv);
 
-            float depthDiff = abs(centerDepth - sampleDepth);
+            float depthDiff  = abs(centerDepth - sampleDepth);
             float normalDiff = 1.0 - dot(centerNormal, sampleNormal);
 
-            // Uslov da ne blendujemo preko ivice
-            if (depthDiff < depthThreshold && normalDiff < normalThreshold) {
-                float weight = 1.0 - depthDiff; // možeš i exp(-depthDiff * scale)
-                sum += sampleAO * weight;
-                weightSum += weight;
-            }
+            float wDepth  = exp(-pow(depthDiff * depthSigma, 2.0));
+            float wNormal = exp(-pow(normalDiff * normalSigma, 2.0));
+            float weight = wDepth * wNormal;
+
+            sum += sampleAO * weight;
+            weightSum += weight;
         }
     }
 
-    // Ako nema sličnih suseda, fallback na original
-    if (weightSum > 0.0) {
-        fragColor = sum / weightSum;
-    } else {
-        fragColor = centerColor;
-    }
+    fragColor = (weightSum > 0.0) ? (sum / weightSum) : centerAO;
 }

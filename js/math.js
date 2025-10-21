@@ -175,7 +175,9 @@ export const v3 = {
     const l = Math.hypot(...v);
     return [v[0] / l, v[1] / l, v[2] / l];
   },
+  scale: (v, s) => [v[0] * s, v[1] * s, v[2] * s], // ✅ dodaj ovu
 };
+
 export const mat4 = {
   invert: (out, a) => {
     const a00 = a[0],
