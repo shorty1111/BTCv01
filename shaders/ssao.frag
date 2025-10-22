@@ -16,9 +16,9 @@ uniform float uFrame;       // za frame jitter
 uniform vec2  uNoiseScale;  // postavlja se iz JS: (canvas.width / SSAO_NOISE_SIZE, canvas.height / SSAO_NOISE_SIZE)
 
 const int   KERNEL_SIZE = 128;
-const float radius      = 3.5;
+const float radius      = 2.5;
 const float bias        = 0.025;
-const float powerAO     = 1.85;
+const float powerAO     = 1.8;
 
 /* ---------- helper ---------- */
 float rand(vec2 co) {

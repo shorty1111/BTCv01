@@ -33,6 +33,7 @@ const SUN = {
   intensity: 0.0, // jačina
 };
 
+
 updateSun();
 
 function updateSun() {
@@ -63,6 +64,38 @@ function updateSun() {
     SUN.intensity *= 0.3 * glow;
   }
 }
+
+async function setWeather(presetName) {
+  const sunHeights = {
+    day: 1.0,
+    sunset: 0.15,
+  };
+
+  const newY = sunHeights[presetName];
+  if (newY === undefined) return;
+
+  // 1️⃣ Promeni samo Y komponentu Sunca
+  SUN.dir = v3.norm([-0.8, newY, 0.3]);
+
+  // 2️⃣ Ponovo izračunaj boju i intenzitet iz visine
+  updateSun();
+
+  // 3️⃣ Kratka pauza (GPU sync)
+  await new Promise((r) => setTimeout(r, 30));
+
+  // 4️⃣ Re-bake environment mape sa novim vrednostima
+  envTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
+    ...DEFAULT_SKY,
+    sunColor: SUN.color,
+    sunIntensity: SUN.intensity,
+    useTonemap: false,
+    hideSun: true,
+  });
+
+  cubeMaxMip = Math.floor(Math.log2(envSize));
+  render();
+}
+
 
 function smoothstep(edge0, edge1, x) {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
@@ -111,7 +144,7 @@ let modelRoughnesses = [];
 let lastFrameTime = 0;
 
 const KERNEL_SIZE = 128;
-const SSAO_NOISE_SIZE = 1.5;
+const SSAO_NOISE_SIZE = 50;
 const thumbnails = {};
 const cachedVariants = {}; // url -> ArrayBuffer
 const preparedVariants = {}; // url -> [ { vao, count, type, baseColor, metallic, roughness, trisWorld }... ]
@@ -276,11 +309,6 @@ function createFinalColorTarget(w, h) {
 
 
 function focusCameraOnNode(node) {
-  if (node.cachedBounds) {
-  pan = node.cachedBounds.center;
-  distTarget = node.cachedBounds.dist;
-  return;
-}
   if (!node) return;
 
   let min = [Infinity, Infinity, Infinity];
@@ -323,7 +351,6 @@ function focusCameraOnNode(node) {
   minDist = newDist * 0.2;
   maxDist = newDist * 3.0;
   distTarget = Math.min(Math.max(distTarget, minDist), maxDist);
-  node.cachedBounds = { center, dist: distTarget };
 }
 
 
@@ -440,8 +467,8 @@ const loadingScr = document.getElementById("loading-screen");
 document.getElementById("toggleDims").addEventListener("click", () => {
   showDimensions = !showDimensions;
   document.getElementById("toggleDims").innerText = showDimensions
-    ? "Show Dims"
-    : "Hide Dims";
+    ? "Hide Dims"
+    : "Show Dims";
 
   const lbl = document.getElementById("lengthLabel");
   if (lbl) lbl.style.display = showDimensions ? "block" : "none";
@@ -489,7 +516,7 @@ render();             // sad tek nacrtaj prvi frame
 });
 
 const canvas = document.getElementById("glCanvas");
-const gl = canvas.getContext("webgl2", { alpha: true, antialias: true });
+const gl = canvas.getContext("webgl2", { alpha: true, antialias: true,preserveDrawingBuffer: false });
 
 if (!gl) alert("WebGL2 nije podržan u ovom pregledaču.");
 gl.getExtension("EXT_color_buffer_float");
@@ -536,6 +563,36 @@ let adjustCooldown = 0;
 function resizeCanvas() {
   const sidebarW = document.getElementById("sidebar").offsetWidth;
   const headerH = document.querySelector(".global-header").offsetHeight || 0;
+  const toggleBtn = document.querySelector(".dropdown-toggle");
+  const dropdown = document.querySelector(".dropdown-menu");
+  document.querySelectorAll("#camera-controls button").forEach(btn => {
+  btn.addEventListener("click", () => setWeather(btn.dataset.weather));
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+  const exportBtn = document.getElementById("exportPDF");
+  if (exportBtn) {
+    exportBtn.addEventListener("click", () => {
+      exportPDF(); // poziva funkciju za pravljenje PDF-a
+    });
+  }
+});
+toggleBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  dropdown.classList.toggle("hidden");
+});
+
+document.addEventListener("click", () => dropdown.classList.add("hidden"));
+
+document.getElementById("exportPDF").addEventListener("click", () => {
+  console.log("Export PDF clicked");
+  dropdown.classList.add("hidden");
+});
+
+document.getElementById("shareConfig").addEventListener("click", () => {
+  console.log("Share Configuration clicked");
+  dropdown.classList.add("hidden");
+});
 
   const cssW = window.innerWidth - sidebarW;
   const footerH = 77;
@@ -553,7 +610,7 @@ function resizeCanvas() {
   let targetW = Math.min(cssW, maxRenderW);
   let targetH = Math.round(targetW / aspect);
 
-  const dpr = Math.min(window.devicePixelRatio || 1,1.4);
+  const dpr = Math.min(window.devicePixelRatio || 1,3);
   const realW = Math.round(targetW * ssaa * dpr);
   const realH = Math.round(targetH * ssaa * dpr);
 
@@ -1603,15 +1660,19 @@ function buildVariantSidebar() {
         const footer = document.createElement("div");
         footer.className = "variant-footer";
 
-        const rawPrice = PART_PRICES?.[variant.name] || 0;
-        let priceText = "";
-        if (rawPrice === 0) {
-          priceText = "Uključeno";
-        } else if (typeof rawPrice === "number") {
-          priceText = `+${rawPrice} €`;
-        } else {
-          priceText = rawPrice;
-        }
+      // === izračunaj tačnu cenu iz config.js ===
+      let rawPrice = 0;
+      if (variant.src && variant.src.length) {
+        // npr. "variants/BT_Base_03_B.glb" -> "BT_Base_03_B"
+        const key = variant.src.split("/").pop().replace(".glb", "");
+        rawPrice = PART_PRICES[key] || 0;
+      } else {
+        // baza (A varijanta)
+        rawPrice = PART_PRICES[partKey] || 0;
+      }
+
+      let priceText = rawPrice === 0 ? "Included" : `+${rawPrice} €`;
+
 
         footer.innerHTML = `<span class="price">${priceText}</span>`;
         itemEl.appendChild(footer);
@@ -1664,40 +1725,80 @@ function buildPartsTable() {
 
       const tr = document.createElement("tr");
       tr.dataset.part = partName;
+      // uzmi ime iz config.js
+      const displayVariant = group[partName].models?.[0]?.name || partName;
       tr.innerHTML = `
-        <td>${groupName}</td>
-        <td>${defaultVariant}</td>
-        <td>${price} €</td>
+        <td>${groupName}</td>                <!-- Deo -->
+        <td>${displayVariant}</td>           <!-- Opis / Varijanta -->
+        <td>${price} €</td>                  <!-- Cena -->
       `;
-      tbody.appendChild(tr);
-    }
-  }
-}
+            tbody.appendChild(tr);
+          }
+        }
+      }
 
 function updatePartsTable(partName, newVariant) {
   currentParts[partName] = newVariant;
 
-  const baseVariant = newVariant.split(" (")[0];
-  const price = PART_PRICES[baseVariant] || 0;
+  // Pronađi deo i varijantu u configu
+  let groupName = null;
+  let price = 0;
 
-  const row = document.querySelector(`#partsTable tr[data-part="${partName}"]`);
-  if (row) {
-    row.innerHTML = `
-      <td>${partName}</td>
-      <td>${newVariant}</td>
-      <td>${price === 0 ? "Uključeno" : `+${price} €`}</td>
-    `;
+  for (const [gName, parts] of Object.entries(VARIANT_GROUPS)) {
+    if (!parts[partName]) continue;
+    groupName = gName;
+    const models = parts[partName].models || [];
+
+    for (const model of models) {
+      // Proveravamo tačno ime varijante iz UI
+      if (newVariant.startsWith(model.name)) {
+        if (model.src) {
+          // npr. "variants/BT_Base_03_B.glb" → "BT_Base_03_B"
+          const key = model.src.split("/").pop().replace(".glb", "");
+          price = PART_PRICES[key] || 0;
+        } else {
+          // baza (A varijanta)
+          price = PART_PRICES[partName] || 0;
+        }
+        break;
+      }
+    }
   }
 
-  // 👇 DODAJ OVO
+  // Ažuriraj samo varijantu i cenu u tabeli
+  const row = document.querySelector(`#partsTable tr[data-part="${partName}"]`);
+  if (!row) return;
+  const cells = row.querySelectorAll("td");
+  if (cells.length < 3) return;
+  // [0] = Deo (sekcija) — ne diraj
+  cells[1].textContent = newVariant; // Opis / varijanta
+  cells[2].textContent = price === 0 ? "Included" : `+${price} €`; // Cena
   updateTotalPrice();
 }
+
+
 function updateTotalPrice() {
   let total = BASE_PRICE;
 
   for (const partKey in currentParts) {
-    const baseVariant = currentParts[partKey].split(" (")[0];
-    total += PART_PRICES[baseVariant] || 0;
+    const selectedName = currentParts[partKey];
+
+    // pronađi varijantu u configu da dobiješ src -> ključ
+    for (const [groupName, parts] of Object.entries(VARIANT_GROUPS)) {
+      const part = parts[partKey];
+      if (!part) continue;
+
+      for (const model of part.models) {
+        if (selectedName.startsWith(model.name)) {
+          if (model.src) {
+            const key = model.src.split("/").pop().replace(".glb", "");
+            total += PART_PRICES[key] || 0;
+          } else {
+            total += PART_PRICES[partKey] || 0;
+          }
+        }
+      }
+    }
   }
 
   // Update tfoot u info panelu
@@ -1709,18 +1810,157 @@ function updateTotalPrice() {
     tfoot.appendChild(totalRow);
   }
   totalRow.innerHTML = `
-    <td colspan="2" style="text-align:right; font-weight:700;">Ukupno:</td>
+    <td colspan="2" style="text-align:right; font-weight:700;">Total Price:</td>
     <td style="font-size:16px; font-weight:700; color:#3aa4ff;">
       ${total.toLocaleString("de-DE")} €
     </td>
   `;
 
-  // 👇 NOVO — update sidebar total
   const sidebarPrice = document.querySelector(".sidebar-total .price");
   if (sidebarPrice) {
     sidebarPrice.textContent = `${total.toLocaleString("de-DE")} €`;
   }
 }
+
+async function exportPDF() {
+  console.log("Export PDF clicked");
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF("p", "mm", "a4");
+  const margin = 15;
+  let y = margin;
+
+  const boatName = BOAT_INFO.Model || "Luxen Boat";
+  const dateStr = new Date().toLocaleDateString("en-GB");
+
+  // === LOAD LOGO ===
+  const logoImg = new Image();
+  logoImg.src = "assets/luxen_logo.png";
+  await new Promise((res) => (logoImg.onload = res));
+
+  const logoAspect = logoImg.width / logoImg.height;
+  const logoHeight = 10;
+  const logoWidth = logoHeight * logoAspect;
+
+  // === HEADER ===
+  pdf.setFillColor(10, 20, 30);
+  pdf.rect(0, 0, 210, 25, "F");
+
+  // logo left
+  pdf.addImage(logoImg, "PNG", 10, 7, logoWidth, logoHeight);
+
+  // date right
+  pdf.setTextColor(255);
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(11);
+  pdf.text(dateStr, 200, 17, { align: "right" });
+
+  y = 35;
+
+  // === MODEL TITLE ===
+  pdf.setTextColor(0);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(22);
+  pdf.text(boatName, margin, y);
+  y += 10;
+
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(12);
+  pdf.text("Model specifications and configuration overview", margin, y);
+  y += 8;
+
+  pdf.setDrawColor(58, 164, 255);
+  pdf.setLineWidth(0.8);
+  pdf.line(margin, y, 210 - margin, y);
+  y += 10;
+
+  // === RENDER IMAGE ===
+  const canvas = document.querySelector("#glCanvas");
+  const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true });
+  render(); // ensure last frame
+  const imageData = canvas.toDataURL("image/png");
+
+  const imgAspect = canvas.width / canvas.height;
+  const renderWidth = 180;
+  const renderHeight = renderWidth / imgAspect;
+  pdf.addImage(imageData, "PNG", margin, y, renderWidth, renderHeight);
+
+  y += renderHeight + 10;
+  canvas.getContext("webgl2", { preserveDrawingBuffer: false });
+
+  // === SPECIFICATIONS ===
+  pdf.setFontSize(14);
+  pdf.setFont("helvetica", "bold");
+  pdf.text("TECHNICAL SPECIFICATIONS", margin, y);
+  y += 8;
+
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(11);
+  for (const [key, val] of Object.entries(BOAT_INFO)) {
+    pdf.text(`${key}:`, margin, y);
+    pdf.text(String(val), margin + 50, y);
+    y += 6;
+    if (y > 260) {
+      pdf.addPage();
+      y = margin;
+    }
+  }
+
+  y += 8;
+
+  // === PARTS LIST ===
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(14);
+  pdf.text("PARTS LIST", margin, y);
+  y += 7;
+
+  const rows = document.querySelectorAll("#partsTable tbody tr");
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(10);
+
+  rows.forEach((tr, i) => {
+    const cells = tr.querySelectorAll("td");
+    if (cells.length < 3) return;
+
+    const part = cells[0].textContent.trim();
+    const desc = cells[1].textContent.trim();
+    const price = cells[2].textContent.trim();
+
+    if (i % 2 === 0) {
+      pdf.setFillColor(245, 248, 255);
+      pdf.rect(margin, y - 4.5, 180, 6.5, "F");
+    }
+
+    pdf.text(part, margin + 2, y);
+    pdf.text(desc, margin + 70, y);
+    pdf.text(price, margin + 150, y);
+    y += 6;
+
+    if (y > 260) {
+      pdf.addPage();
+      y = margin;
+    }
+  });
+
+  y += 10;
+
+  // === TOTAL ===
+  const total = document.querySelector(".sidebar-total .price")?.textContent || "";
+  pdf.setFont("helvetica", "bold");
+  pdf.setTextColor(30, 144, 255);
+  pdf.setFontSize(13);
+  pdf.text(`TOTAL PRICE: ${total}`, margin, y);
+
+  // === FOOTER ===
+  pdf.setFillColor(10, 20, 30);
+  pdf.rect(0, 285, 210, 12, "F");
+  pdf.setTextColor(255);
+  pdf.setFontSize(9);
+  pdf.text("Generated by Luxen Engine © 2025", 105, 292, { align: "center" });
+
+  pdf.save(`${boatName.replace(/\s+/g, "_")}_Report.pdf`);
+}
+
 
 function highlightTreeSelection(id) {
   document
@@ -3079,7 +3319,7 @@ async function generateThumbnailForVariant(partName, variant) {
     (bounds.min[1] + bounds.max[1]) / 2,
     (bounds.min[2] + bounds.max[2]) / 2,
   ];
-  const dist = size * 1.8;
+  const dist = size * 1.4;
 
   const proj = persp(45, 1, 0.1, dist * 4);
   const eye = [
@@ -3101,7 +3341,7 @@ async function generateThumbnailForVariant(partName, variant) {
   gl2.uniformMatrix4fv(gl2.getUniformLocation(prog, "uModel"), false, model);
 
   gl2.viewport(0, 0, 256, 256);
-  gl2.clearColor(0.15, 0.15, 0.18, 1);
+  gl2.clearColor(0.85, 0.9, 0.98, 0.0);
   gl2.clear(gl2.COLOR_BUFFER_BIT | gl2.DEPTH_BUFFER_BIT);
   gl2.enable(gl2.DEPTH_TEST);
 

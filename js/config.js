@@ -16,12 +16,12 @@ export const VARIANT_GROUPS = {
       mainMat: "M_Leather_A", // samo jedan slot u Blenderu
       models: [
         {
-          name: "BT_Base_03_A",
+          name: "Standard Seats",
           src: null, // vrati original
           colors: [],
         },
         {
-          name: "BT_Base_03_B",
+          name: "Comfort Edition",
           src: "variants/BT_Base_03_B.glb",
           colors: [
             {
@@ -39,10 +39,15 @@ export const VARIANT_GROUPS = {
               type: "texture",
               texture: "leather_brown.jpg",
             },
+            {
+              name: "Leather Brown",
+              type: "texture",
+              texture: "leather_brown.jpg",
+            },
           ],
         },
         {
-          name: "BT_Base_03_C",
+          name: "Luxury Leather",
           src: "variants/BT_Base_03_C.glb",
           colors: [
             {
@@ -70,12 +75,12 @@ export const VARIANT_GROUPS = {
       mainMat: "M_Base_Color_Graphics_A", // ime materijala koji se boji
       models: [
         {
-          name: "BT_Base_00_A",
+          name: "Classic Hull",
           src: null, // vrati original
           colors: [],
         },
         {
-          name: "BT_Base_00_B",
+          name: "Sport Hull",
           src: "variants/BT_Base_00_B.glb",
           colors: [
             { name: "White", type: "color", color: [1, 1, 1] },
@@ -91,12 +96,12 @@ export const VARIANT_GROUPS = {
       mainMat: "M_Base_A", // ime materijala koji se boji
       models: [
         {
-          name: "BT_Base_Center_Console_A",
+          name: "Standard Console",
           src: null, // vrati original
           colors: [],
         },
         {
-          name: "BT_Base_Center_Console_B",
+          name: "Premium Console",
           src: "variants/BT_Base_Center_Console_B.glb",
           colors: [
             { name: "White", type: "color", color: [1, 1, 1] },
@@ -105,7 +110,7 @@ export const VARIANT_GROUPS = {
           ],
         },
         {
-          name: "BT_Base_Center_Console_C",
+          name: "Carbon Console",
           src: "variants/BT_Base_Center_Console_C.glb",
           colors: [
             { name: "White", type: "color", color: [1, 1, 1] },
@@ -118,12 +123,12 @@ export const VARIANT_GROUPS = {
   },
 };
 export const BOAT_INFO = {
-  Model: "BT-300",
-  Dužina: "6.5 m",
-  Širina: "2.4 m",
-  Težina: "1200 kg",
-  Kapacitet: "6 osoba",
-  Motor: "Yamaha 150 HP",
-  "Brzina max": "70 km/h",
-  Materijal: "Fiberglas",
+  Model: "TIARA 56",
+  Length: "6.5 m",
+  Width: "2.4 m",
+  Weight: "1200 kg",
+  Capacity: "6 osoba",
+  Engine: "Yamaha 150 HP",
+  "Max Speed": "70 km/h",
+  Material: "Fiberglas",
 };

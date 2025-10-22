@@ -20,7 +20,7 @@ void main() {
     vec3 bloom = texture(uBloom, vUV).rgb;
 
     // HDR blend pre tonemap
-    col += bloom * 0.4;
+    col += bloom * 0.6;
 
     // ACES tonemap
     col = ACESFilm(col);
