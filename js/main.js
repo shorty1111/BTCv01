@@ -33,7 +33,6 @@ const SUN = {
   intensity: 0.0, // jačina
 };
 
-
 updateSun();
 
 function updateSun() {
@@ -64,38 +63,36 @@ function updateSun() {
     SUN.intensity *= 0.3 * glow;
   }
 }
-
 async function setWeather(presetName) {
-  const sunHeights = {
-    day: 1.0,
-    sunset: 0.15,
+  const presets = {
+    day:  { y: 1.0 },
+    sunset: { y: 0.15 },
   };
 
-  const newY = sunHeights[presetName];
-  if (newY === undefined) return;
+  const preset = presets[presetName];
+  if (!preset) return;
 
-  // 1️⃣ Promeni samo Y komponentu Sunca
-  SUN.dir = v3.norm([-0.8, newY, 0.3]);
+  // 1️⃣ Promeni samo Y komponentu sunca
+  SUN.dir = v3.norm([-0.8, preset.y, 0.3]);
 
-  // 2️⃣ Ponovo izračunaj boju i intenzitet iz visine
+  // 2️⃣ Ažuriraj boju i jačinu
   updateSun();
 
-  // 3️⃣ Kratka pauza (GPU sync)
-  await new Promise((r) => setTimeout(r, 30));
-
-  // 4️⃣ Re-bake environment mape sa novim vrednostima
-  envTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
-    ...DEFAULT_SKY,
-    sunColor: SUN.color,
-    sunIntensity: SUN.intensity,
-    useTonemap: false,
-    hideSun: true,
+  // 3️⃣ Re-bake envMap SAMO jednom, asinhrono (ne blokira rendering)
+  requestIdleCallback(() => {
+    envTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
+      ...DEFAULT_SKY,
+      sunColor: SUN.color,
+      sunIntensity: SUN.intensity,
+      useTonemap: false,
+      hideSun: true,
+    });
+    cubeMaxMip = Math.floor(Math.log2(envSize));
   });
 
-  cubeMaxMip = Math.floor(Math.log2(envSize));
+  // 4️⃣ Odmah osveži nebo (vizuelna promena bez čekanja bake-a)
   render();
 }
-
 
 function smoothstep(edge0, edge1, x) {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
@@ -144,7 +141,7 @@ let modelRoughnesses = [];
 let lastFrameTime = 0;
 
 const KERNEL_SIZE = 128;
-const SSAO_NOISE_SIZE = 50;
+const SSAO_NOISE_SIZE = 30;
 const thumbnails = {};
 const cachedVariants = {}; // url -> ArrayBuffer
 const preparedVariants = {}; // url -> [ { vao, count, type, baseColor, metallic, roughness, trisWorld }... ]
@@ -309,6 +306,11 @@ function createFinalColorTarget(w, h) {
 
 
 function focusCameraOnNode(node) {
+  if (node.cachedBounds) {
+  pan = node.cachedBounds.center;
+  distTarget = node.cachedBounds.dist;
+  return;
+}
   if (!node) return;
 
   let min = [Infinity, Infinity, Infinity];
@@ -351,6 +353,7 @@ function focusCameraOnNode(node) {
   minDist = newDist * 0.2;
   maxDist = newDist * 3.0;
   distTarget = Math.min(Math.max(distTarget, minDist), maxDist);
+  node.cachedBounds = { center, dist: distTarget };
 }
 
 
@@ -414,31 +417,40 @@ function createPreviewProgram(gl2) {
   return prog;
 }
 
-        document
-        .querySelectorAll("#camera-controls button[data-view]")
-        .forEach((btn) => {
-          btn.addEventListener("click", () => {
-            const viewName = btn.getAttribute("data-view");
-            currentView = viewName;
+let lastPerspDist = 5;
 
-            if (viewName === "iso") {
+document
+  .querySelectorAll("#camera-controls button[data-view]")
+  .forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const viewName = btn.getAttribute("data-view");
+      currentView = viewName;
+
+      if (viewName === "iso") {
         useOrtho = false;
 
-        // 👇 reset orbit kamere u defaultni ugao
-        rx = Math.PI / 10;   // lagano odozgo
-        ry = Math.PI / 6;    // blago u stranu
-        distTarget = (window.sceneBoundingRadius || 5) * 1.5;
+        // vrati staru persp distancu
+        distTarget = lastPerspDist;
         dist = distTarget;
-        pan = window.sceneBoundingCenter || [0, 0, 0];
+
+        // lagani blend u ugao
+        const targetRx = Math.PI / 10;
+        const targetRy = Math.PI / 6;
+        rxTarget += (targetRx - rxTarget) * 0.4;
+        ryTarget += (targetRy - ryTarget) * 0.4;
 
       } else {
+        // prelazak u ortho — zapamti trenutnu persp distancu
+        lastPerspDist = dist;
         useOrtho = true;
       }
+
       pan = window.sceneBoundingCenter || [0, 0, 0];
       updateView();
       render();
     });
   });
+
 
 async function loadDefaultModel(url) {
   showLoading();
@@ -467,8 +479,8 @@ const loadingScr = document.getElementById("loading-screen");
 document.getElementById("toggleDims").addEventListener("click", () => {
   showDimensions = !showDimensions;
   document.getElementById("toggleDims").innerText = showDimensions
-    ? "Hide Dims"
-    : "Show Dims";
+    ? "Show Dims"
+    : "Hide Dims";
 
   const lbl = document.getElementById("lengthLabel");
   if (lbl) lbl.style.display = showDimensions ? "block" : "none";
@@ -516,7 +528,7 @@ render();             // sad tek nacrtaj prvi frame
 });
 
 const canvas = document.getElementById("glCanvas");
-const gl = canvas.getContext("webgl2", { alpha: true, antialias: true,preserveDrawingBuffer: false });
+const gl = canvas.getContext("webgl2", { alpha: true, antialias: true });
 
 if (!gl) alert("WebGL2 nije podržan u ovom pregledaču.");
 gl.getExtension("EXT_color_buffer_float");
@@ -555,44 +567,14 @@ function createDepthTexture(w, h) {
 }
 let ssaa = 1.0; // start (dinamički će se menjati)
 let targetSSAA = 1.0;
-let targetFPS = 20;
+let targetFPS = 24;
 let ssaaMin = 1.0;
-let ssaaMax = 1.6;
+let ssaaMax = 1.4;
 let adjustCooldown = 0;
 
 function resizeCanvas() {
   const sidebarW = document.getElementById("sidebar").offsetWidth;
   const headerH = document.querySelector(".global-header").offsetHeight || 0;
-  const toggleBtn = document.querySelector(".dropdown-toggle");
-  const dropdown = document.querySelector(".dropdown-menu");
-  document.querySelectorAll("#camera-controls button").forEach(btn => {
-  btn.addEventListener("click", () => setWeather(btn.dataset.weather));
-});
-
-document.addEventListener("DOMContentLoaded", () => {
-  const exportBtn = document.getElementById("exportPDF");
-  if (exportBtn) {
-    exportBtn.addEventListener("click", () => {
-      exportPDF(); // poziva funkciju za pravljenje PDF-a
-    });
-  }
-});
-toggleBtn.addEventListener("click", (e) => {
-  e.stopPropagation();
-  dropdown.classList.toggle("hidden");
-});
-
-document.addEventListener("click", () => dropdown.classList.add("hidden"));
-
-document.getElementById("exportPDF").addEventListener("click", () => {
-  console.log("Export PDF clicked");
-  dropdown.classList.add("hidden");
-});
-
-document.getElementById("shareConfig").addEventListener("click", () => {
-  console.log("Share Configuration clicked");
-  dropdown.classList.add("hidden");
-});
 
   const cssW = window.innerWidth - sidebarW;
   const footerH = 77;
@@ -610,7 +592,7 @@ document.getElementById("shareConfig").addEventListener("click", () => {
   let targetW = Math.min(cssW, maxRenderW);
   let targetH = Math.round(targetW / aspect);
 
-  const dpr = Math.min(window.devicePixelRatio || 1,3);
+  const dpr = Math.min(window.devicePixelRatio || 1,1.4);
   const realW = Math.round(targetW * ssaa * dpr);
   const realH = Math.round(targetH * ssaa * dpr);
 
@@ -643,6 +625,196 @@ document.getElementById("shareConfig").addEventListener("click", () => {
       2
     )}x)`;
   }
+}
+function initDropdown() {
+  const toggleBtn = document.querySelector(".dropdown-toggle");
+  const dropdown = document.querySelector(".dropdown-menu");
+
+  if (!toggleBtn || !dropdown) return;
+
+  // Otvaranje / zatvaranje
+  toggleBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    dropdown.classList.toggle("hidden");
+  });
+
+  // Klik van menija → zatvori
+  document.addEventListener("click", (e) => {
+    if (!dropdown.contains(e.target) && !toggleBtn.contains(e.target)) {
+      dropdown.classList.add("hidden");
+    }
+  });
+
+  // Export PDF
+  const exportBtn = document.getElementById("exportPDF");
+  if (exportBtn) {
+    exportBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      dropdown.classList.add("hidden");
+      exportPDF();
+    });
+  }
+
+  // Share konfiguracija
+  const shareBtn = document.getElementById("shareConfig");
+  if (shareBtn) {
+    shareBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      dropdown.classList.add("hidden");
+      console.log("Share configuration clicked");
+      // TODO: ovde ubaciš svoj share handler
+    });
+  }
+}
+function initWeatherButtons() {
+  const buttons = document.querySelectorAll("#camera-controls button[data-weather]");
+  buttons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const weather = btn.dataset.weather;
+      setWeather(weather);
+    });
+  });
+}
+
+async function exportPDF() {
+  console.log("Export PDF clicked");
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF("p", "mm", "a4");
+  const margin = 15;
+  let y = margin;
+
+  const boatName = BOAT_INFO.Model || "Luxen Boat";
+  const dateStr = new Date().toLocaleDateString("en-GB");
+
+  // === LOGO HEADER ===
+  const logoImg = new Image();
+  logoImg.src = "assets/luxen_logo.png";
+  await new Promise((res) => (logoImg.onload = res));
+
+  const logoAspect = logoImg.width / logoImg.height;
+  const logoHeight = 10;
+  const logoWidth = logoHeight * logoAspect;
+
+  // === HEADER ===
+  pdf.setFillColor(10, 20, 30);
+  pdf.rect(0, 0, 210, 25, "F");
+
+  // logo levo
+  pdf.addImage(logoImg, "PNG", 10, 7, logoWidth, logoHeight);
+
+  // datum desno
+  pdf.setTextColor(255);
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(11);
+  pdf.text(dateStr, 200, 17, { align: "right" });
+
+  y = 35;
+
+  // === NASLOV ===
+  pdf.setTextColor(0);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(22);
+  pdf.text(boatName, margin, y);
+  y += 10;
+
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(12);
+  pdf.text("Model specifications and configuration overview", margin, y);
+  y += 8;
+
+  pdf.setDrawColor(58, 164, 255);
+  pdf.setLineWidth(0.8);
+  pdf.line(margin, y, 210 - margin, y);
+  y += 10;
+
+  // === RENDER SCENA (screenshot canvasa) ===
+  const canvas = document.querySelector("#glCanvas");
+  const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true });
+  render(); // obavezno osveži poslednji frame
+  const imageData = canvas.toDataURL("image/png");
+
+  const imgAspect = canvas.width / canvas.height;
+  const renderWidth = 180;
+  const renderHeight = renderWidth / imgAspect;
+  pdf.addImage(imageData, "PNG", margin, y, renderWidth, renderHeight);
+
+  y += renderHeight + 10;
+  canvas.getContext("webgl2", { preserveDrawingBuffer: false });
+
+  // === SPECIFIKACIJE ===
+  pdf.setFontSize(14);
+  pdf.setFont("helvetica", "bold");
+  pdf.text("TECHNICAL SPECIFICATIONS", margin, y);
+  y += 8;
+
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(11);
+  for (const [key, val] of Object.entries(BOAT_INFO)) {
+    pdf.text(`${key}:`, margin, y);
+    pdf.text(String(val), margin + 50, y);
+    y += 6;
+    if (y > 260) {
+      pdf.addPage();
+      y = margin;
+    }
+  }
+
+  y += 8;
+
+  // === TABELA DELA ===
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(14);
+  pdf.text("PARTS LIST", margin, y);
+  y += 7;
+
+  const rows = document.querySelectorAll("#partsTable tbody tr");
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(10);
+
+  rows.forEach((tr, i) => {
+    const cells = tr.querySelectorAll("td");
+    if (cells.length < 3) return;
+
+    const part = cells[0].textContent.trim();
+    const desc = cells[1].textContent.trim();
+    const price = cells[2].textContent.trim();
+
+    // sivi red naizmenično
+    if (i % 2 === 0) {
+      pdf.setFillColor(245, 248, 255);
+      pdf.rect(margin, y - 4.5, 180, 6.5, "F");
+    }
+
+    pdf.text(part, margin + 2, y);
+    pdf.text(desc, margin + 70, y);
+    pdf.text(price, margin + 150, y);
+    y += 6;
+
+    if (y > 260) {
+      pdf.addPage();
+      y = margin;
+    }
+  });
+
+  y += 10;
+
+  // === TOTAL ===
+  const total =
+    document.querySelector(".sidebar-total .price")?.textContent || "";
+  pdf.setFont("helvetica", "bold");
+  pdf.setTextColor(30, 144, 255);
+  pdf.setFontSize(13);
+  pdf.text(`TOTAL PRICE: ${total}`, margin, y);
+
+  // === FOOTER ===
+  pdf.setFillColor(10, 20, 30);
+  pdf.rect(0, 285, 210, 12, "F");
+  pdf.setTextColor(255);
+  pdf.setFontSize(9);
+  pdf.text("Generated by Luxen Engine © 2025", 105, 292, { align: "center" });
+
+  pdf.save(`${boatName.replace(/\s+/g, "_")}_Report.pdf`);
 }
 
 function autoAdjustSSAA() {
@@ -1496,7 +1668,13 @@ gl.deleteProgram(prog);
 function buildVariantSidebar() {
   const sidebar = document.getElementById("variantSidebar");
   sidebar.innerHTML = "";
-
+  const intro = document.createElement("div");
+  intro.className = "variant-intro";
+  intro.innerHTML = `
+  <h2>Customize Your Boat</h2>
+  <p>Select materials, colors, and parts to create a configuration that matches your vision.</p>
+  `;
+sidebar.insertBefore(intro, sidebar.firstChild);
   for (const [groupName, parts] of Object.entries(VARIANT_GROUPS)) {
     const groupDiv = document.createElement("div");
     groupDiv.className = "variant-group";
@@ -1573,80 +1751,62 @@ function buildVariantSidebar() {
 
             colorEl.title = c.name;
 
-            colorEl.addEventListener("click", (e) => {
-              e.stopPropagation();
-              const node = nodesMeta.find((n) => n.name === partKey);
-              if (!node) return;
+colorEl.addEventListener("click", (e) => {
+  const card = colorEl.closest(".variant-item");
+  const partKey = card.dataset.part;
+  const node = nodesMeta.find((n) => n.name === partKey);
+  if (!node) return;
 
-              const activeVariant = currentParts[partKey];
-              if (activeVariant !== variant.name) {
-                console.warn(
-                  `Boja/tekstura ignorisana: aktivna je ${activeVariant}, kliknuta ${variant.name}`
-                );
-                return;
-              }
+  // ako kartica NIJE aktivna — prvo je izaberi
+  if (!card.classList.contains("active")) {
+    card.click(); // pokreni njen handler
+    return; // ne idi dalje dok se ne izabere
+  }
 
-              // Uzmi mainMat iz config.js
-              const cfgGroup =
-                Object.values(VARIANT_GROUPS).find((g) => partKey in g) || {};
-              const mainMat = cfgGroup[partKey]?.mainMat || "";
+  // ako jeste aktivna — sad dozvoli klik na boju
+  e.stopPropagation();
 
-              // ako je tekstura
-              if (c.type === "texture" && c.texture) {
-                const img = new Image();
-                img.src = c.texture;
-                img.onload = () => {
-                  const tex = gl.createTexture();
-                  gl.bindTexture(gl.TEXTURE_2D, tex);
-                  gl.texImage2D(
-                    gl.TEXTURE_2D,
-                    0,
-                    gl.RGBA,
-                    gl.RGBA,
-                    gl.UNSIGNED_BYTE,
-                    img
-                  );
-                  gl.generateMipmap(gl.TEXTURE_2D);
-                  gl.texParameteri(
-                    gl.TEXTURE_2D,
-                    gl.TEXTURE_MIN_FILTER,
-                    gl.LINEAR_MIPMAP_LINEAR
-                  );
-                  gl.texParameteri(
-                    gl.TEXTURE_2D,
-                    gl.TEXTURE_MAG_FILTER,
-                    gl.LINEAR
-                  );
+  const activeVariant = currentParts[partKey];
+  if (activeVariant !== variant.name) return;
 
-                  for (const r of node.renderIdxs) {
-                    if (!mainMat || r.matName === mainMat) {
-                      modelBaseTextures[r.idx] = tex;
-                    }
-                  }
-                  render();
-                };
-              }
-              // ako je boja
-              else if (c.type === "color" && c.color) {
-                for (const r of node.renderIdxs) {
-                  if (!mainMat || r.matName === mainMat) {
-                    modelBaseColors[r.idx] = new Float32Array(c.color);
-                    modelBaseTextures[r.idx] = null; // isključi teksturu
-                  }
-                }
-              }
+  const cfgGroup = Object.values(VARIANT_GROUPS).find((g) => partKey in g) || {};
+  const mainMat = cfgGroup[partKey]?.mainMat || "";
 
-              updatePartsTable(partKey, `${variant.name} (${c.name})`);
-              currentParts[partKey] = variant.name;
+  if (c.type === "texture" && c.texture) {
+    const img = new Image();
+    img.src = c.texture;
+    img.onload = () => {
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      for (const r of node.renderIdxs) {
+        if (!mainMat || r.matName === mainMat) modelBaseTextures[r.idx] = tex;
+      }
+      render();
+    };
+  } else if (c.type === "color" && c.color) {
+    for (const r of node.renderIdxs) {
+      if (!mainMat || r.matName === mainMat) {
+        modelBaseColors[r.idx] = new Float32Array(c.color);
+        modelBaseTextures[r.idx] = null;
+      }
+    }
+  }
 
-              colorsDiv
-                .querySelectorAll(".color-swatch")
-                .forEach((el) => el.classList.remove("selected"));
-              colorEl.classList.add("selected");
+  updatePartsTable(partKey, `${variant.name} (${c.name})`);
+  currentParts[partKey] = variant.name;
 
-              render();
-              showPartInfo(`${variant.name} (${c.name})`);
-            });
+  const colorsDiv = colorEl.parentElement;
+  colorsDiv.querySelectorAll(".color-swatch").forEach((el) => el.classList.remove("selected"));
+  colorEl.classList.add("selected");
+
+  render();
+  showPartInfo(`${variant.name} (${c.name})`);
+});
+
 
             colorsDiv.appendChild(colorEl);
           });
@@ -1660,19 +1820,15 @@ function buildVariantSidebar() {
         const footer = document.createElement("div");
         footer.className = "variant-footer";
 
-      // === izračunaj tačnu cenu iz config.js ===
-      let rawPrice = 0;
-      if (variant.src && variant.src.length) {
-        // npr. "variants/BT_Base_03_B.glb" -> "BT_Base_03_B"
-        const key = variant.src.split("/").pop().replace(".glb", "");
-        rawPrice = PART_PRICES[key] || 0;
-      } else {
-        // baza (A varijanta)
-        rawPrice = PART_PRICES[partKey] || 0;
-      }
-
-      let priceText = rawPrice === 0 ? "Included" : `+${rawPrice} €`;
-
+        const rawPrice = PART_PRICES?.[variant.name] || 0;
+        let priceText = "";
+        if (rawPrice === 0) {
+          priceText = "Uključeno";
+        } else if (typeof rawPrice === "number") {
+          priceText = `+${rawPrice} €`;
+        } else {
+          priceText = rawPrice;
+        }
 
         footer.innerHTML = `<span class="price">${priceText}</span>`;
         itemEl.appendChild(footer);
@@ -1715,93 +1871,82 @@ function buildPartsTable() {
   const tbody = document.querySelector("#partsTable tbody");
   tbody.innerHTML = "";
 
-  for (const groupName in VARIANT_GROUPS) {
-    const group = VARIANT_GROUPS[groupName];
-    for (const partName in group) {
-      const defaultVariant = partName; // A varijanta je base
-      currentParts[partName] = defaultVariant;
+  for (const [groupName, parts] of Object.entries(VARIANT_GROUPS)) {
+    for (const [partKey, data] of Object.entries(parts)) {
+      const defaultModel = data.models?.[0];
+      const variantName = defaultModel?.name || partKey;
+      const priceKey = defaultModel?.src
+        ? defaultModel.src.split("/").pop().replace(".glb", "")
+        : partKey;
+      const price = PART_PRICES[priceKey] || 0;
 
-      const price = PART_PRICES[defaultVariant] || 0;
+      // zapamti trenutno izabrano
+      currentParts[partKey] = variantName;
 
       const tr = document.createElement("tr");
-      tr.dataset.part = partName;
-      // uzmi ime iz config.js
-      const displayVariant = group[partName].models?.[0]?.name || partName;
+      tr.dataset.part = partKey;
       tr.innerHTML = `
-        <td>${groupName}</td>                <!-- Deo -->
-        <td>${displayVariant}</td>           <!-- Opis / Varijanta -->
-        <td>${price} €</td>                  <!-- Cena -->
+        <td>${groupName}</td>
+        <td>${variantName}</td>
+        <td>${price === 0 ? "Uključeno" : `+${price} €`}</td>
       `;
-            tbody.appendChild(tr);
-          }
-        }
-      }
+      tbody.appendChild(tr);
+    }
+  }
+}
 
-function updatePartsTable(partName, newVariant) {
-  currentParts[partName] = newVariant;
 
-  // Pronađi deo i varijantu u configu
-  let groupName = null;
+function updatePartsTable(partKey, newVariant) {
+  currentParts[partKey] = newVariant;
+
+  // pronađi deo u configu da dobiješ tačan priceKey
   let price = 0;
+  for (const [groupName, parts] of Object.entries(VARIANT_GROUPS)) {
+    const data = parts[partKey];
+    if (!data) continue;
 
-  for (const [gName, parts] of Object.entries(VARIANT_GROUPS)) {
-    if (!parts[partName]) continue;
-    groupName = gName;
-    const models = parts[partName].models || [];
-
-    for (const model of models) {
-      // Proveravamo tačno ime varijante iz UI
-      if (newVariant.startsWith(model.name)) {
-        if (model.src) {
-          // npr. "variants/BT_Base_03_B.glb" → "BT_Base_03_B"
-          const key = model.src.split("/").pop().replace(".glb", "");
-          price = PART_PRICES[key] || 0;
-        } else {
-          // baza (A varijanta)
-          price = PART_PRICES[partName] || 0;
-        }
-        break;
-      }
+    const variant = data.models.find((m) => newVariant.startsWith(m.name));
+    if (variant) {
+      const key = variant.src
+        ? variant.src.split("/").pop().replace(".glb", "")
+        : partKey;
+      price = PART_PRICES[key] || 0;
+      break;
     }
   }
 
-  // Ažuriraj samo varijantu i cenu u tabeli
-  const row = document.querySelector(`#partsTable tr[data-part="${partName}"]`);
+  const row = document.querySelector(`#partsTable tr[data-part="${partKey}"]`);
   if (!row) return;
   const cells = row.querySelectorAll("td");
-  if (cells.length < 3) return;
-  // [0] = Deo (sekcija) — ne diraj
-  cells[1].textContent = newVariant; // Opis / varijanta
-  cells[2].textContent = price === 0 ? "Included" : `+${price} €`; // Cena
+  if (cells.length >= 3) {
+    // [0] groupName ostaje isto
+    cells[1].textContent = newVariant;
+    cells[2].textContent = price === 0 ? "Uključeno" : `+${price} €`;
+  }
+
   updateTotalPrice();
 }
-
 
 function updateTotalPrice() {
   let total = BASE_PRICE;
 
-  for (const partKey in currentParts) {
-    const selectedName = currentParts[partKey];
+  for (const [groupName, parts] of Object.entries(VARIANT_GROUPS)) {
+    for (const [partKey, data] of Object.entries(parts)) {
+      const selectedName = currentParts[partKey];
+      if (!selectedName) continue;
 
-    // pronađi varijantu u configu da dobiješ src -> ključ
-    for (const [groupName, parts] of Object.entries(VARIANT_GROUPS)) {
-      const part = parts[partKey];
-      if (!part) continue;
+      const variant = data.models.find((m) => selectedName.startsWith(m.name));
+      if (!variant) continue;
 
-      for (const model of part.models) {
-        if (selectedName.startsWith(model.name)) {
-          if (model.src) {
-            const key = model.src.split("/").pop().replace(".glb", "");
-            total += PART_PRICES[key] || 0;
-          } else {
-            total += PART_PRICES[partKey] || 0;
-          }
-        }
-      }
+      const priceKey = variant.src
+        ? variant.src.split("/").pop().replace(".glb", "")
+        : partKey;
+
+      total += PART_PRICES[priceKey] || 0;
     }
   }
 
-  // Update tfoot u info panelu
+  // --- Update tabela (tfoot)
   let totalRow = document.querySelector("#partsTable tfoot tr");
   if (!totalRow) {
     const tfoot = document.createElement("tfoot");
@@ -1810,155 +1955,17 @@ function updateTotalPrice() {
     tfoot.appendChild(totalRow);
   }
   totalRow.innerHTML = `
-    <td colspan="2" style="text-align:right; font-weight:700;">Total Price:</td>
+    <td colspan="2" style="text-align:right; font-weight:700;">Ukupno:</td>
     <td style="font-size:16px; font-weight:700; color:#3aa4ff;">
       ${total.toLocaleString("de-DE")} €
     </td>
   `;
 
+  // --- Update sidebar total
   const sidebarPrice = document.querySelector(".sidebar-total .price");
   if (sidebarPrice) {
     sidebarPrice.textContent = `${total.toLocaleString("de-DE")} €`;
   }
-}
-
-async function exportPDF() {
-  console.log("Export PDF clicked");
-
-  const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF("p", "mm", "a4");
-  const margin = 15;
-  let y = margin;
-
-  const boatName = BOAT_INFO.Model || "Luxen Boat";
-  const dateStr = new Date().toLocaleDateString("en-GB");
-
-  // === LOAD LOGO ===
-  const logoImg = new Image();
-  logoImg.src = "assets/luxen_logo.png";
-  await new Promise((res) => (logoImg.onload = res));
-
-  const logoAspect = logoImg.width / logoImg.height;
-  const logoHeight = 10;
-  const logoWidth = logoHeight * logoAspect;
-
-  // === HEADER ===
-  pdf.setFillColor(10, 20, 30);
-  pdf.rect(0, 0, 210, 25, "F");
-
-  // logo left
-  pdf.addImage(logoImg, "PNG", 10, 7, logoWidth, logoHeight);
-
-  // date right
-  pdf.setTextColor(255);
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(11);
-  pdf.text(dateStr, 200, 17, { align: "right" });
-
-  y = 35;
-
-  // === MODEL TITLE ===
-  pdf.setTextColor(0);
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(22);
-  pdf.text(boatName, margin, y);
-  y += 10;
-
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(12);
-  pdf.text("Model specifications and configuration overview", margin, y);
-  y += 8;
-
-  pdf.setDrawColor(58, 164, 255);
-  pdf.setLineWidth(0.8);
-  pdf.line(margin, y, 210 - margin, y);
-  y += 10;
-
-  // === RENDER IMAGE ===
-  const canvas = document.querySelector("#glCanvas");
-  const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true });
-  render(); // ensure last frame
-  const imageData = canvas.toDataURL("image/png");
-
-  const imgAspect = canvas.width / canvas.height;
-  const renderWidth = 180;
-  const renderHeight = renderWidth / imgAspect;
-  pdf.addImage(imageData, "PNG", margin, y, renderWidth, renderHeight);
-
-  y += renderHeight + 10;
-  canvas.getContext("webgl2", { preserveDrawingBuffer: false });
-
-  // === SPECIFICATIONS ===
-  pdf.setFontSize(14);
-  pdf.setFont("helvetica", "bold");
-  pdf.text("TECHNICAL SPECIFICATIONS", margin, y);
-  y += 8;
-
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(11);
-  for (const [key, val] of Object.entries(BOAT_INFO)) {
-    pdf.text(`${key}:`, margin, y);
-    pdf.text(String(val), margin + 50, y);
-    y += 6;
-    if (y > 260) {
-      pdf.addPage();
-      y = margin;
-    }
-  }
-
-  y += 8;
-
-  // === PARTS LIST ===
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(14);
-  pdf.text("PARTS LIST", margin, y);
-  y += 7;
-
-  const rows = document.querySelectorAll("#partsTable tbody tr");
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(10);
-
-  rows.forEach((tr, i) => {
-    const cells = tr.querySelectorAll("td");
-    if (cells.length < 3) return;
-
-    const part = cells[0].textContent.trim();
-    const desc = cells[1].textContent.trim();
-    const price = cells[2].textContent.trim();
-
-    if (i % 2 === 0) {
-      pdf.setFillColor(245, 248, 255);
-      pdf.rect(margin, y - 4.5, 180, 6.5, "F");
-    }
-
-    pdf.text(part, margin + 2, y);
-    pdf.text(desc, margin + 70, y);
-    pdf.text(price, margin + 150, y);
-    y += 6;
-
-    if (y > 260) {
-      pdf.addPage();
-      y = margin;
-    }
-  });
-
-  y += 10;
-
-  // === TOTAL ===
-  const total = document.querySelector(".sidebar-total .price")?.textContent || "";
-  pdf.setFont("helvetica", "bold");
-  pdf.setTextColor(30, 144, 255);
-  pdf.setFontSize(13);
-  pdf.text(`TOTAL PRICE: ${total}`, margin, y);
-
-  // === FOOTER ===
-  pdf.setFillColor(10, 20, 30);
-  pdf.rect(0, 285, 210, 12, "F");
-  pdf.setTextColor(255);
-  pdf.setFontSize(9);
-  pdf.text("Generated by Luxen Engine © 2025", 105, 292, { align: "center" });
-
-  pdf.save(`${boatName.replace(/\s+/g, "_")}_Report.pdf`);
 }
 
 
@@ -3319,7 +3326,7 @@ async function generateThumbnailForVariant(partName, variant) {
     (bounds.min[1] + bounds.max[1]) / 2,
     (bounds.min[2] + bounds.max[2]) / 2,
   ];
-  const dist = size * 1.4;
+  const dist = size * 1.8;
 
   const proj = persp(45, 1, 0.1, dist * 4);
   const eye = [
@@ -3341,7 +3348,7 @@ async function generateThumbnailForVariant(partName, variant) {
   gl2.uniformMatrix4fv(gl2.getUniformLocation(prog, "uModel"), false, model);
 
   gl2.viewport(0, 0, 256, 256);
-  gl2.clearColor(0.85, 0.9, 0.98, 0.0);
+  gl2.clearColor(0.15, 0.15, 0.18, 1);
   gl2.clear(gl2.COLOR_BUFFER_BIT | gl2.DEPTH_BUFFER_BIT);
   gl2.enable(gl2.DEPTH_TEST);
 
@@ -3543,6 +3550,35 @@ async function prepareVariantPreview(variant, partName, gl2) {
 
 init().then(async () => {
   await loadDefaultModel(DEFAULT_MODEL);
+  initDropdown();
+  initWeatherButtons();
+
+const hamburger = document.getElementById("hamburger");
+const sidebarMenu = document.getElementById("sidebarMenu");
+const closeSidebar = document.getElementById("closeSidebar");
+
+if (hamburger && sidebarMenu && closeSidebar) {
+  hamburger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    sidebarMenu.classList.add("open");
+  });
+
+  closeSidebar.addEventListener("click", (e) => {
+    e.stopPropagation();
+    sidebarMenu.classList.remove("open");
+  });
+
+  document.addEventListener("click", (e) => {
+    if (
+      sidebarMenu.classList.contains("open") &&
+      !sidebarMenu.contains(e.target) &&
+      e.target !== hamburger
+    ) {
+      sidebarMenu.classList.remove("open");
+    }
+  });
+}
+
   renderLoop();
   renderBoatInfo(BOAT_INFO);
   generateAllThumbnails()

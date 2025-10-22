@@ -10,15 +10,15 @@ uniform sampler2D gNormal;
 uniform sampler2D tNoise;
 uniform mat4 uView;
 uniform mat4 uProjection;
-uniform vec3 samples[128];
+uniform vec3 samples[64];
 
 uniform float uFrame;       // za frame jitter
 uniform vec2  uNoiseScale;  // postavlja se iz JS: (canvas.width / SSAO_NOISE_SIZE, canvas.height / SSAO_NOISE_SIZE)
 
-const int   KERNEL_SIZE = 128;
+const int   KERNEL_SIZE = 64;
 const float radius      = 2.5;
 const float bias        = 0.025;
-const float powerAO     = 1.8;
+const float powerAO     = 2.5;
 
 /* ---------- helper ---------- */
 float rand(vec2 co) {
@@ -45,7 +45,7 @@ void main() {
     float visibleSamples = 0.0;
 
     float camDepth = -fragPos.z;
-    float adapt = mix(6.0, 10.0, clamp(camDepth / 100.0, 0.0, 1.0));
+    float adapt = mix(3.0, 8.0, clamp(camDepth / 200.0, 0.0, 1.0));
 
     // jitter po frame-u
     float frameJitter = rand(vUV + vec2(uFrame * 0.37, uFrame * 0.11));

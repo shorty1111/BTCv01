@@ -14,24 +14,39 @@
   <body>
 <div class="global-header">
   <div class="header-left">
-    <img src="assets/luxen_logo.png" alt="Logo" class="logo">
-  </div>
-
-<div class="header-center">
-  <div class="boat-name-wrapper">
-    <span class="boat-name">TIARA 56</span>
+    
+        <span class="boat-name">TIARA 56</span>
     <button class="dropdown-toggle">▾</button>
-    <div class="dropdown-menu hidden">
+       <div class="dropdown-menu hidden">
       <button id="exportPDF">Export PDF</button>
       <button id="shareConfig">Share Configuration</button>
       <button id="copyConfig">Copy Link</button>
     </div>
   </div>
-</div>
 
-  <div class="header-right">
-    
+<div class="header-center">
+  <div class="boat-name-wrapper">
+<img src="assets/luxen_logo.png" alt="Logo" class="logo">
+
   </div>
+</div>
+<div class="header-right">
+  <button id="hamburger" class="hamburger-btn">
+    ☰
+  </button>
+</div>
+<!-- Sidebar -->
+<nav id="sidebarMenu" class="sidebar-menu hidden">
+  <div class="sidebar-header">
+    <span class="sidebar-title">Luxen Engine</span>
+    <button id="closeSidebar">×</button>
+  </div>
+  <ul>
+    <li><a href="#">Contact</a></li>
+    <li><a href="#">Help</a></li>
+    <li><a href="#">About Engine</a></li>
+  </ul>
+</nav>
 </div>
     <div id="loading-screen" class="hidden">
       <div class="sheet">
@@ -78,8 +93,8 @@
       </div>
     </aside>
 
-    <link rel="stylesheet" href="tree.css?v=2sss1fa8" />
-    <script type="module" src="js/main.js?v=2a1ssf8s"></script>
+    <link rel="stylesheet" href="tree.css?v=2b2141fa8" />
+    <script type="module" src="js/main.js?v=281bas"></script>
     <div
       id="fps-meter">
       FPS: <span id="fps-value">0</span>

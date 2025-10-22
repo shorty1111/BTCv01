@@ -88,7 +88,8 @@
 html,
 body {
   width: 100vw;
-  height: 100vh;
+  height: 100%;
+  min-height: -webkit-fill-available;
   margin: 0;
   padding: 0;
   overflow: hidden;
@@ -123,13 +124,18 @@ body {
    GLOBAL HEADER - 0 STYLE
 ========================= */
 .global-header {
+  position: fixed;
+  top: 0;
+  left: 384px; /* pomeri ga desno koliko je sidebar */
+  width: calc(100% - 384px); /* skrati ga za sidebar širinu */
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 8px 16px;
   background: var(--background-secondary);
   border-bottom: 1px solid var(--border);
-  height: 64px;
+  z-index: 1000;
 }
 
 .header-left,
@@ -212,7 +218,7 @@ body {
 .dropdown-menu {
   position: absolute;
   top: 100%;
-  right: 0;
+  left: 0;
   background: var(--background-tertiary);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -255,9 +261,10 @@ canvas,
    CAMERA CONTROLS - 0 STYLE
 ========================= */
 #camera-controls {
-  position: absolute;
-  top: 94px;
-  left: 420px;
+  position: fixed;
+  bottom: 10%;
+  left: calc(50% + 384px / 2);
+  transform: translateX(-50%);
   display: flex;
   gap: 8px;
   padding: 16px;
@@ -267,7 +274,10 @@ canvas,
   border: 1px solid var(--glass-border);
   border-radius: 12px;
   box-shadow: var(--shadow-medium);
+  z-index: 10000;
 }
+
+
 
 #camera-controls button {
   width:50px;
@@ -488,7 +498,9 @@ canvas,
   border-radius: inherit;
   animation: slide-progress 1.4s ease-in-out infinite;
 }
-
+#loading-screen.hidden .progress::before {
+  animation: none !important;
+}
 @keyframes slide-progress {
   0% {
     left: -40%;
@@ -512,21 +524,15 @@ canvas,
 ========================= */
 .tree {
   position: fixed;
+  top: 0; /* ne od 64px više */
   left: 0;
-  top: 64px;
-  height: calc(100% - 64px);
-  width: 384px; /* 24rem */
+  height: 100vh;
+  width: 384px;
   background: var(--card);
-  backdrop-filter: var(--blur-strong);
-  -webkit-backdrop-filter: var(--blur-strong);
-  color: var(--card-foreground);
   border-right: 1px solid var(--card-border);
-  overflow-y: auto;
-  box-shadow: var(--shadow-medium);
   display: flex;
   flex-direction: column;
 }
-
 /* =========================
    VARIANT GROUPS - 0 STYLE
 ========================= */
@@ -601,6 +607,23 @@ canvas,
 /* =========================
    VARIANT ITEMS - CLEAN
 ========================= */
+.variant-intro {
+  margin-bottom: 25px;
+  padding: 16px 20px;
+  color: var(--muted-foreground);
+}
+.variant-intro h2 {
+  margin: 0 0 6px 0;
+  font-size: 16px;
+  color: var(--foreground);
+  font-weight: 600;
+}
+.variant-intro p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .variant-items {
   display: flex;
   flex-direction: column;
@@ -662,15 +685,11 @@ canvas,
   border-right: 1px solid var(--border);
 }
 .thumb-wrapper img.thumb {
-  transform: scale(0.9);
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
   transition: var(--transition-smooth);
-}
-.variant-item:hover .thumb {
-  transform: scale(1.1);
 }
 
 /* title unutar slike */
@@ -914,7 +933,7 @@ canvas,
 #fps-meter {
   position: fixed;
   top: 80px;
-  right: 20px;
+  right: 300px;
   background: var(--glass-bg);
   backdrop-filter: var(--blur-medium);
   -webkit-backdrop-filter: var(--blur-medium);
@@ -932,7 +951,7 @@ canvas,
 #res-meter {
   position: fixed;
   top: 80px;
-  right: 120px;
+  right: 420px;
   background: var(--glass-bg);
   backdrop-filter: var(--blur-medium);
   -webkit-backdrop-filter: var(--blur-medium);
@@ -1051,4 +1070,94 @@ button:focus-visible,
 .export-btn:hover {
   background: var(--primary-glow);
   transform: translateY(-2px);
+}
+.hamburger-btn {
+  background: none;
+  border: none;
+  font-size: 22px;
+  color: var(--foreground);
+  cursor: pointer;
+  padding: 8px 12px;
+  transition: opacity 0.2s ease;
+}
+.hamburger-btn:hover { opacity: 0.7; }
+
+/* Sidebar panel */
+.sidebar-menu {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 260px;
+  height: 100vh;
+  background: var(--background-secondary);
+  color: var(--foreground);
+  box-shadow: -2px 0 10px rgba(0,0,0,0.3);
+  transform: translateX(100%);
+  transition: transform 0.35s ease;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+}
+.sidebar-menu.open {
+  transform: translateX(0);
+}
+
+.sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-title {
+  font-weight: 600;
+  font-size: 16px;
+}
+#closeSidebar {
+    position: relative;
+  z-index: 10000;        /* iznad svega u sidebaru */
+  pointer-events: auto;  /* osigurava da prima klik */
+  background: none;
+  border: none;
+  color: var(--foreground);
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.sidebar-menu ul {
+  list-style: none;
+  margin: 0;
+  padding: 20px;
+}
+.sidebar-menu li {
+  margin-bottom: 15px;
+}
+.sidebar-menu a {
+  color: var(--foreground);
+  text-decoration: none;
+  font-size: 15px;
+  transition: color 0.2s;
+}
+.sidebar-menu a:hover {
+  color: var(--primary);
+}
+
+html, body {
+  height: 100%;
+  min-height: 100%;
+  min-height: 100dvh;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+
+#glCanvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-height: 100dvh;
+  transform-origin: center center;
+  will-change: transform;
+  background: var(--gradient-canvas);
+  transition: none !important; /* <– sprečava "scale flicker" */
 }

@@ -101,6 +101,8 @@ void main(){
 
     vec3 kd   = (1.0-F)*(1.0-metal);
     vec3 diff = kd*baseColor/3.141592;
+    vec3 skyIrradiance = textureLod(uEnvMap, vec3(0.0,1.0,0.0), uCubeMaxMip).rgb;
+    diff += kd * skyIrradiance * 0.3; // blagi fill light
     vec3 radiance = uSunColor*uSunIntensity;
     vec3 direct = (diff+specBRDF)*radiance*NdotL*(shadow*1.5);
 
@@ -112,8 +114,9 @@ void main(){
 
     vec3 F_ibl   = fresnelSchlickRoughness(NdotV, F0, rough);
     vec3 diffIBL = envDiff * baseColor * (1.0 - metal);
-    vec3 specIBL = envSpec * (F_ibl * brdf.x + brdf.y);
+    float energyComp = 1.0 - 0.5 * rough;
+    vec3 specIBL = envSpec * (F_ibl * brdf.x + brdf.y) * energyComp;
 
-    vec3 color = direct + diffIBL * ao + specIBL * ao;
+    vec3 color = direct + diffIBL * mix(1.0, ao, 0.85) + specIBL;
     fragColor = vec4(color, 1.0);
 }
