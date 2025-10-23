@@ -524,14 +524,17 @@ canvas,
 ========================= */
 .tree {
   position: fixed;
-  top: 0; /* ne od 64px više */
+  top: 0;
   left: 0;
-  height: 100vh;
   width: 384px;
+  height: 100vh;
   background: var(--card);
   border-right: 1px solid var(--card-border);
   display: flex;
   flex-direction: column;
+  overflow-y: auto;     /* 👈 dozvoljava skrol */
+  overflow-x: hidden;
+  scroll-behavior: smooth;
 }
 /* =========================
    VARIANT GROUPS - 0 STYLE
@@ -649,10 +652,11 @@ canvas,
 
 
 /* =========================
-   VARIANT CARD - HORIZONTAL
+   VARIANT CARD - HORIZONTAL + INLINE DESCRIPTION
 ========================= */
 .variant-item {
   display: flex;
+  flex-direction: row; /* horizontalni deo ostaje */
   align-items: stretch;
   background: var(--muted);
   border: 1px solid var(--border);
@@ -662,6 +666,7 @@ canvas,
   overflow: hidden;
   position: relative;
   width: 100%;
+  flex-wrap: wrap; /* 👈 omogućava da opis padne ispod, a ne da širi karticu */
 }
 
 /* hover / active */
@@ -679,7 +684,6 @@ canvas,
 .variant-item .thumb-wrapper {
   flex: 0 0 120px;
   height: 120px;
-
   overflow: visible;
   position: relative;
   border-right: 1px solid var(--border);
@@ -692,26 +696,21 @@ canvas,
   transition: var(--transition-smooth);
 }
 
-/* title unutar slike */
+/* naslov */
 .variant-item .thumb-wrapper .title {
   position: absolute;
   left: 100%;
   top: 8px;
   width: calc(100% - 140px);
   padding: 4px 14px;
-  box-sizing: border-box;
-  background: none;
   color: var(--foreground);
   font-size: 15px;
   font-weight: 600;
-  text-align: left;
-  text-shadow: none;
-  white-space: nowrap; /* ← sprečava lomljenje u novi red */
+  white-space: nowrap;
 }
 
-
 /* desna strana */
-.variant-item .variant-body {
+.variant-body {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -723,16 +722,16 @@ canvas,
 .variant-item .colors {
   display: flex;
   gap: 6px;
-  margin-top: 8px;
+  margin-top: 60px;
 }
 .color-swatch {
   width: 26px;
   height: 26px;
   border-radius: 6px;
-  background-size: cover;
-  background-position: center;
   border: 1px solid var(--border);
   cursor: pointer;
+  background-size: cover;
+  background-position: center;
   transition: transform 0.2s ease, filter 0.2s ease;
 }
 .color-swatch:hover { filter: brightness(1.15); }
@@ -742,15 +741,61 @@ canvas,
   box-shadow: var(--shadow-glow);
 }
 
-/* cena gore desno */
+/* cena */
 .variant-footer {
   position: absolute;
-  bottom: 10px; /* ↓ umesto top */
+  bottom: 10px;
   right: 14px;
   font-weight: 700;
   font-size: 14px;
   color: var(--primary);
 }
+
+/* ----------- OPIS ---------- */
+.variant-description {
+  flex-basis: 100%; /* 👈 širi se celom širinom kartice */
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-6px);
+
+  padding: 0 16px;
+  color: var(--muted-foreground);
+  line-height: 1.5;
+  background: var(--background-tertiary);
+  border-top: 1px solid var(--border);
+}
+
+/* kada je kartica "open" */
+.variant-item.open .variant-description {
+  max-height: 200px;
+  opacity: 1;
+  transform: translateY(0);
+  padding: 14px 16px;
+}
+
+/* dugme */
+.desc-toggle {
+  position: absolute;
+  top: 40px;
+  left: 130px;
+  padding: 5px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  z-index: 2;
+}
+.desc-toggle:hover {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+}
+
 
 /* =========================
    SIDEBAR TOTAL - 0 STYLE
@@ -806,7 +851,18 @@ canvas,
   display: flex;
   flex-direction: column;
 }
+#info-panel table {
+  table-layout: fixed;
+  width: 100%;
+}
 
+#info-panel th,
+#info-panel td {
+  width: 33.33%; /* prilagodi po broju kolona */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 #info-panel.open {
   max-height: 60vh;
   overflow-y: auto;
@@ -1160,4 +1216,7 @@ html, body {
   will-change: transform;
   background: var(--gradient-canvas);
   transition: none !important; /* <– sprečava "scale flicker" */
+}
+.thumb[src*="part_placeholder"] {
+  transform: scale(0.5);
 }

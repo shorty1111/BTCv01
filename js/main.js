@@ -6,7 +6,6 @@ import {
   MAX_FPS,
   DEFAULT_MODEL,
   BASE_PRICE,
-  PART_PRICES,
   VARIANT_GROUPS,
   BOAT_INFO,
 } from "./config.js";
@@ -98,7 +97,10 @@ function smoothstep(edge0, edge1, x) {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
 }
+
+
 window.pendingTextures = 0;
+let savedColorsByPart = {};
 let reflectionFBO = null;
 let reflectionTex = null;
 let reflectionColorProgram = null;
@@ -1664,22 +1666,22 @@ gl.deleteProgram(prog);
 
   updateView();
 }
-
 function buildVariantSidebar() {
   const sidebar = document.getElementById("variantSidebar");
   sidebar.innerHTML = "";
+
   const intro = document.createElement("div");
   intro.className = "variant-intro";
   intro.innerHTML = `
-  <h2>Customize Your Boat</h2>
-  <p>Select materials, colors, and parts to create a configuration that matches your vision.</p>
+    <h2>Customize Your Boat</h2>
+    <p>Select materials, colors, and parts to create a configuration that matches your vision.</p>
   `;
-sidebar.insertBefore(intro, sidebar.firstChild);
+  sidebar.insertBefore(intro, sidebar.firstChild);
+
   for (const [groupName, parts] of Object.entries(VARIANT_GROUPS)) {
     const groupDiv = document.createElement("div");
     groupDiv.className = "variant-group";
 
-    // Header grupe (collapse)
     const header = document.createElement("h3");
     header.textContent = groupName;
     header.addEventListener("click", () => {
@@ -1690,7 +1692,6 @@ sidebar.insertBefore(intro, sidebar.firstChild);
     });
 
     groupDiv.appendChild(header);
-
     const itemsDiv = document.createElement("div");
     itemsDiv.className = "variant-items";
 
@@ -1698,44 +1699,35 @@ sidebar.insertBefore(intro, sidebar.firstChild);
       const variants = data.models;
 
       variants.forEach((variant) => {
-        // === KARTICA ===
         const itemEl = document.createElement("div");
         itemEl.className = "variant-item";
         itemEl.dataset.part = partKey;
         itemEl.dataset.variant = variant.name;
 
-        // === THUMB WRAPPER ===
         const thumbWrapper = document.createElement("div");
         thumbWrapper.className = "thumb-wrapper";
 
         const preview = document.createElement("img");
-        preview.src = thumbnails?.[partKey]?.[variant.name] || "";
+        preview.src =
+          thumbnails?.[partKey]?.[variant.name] || "assets/part_placeholder.png";
         preview.className = "thumb";
         thumbWrapper.appendChild(preview);
 
-        // Naslov
+
         const label = document.createElement("div");
         label.className = "title";
         label.textContent = variant.name;
         thumbWrapper.appendChild(label);
 
-        // Badge (npr. A, B, C…)
-        const badge = document.createElement("div");
-        badge.className = "variant-badge";
-        badge.textContent = variant.name.slice(-1);
-        thumbWrapper.appendChild(badge);
 
         itemEl.appendChild(thumbWrapper);
 
-        // === BODY ===
         const body = document.createElement("div");
         body.className = "variant-body";
 
-        // Colors/Textures (ako postoje)
         if (variant.colors && variant.colors.length > 0) {
           const colorsDiv = document.createElement("div");
           colorsDiv.className = "colors";
-
           variant.colors.forEach((c) => {
             const colorEl = document.createElement("div");
             colorEl.className = "color-swatch";
@@ -1744,119 +1736,155 @@ sidebar.insertBefore(intro, sidebar.firstChild);
               colorEl.style.backgroundImage = `url(${c.texture})`;
               colorEl.style.backgroundSize = "cover";
             } else if (c.type === "color" && c.color) {
-              colorEl.style.backgroundColor = `rgb(${c.color
-                .map((v) => v * 255)
-                .join(",")})`;
+              colorEl.style.backgroundColor = `rgb(${c.color.map(v => v * 255).join(",")})`;
             }
-
             colorEl.title = c.name;
+            colorEl.addEventListener("click", (e) => {
+              e.stopPropagation();
+              const card = colorEl.closest(".variant-item");
+              const partKey = card.dataset.part;
+              const node = nodesMeta.find((n) => n.name === partKey);
+              if (!node) return;
 
-colorEl.addEventListener("click", (e) => {
-  const card = colorEl.closest(".variant-item");
-  const partKey = card.dataset.part;
-  const node = nodesMeta.find((n) => n.name === partKey);
-  if (!node) return;
+              // ako kartica nije aktivna, prvo je aktiviraj
+              if (!card.classList.contains("active")) {
+                card.click();
+                return;
+              }
 
-  // ako kartica NIJE aktivna — prvo je izaberi
-  if (!card.classList.contains("active")) {
-    card.click(); // pokreni njen handler
-    return; // ne idi dalje dok se ne izabere
-  }
+              // primeni boju
+              const cfgGroup = Object.values(VARIANT_GROUPS).find((g) => partKey in g) || {};
+              const mainMat = cfgGroup[partKey]?.mainMat || "";
 
-  // ako jeste aktivna — sad dozvoli klik na boju
-  e.stopPropagation();
+              if (c.type === "texture" && c.texture) {
+                const img = new Image();
+                img.src = c.texture;
+                img.onload = () => {
+                  const tex = gl.createTexture();
+                  gl.bindTexture(gl.TEXTURE_2D, tex);
+                  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+                  gl.generateMipmap(gl.TEXTURE_2D);
+                  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+                  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                  for (const r of node.renderIdxs) {
+                    if (!mainMat || r.matName === mainMat) modelBaseTextures[r.idx] = tex;
+                  }
+                  render();
+                };
+              } else if (c.type === "color" && c.color) {
+                for (const r of node.renderIdxs) {
+                  if (!mainMat || r.matName === mainMat) {
+                    modelBaseColors[r.idx] = new Float32Array(c.color);
+                    modelBaseTextures[r.idx] = null;
+                  }
+                }
+              }
 
-  const activeVariant = currentParts[partKey];
-  if (activeVariant !== variant.name) return;
+              // zapamti varijantu i boju
+              currentParts[partKey] = { ...variant, selectedColor: c.name };
 
-  const cfgGroup = Object.values(VARIANT_GROUPS).find((g) => partKey in g) || {};
-  const mainMat = cfgGroup[partKey]?.mainMat || "";
+              updatePartsTable(partKey, `${variant.name} (${c.name})`);
 
-  if (c.type === "texture" && c.texture) {
-    const img = new Image();
-    img.src = c.texture;
-    img.onload = () => {
-      const tex = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-      gl.generateMipmap(gl.TEXTURE_2D);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      for (const r of node.renderIdxs) {
-        if (!mainMat || r.matName === mainMat) modelBaseTextures[r.idx] = tex;
-      }
-      render();
-    };
-  } else if (c.type === "color" && c.color) {
-    for (const r of node.renderIdxs) {
-      if (!mainMat || r.matName === mainMat) {
-        modelBaseColors[r.idx] = new Float32Array(c.color);
-        modelBaseTextures[r.idx] = null;
-      }
-    }
-  }
+              // ažuriraj selekciju u UI
+              colorsDiv.querySelectorAll(".color-swatch").forEach(el => el.classList.remove("selected"));
+              colorEl.classList.add("selected");
 
-  updatePartsTable(partKey, `${variant.name} (${c.name})`);
-  currentParts[partKey] = variant.name;
+              render();
+              showPartInfo(`${variant.name} (${c.name})`);
+            });
 
-  const colorsDiv = colorEl.parentElement;
-  colorsDiv.querySelectorAll(".color-swatch").forEach((el) => el.classList.remove("selected"));
-  colorEl.classList.add("selected");
-
-  render();
-  showPartInfo(`${variant.name} (${c.name})`);
+  colorsDiv.appendChild(colorEl);
 });
 
+        // 🔹 Nakon što su sve boje dodate, ponovo označi izabranu
+        const saved = currentParts[partKey];
+        if (saved && saved.selectedColor) {
+          const sel = Array.from(colorsDiv.children).find(
+            (el) => el.title === saved.selectedColor
+          );
+          if (sel) sel.classList.add("selected");
+        }
 
-            colorsDiv.appendChild(colorEl);
-          });
 
           body.appendChild(colorsDiv);
         }
 
         itemEl.appendChild(body);
 
-        // === FOOTER ===
         const footer = document.createElement("div");
         footer.className = "variant-footer";
-
-        const rawPrice = PART_PRICES?.[variant.name] || 0;
-        let priceText = "";
-        if (rawPrice === 0) {
-          priceText = "Uključeno";
-        } else if (typeof rawPrice === "number") {
-          priceText = `+${rawPrice} €`;
-        } else {
-          priceText = rawPrice;
-        }
-
+        const rawPrice = variant.price ?? 0;
+        const priceText = rawPrice === 0 ? "Included" : `+${rawPrice} €`;
         footer.innerHTML = `<span class="price">${priceText}</span>`;
         itemEl.appendChild(footer);
+// ➕ Dodaj dugme i opis ako postoji opis u configu
+if (variant.description) {
+  const descBtn = document.createElement("button");
+  descBtn.className = "desc-toggle";
+  descBtn.textContent = "Pročitaj opis";
+  itemEl.appendChild(descBtn);
 
-        // === CLICK HANDLER NA KARTICU ===
-        itemEl.addEventListener("click", () => {
-          const node = nodesMeta.find((n) => n.name === partKey);
-          if (!node) return;
+  const descEl = document.createElement("div");
+  descEl.className = "variant-description";
+  descEl.textContent = variant.description;
+  itemEl.appendChild(descEl);
+}
 
-          highlightTreeSelection(node.id);
+itemEl.addEventListener("click", (e) => {
+  // ako klik potiče sa dugmeta za opis, ignoriši
+  if (e.target.closest(".desc-toggle")) return;
+  const isEquipmentOnly = !variant.src && !data.mainMat;
+if (isEquipmentOnly) {
+  // 🚫 Ako je "Included" u additional grupi → ignoriši klik
+  if ((variant.price ?? 0) === 0) {
+    return; // ne radi ništa
+  }
 
-          replaceSelectedWithURL(variant.src, variant.name, partKey);
-          updatePartsTable(partKey, variant.name);
-          currentParts[partKey] = variant.name;
+  const key = variant.name;
+  const alreadyActive = itemEl.classList.contains("active");
 
-          itemsDiv
-            .querySelectorAll(".variant-item")
-            .forEach((el) => el.classList.remove("active"));
-          itemEl.classList.add("active");
+  if (alreadyActive) {
+    itemEl.classList.remove("active");
+    delete currentParts[key];
+    const row = document.querySelector(`#partsTable tr[data-part="${key}"]`);
+    if (row) row.remove();
+  } else {
+    itemEl.classList.add("active");
+    currentParts[key] = variant;
+    updatePartsTable(key, variant.name);
+  }
 
-          itemsDiv
-            .querySelectorAll(".color-swatch")
-            .forEach((el) => el.classList.remove("selected"));
+  updateTotalPrice();
+  return;
+}
 
-          focusCameraOnNode(node);
-          render();
-          showPartInfo(variant.name);
-        });
+
+
+  // standardni deo (ima model)
+  const node = nodesMeta.find((n) => n.name === partKey);
+  if (!node) return;
+
+  highlightTreeSelection(node.id);
+  // ⬇️ pre replaceSelectedWithURL
+const prev = currentParts[partKey];
+if (prev && prev.selectedColor) {
+  // zapamti boju za varijantu koju napuštamo
+  if (!savedColorsByPart[partKey]) savedColorsByPart[partKey] = {};
+  savedColorsByPart[partKey][prev.name] = prev.selectedColor;
+}
+
+  replaceSelectedWithURL(variant.src, variant.name, partKey);
+  updatePartsTable(partKey, variant.name);
+  currentParts[partKey] = variant;
+
+  itemsDiv.querySelectorAll(".variant-item").forEach((el) => el.classList.remove("active"));
+  itemEl.classList.add("active");
+
+  focusCameraOnNode(node);
+  render();
+  showPartInfo(variant.name);
+});
+
 
         itemsDiv.appendChild(itemEl);
       });
@@ -1866,6 +1894,13 @@ colorEl.addEventListener("click", (e) => {
     sidebar.appendChild(groupDiv);
   }
 }
+// Klik na "Pročitaj opis" otvara/zatvara karticu
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".desc-toggle");
+  if (!btn) return;
+  const card = btn.closest(".variant-item");
+  card.classList.toggle("open");
+});
 
 function buildPartsTable() {
   const tbody = document.querySelector("#partsTable tbody");
@@ -1873,22 +1908,23 @@ function buildPartsTable() {
 
   for (const [groupName, parts] of Object.entries(VARIANT_GROUPS)) {
     for (const [partKey, data] of Object.entries(parts)) {
-      const defaultModel = data.models?.[0];
-      const variantName = defaultModel?.name || partKey;
-      const priceKey = defaultModel?.src
-        ? defaultModel.src.split("/").pop().replace(".glb", "")
-        : partKey;
-      const price = PART_PRICES[priceKey] || 0;
+      const defaultVariant = data.models?.[0];
+      if (!defaultVariant) continue;
 
-      // zapamti trenutno izabrano
-      currentParts[partKey] = variantName;
+      // 1) Pročitaj trenutno izabrano (ako ga ima), inače koristi samo za prikaz default,
+      //    ali NEMOJ pisati u currentParts ovde.
+      const chosen = currentParts[partKey] ?? defaultVariant;
+      const chosenName =
+        chosen.selectedColor ? `${chosen.name} (${chosen.selectedColor})` : chosen.name;
+      const price = chosen.price ?? 0;
 
+      // 2) Napiši red (uvek jedan red po osnovnom delu / partKey)
       const tr = document.createElement("tr");
       tr.dataset.part = partKey;
       tr.innerHTML = `
         <td>${groupName}</td>
-        <td>${variantName}</td>
-        <td>${price === 0 ? "Uključeno" : `+${price} €`}</td>
+        <td>${chosenName}</td>
+        <td>${price === 0 ? "Included" : `+${price} €`}</td>
       `;
       tbody.appendChild(tr);
     }
@@ -1896,57 +1932,68 @@ function buildPartsTable() {
 }
 
 
-function updatePartsTable(partKey, newVariant) {
-  currentParts[partKey] = newVariant;
+function updatePartsTable(partKey, newVariantName) {
+  let variant = null;
+  let groupName = null;
 
-  // pronađi deo u configu da dobiješ tačan priceKey
-  let price = 0;
-  for (const [groupName, parts] of Object.entries(VARIANT_GROUPS)) {
-    const data = parts[partKey];
-    if (!data) continue;
-
-    const variant = data.models.find((m) => newVariant.startsWith(m.name));
-    if (variant) {
-      const key = variant.src
-        ? variant.src.split("/").pop().replace(".glb", "")
-        : partKey;
-      price = PART_PRICES[key] || 0;
-      break;
+  // pronađi varijantu i grupu
+  for (const [gName, parts] of Object.entries(VARIANT_GROUPS)) {
+    for (const [key, data] of Object.entries(parts)) {
+      const found = data.models.find((m) => m.name === newVariantName);
+      if (found) {
+        variant = found;
+        groupName = gName;
+        break;
+      }
     }
+    if (variant) break;
   }
 
-  const row = document.querySelector(`#partsTable tr[data-part="${partKey}"]`);
-  if (!row) return;
-  const cells = row.querySelectorAll("td");
-  if (cells.length >= 3) {
-    // [0] groupName ostaje isto
-    cells[1].textContent = newVariant;
-    cells[2].textContent = price === 0 ? "Uključeno" : `+${price} €`;
+  if (!variant) return;
+
+  const price = variant.price ?? 0;
+  const tbody = document.querySelector("#partsTable tbody");
+  const rowKey = partKey;
+
+  // proveri da li već postoji red za taj deo
+  let row = document.querySelector(`#partsTable tr[data-part="${rowKey}"]`);
+
+  // ako ne postoji — napravi novi
+  if (!row) {
+    row = document.createElement("tr");
+    row.dataset.part = partKey;
+    tbody.appendChild(row);
   }
 
+  // ako je included i već postoji — samo ažuriraj, ne dodaj novi
+  if (price === 0 && row) {
+    row.innerHTML = `
+      <td>${groupName}</td>
+      <td>${variant.name}</td>
+      <td>Included</td>
+    `;
+  } else {
+    // u svim ostalim slučajevima (plaćene varijante) — zameni sadržaj
+    row.innerHTML = `
+      <td>${groupName}</td>
+      <td>${variant.name}</td>
+      <td>+${price} €</td>
+    `;
+  }
+
+  currentParts[rowKey] = variant;
   updateTotalPrice();
 }
+
 
 function updateTotalPrice() {
   let total = BASE_PRICE;
 
-  for (const [groupName, parts] of Object.entries(VARIANT_GROUPS)) {
-    for (const [partKey, data] of Object.entries(parts)) {
-      const selectedName = currentParts[partKey];
-      if (!selectedName) continue;
-
-      const variant = data.models.find((m) => selectedName.startsWith(m.name));
-      if (!variant) continue;
-
-      const priceKey = variant.src
-        ? variant.src.split("/").pop().replace(".glb", "")
-        : partKey;
-
-      total += PART_PRICES[priceKey] || 0;
-    }
+  for (const variant of Object.values(currentParts)) {
+    if (variant && variant.price) total += variant.price;
   }
 
-  // --- Update tabela (tfoot)
+  // ažuriraj total u tabeli i sidebaru
   let totalRow = document.querySelector("#partsTable tfoot tr");
   if (!totalRow) {
     const tfoot = document.createElement("tfoot");
@@ -1954,19 +2001,19 @@ function updateTotalPrice() {
     document.querySelector("#partsTable").appendChild(tfoot);
     tfoot.appendChild(totalRow);
   }
+
   totalRow.innerHTML = `
-    <td colspan="2" style="text-align:right; font-weight:700;">Ukupno:</td>
+    <td colspan="2" style="text-align:right; font-weight:700;">Total:</td>
     <td style="font-size:16px; font-weight:700; color:#3aa4ff;">
       ${total.toLocaleString("de-DE")} €
     </td>
   `;
 
-  // --- Update sidebar total
   const sidebarPrice = document.querySelector(".sidebar-total .price");
-  if (sidebarPrice) {
+  if (sidebarPrice)
     sidebarPrice.textContent = `${total.toLocaleString("de-DE")} €`;
-  }
 }
+
 
 
 function highlightTreeSelection(id) {
@@ -3132,7 +3179,6 @@ async function parseGLBToPrepared(buf, url) {
 async function replaceSelectedWithURL(url, variantName, partName) {
   showLoading();
 
-  /* 1) meta - подаци о делу који мењамо */
   const node = nodesMeta.find((n) => n.name === partName);
   if (!node) {
     console.warn("Node not found:", partName);
@@ -3140,26 +3186,14 @@ async function replaceSelectedWithURL(url, variantName, partName) {
     return;
   }
 
-  /* главни материјал (дефинисан у VARIANT_GROUPS) */
-  const cfgGroup =
-    Object.values(VARIANT_GROUPS).find((g) => partName in g) || {};
-  const mainMat = cfgGroup[partName]?.mainMat || ""; // нпр. "Hull_Main"
+  const cfgGroup = Object.values(VARIANT_GROUPS).find((g) => partName in g) || {};
+  const mainMat = cfgGroup[partName]?.mainMat || "";
 
-  /* изабрана боја (ако постоји) */
-  const customCol = selectedColors[`${partName}:${variantName}`] || null;
-
-  /* 2) припреми примитиве варијанте коју желимо */
-  let variantMeshes;
-  /* 3) prvo ukloni sve blend primitive tog dela */
   transparentMeshes = transparentMeshes.filter((m) => m.partName !== partName);
 
+  let variantMeshes;
   if (!url) {
-    // fabrička “A”
-    variantMeshes = node.renderIdxs
-      .map((r) => realOriginalParts[r.idx])
-      .filter(Boolean);
-
-    // sada tek vrati fabričko staklo
+    variantMeshes = node.renderIdxs.map((r) => realOriginalParts[r.idx]).filter(Boolean);
     if (originalGlassByPart[partName]) {
       for (const g of originalGlassByPart[partName]) {
         transparentMeshes.push({
@@ -3174,28 +3208,24 @@ async function replaceSelectedWithURL(url, variantName, partName) {
     }
   } else {
     if (!preparedVariants[url]) {
-      const buf =
-        cachedVariants[url] || (await fetch(url).then((r) => r.arrayBuffer()));
+      const buf = cachedVariants[url] || (await fetch(url).then((r) => r.arrayBuffer()));
       cachedVariants[url] = buf;
       preparedVariants[url] = await parseGLBToPrepared(buf, url);
     }
     variantMeshes = preparedVariants[url].filter(Boolean);
   }
 
-  /* 4) слотови које је тај део раније користио */
   const oldSlots = node.renderIdxs.map((r) => r.idx);
 
-  /* 5) обради СВЕ примитиве нове варијанте */
   for (let i = 0; i < variantMeshes.length; ++i) {
     const vm = variantMeshes[i];
-    if (!vm) continue; /* прескочи “рупе” */
+    if (!vm) continue;
 
-    /* ---- нађи или направи renderIdx слот ---- */
     let renderIdx;
     if (i < oldSlots.length) {
-      renderIdx = oldSlots[i]; /* постојећи */
+      renderIdx = oldSlots[i];
     } else {
-      renderIdx = modelVAOs.length; /* нови */
+      renderIdx = modelVAOs.length;
       modelVAOs.push(null);
       idxCounts.push(0);
       idxTypes.push(null);
@@ -3211,7 +3241,6 @@ async function replaceSelectedWithURL(url, variantName, partName) {
       renderToNodeId[renderIdx] = node.id;
     }
 
-    /* ---- провидни (blend) иде у transparentMeshes ---- */
     if (vm.isBlend) {
       transparentMeshes.push({
         ...vm,
@@ -3219,22 +3248,18 @@ async function replaceSelectedWithURL(url, variantName, partName) {
         partName,
         modelMat: modelMatrices[renderIdx],
       });
-      idxCounts[renderIdx] = 0; /* да га opaque pass прескочи */
+      idxCounts[renderIdx] = 0;
       continue;
     }
-
-    /* ---- opaque: попуни слот ---- */
-    const useCustom = customCol && (!mainMat || vm.matName === mainMat);
 
     modelVAOs[renderIdx] = vm.vao;
     idxCounts[renderIdx] = vm.count;
     idxTypes[renderIdx] = vm.type;
-    modelBaseColors[renderIdx] = useCustom ? customCol : vm.baseColor;
+    modelBaseColors[renderIdx] = vm.baseColor;
     modelMetallics[renderIdx] = vm.metallic;
     modelRoughnesses[renderIdx] = vm.roughness;
     modelBaseTextures[renderIdx] = vm.baseColorTex || null;
 
-    /* снимимо копију за евентуални повратак */
     originalParts[renderIdx] = {
       vao: vm.vao,
       count: vm.count,
@@ -3249,17 +3274,50 @@ async function replaceSelectedWithURL(url, variantName, partName) {
     };
   }
 
-  /* 6) ако је нова варијанта краћа, угаси вишак старих слотова */
   for (let j = variantMeshes.length; j < oldSlots.length; ++j) {
     idxCounts[oldSlots[j]] = 0;
   }
 
-  currentParts[partName] = variantName;
+  // 🔹 Ako postoji sačuvana boja za ovu varijantu, primeni je odmah
+  const savedColorName = savedColorsByPart[partName]?.[variantName];
+  if (savedColorName) {
+    const variantData = (cfgGroup[partName]?.models || []).find(v => v.name === variantName);
+    const c = variantData?.colors?.find(col => col.name === savedColorName);
+    if (c) {
+      if (c.type === "color") {
+        for (const r of node.renderIdxs) {
+          if (!mainMat || r.matName === mainMat) {
+            modelBaseColors[r.idx] = new Float32Array(c.color);
+            modelBaseTextures[r.idx] = null;
+          }
+        }
+      } else if (c.type === "texture" && c.texture) {
+        const img = new Image();
+        img.src = c.texture;
+        img.onload = () => {
+          const tex = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, tex);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+          gl.generateMipmap(gl.TEXTURE_2D);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          for (const r of node.renderIdxs) {
+            if (!mainMat || r.matName === mainMat)
+              modelBaseTextures[r.idx] = tex;
+          }
+          render();
+        };
+      }
+    }
+  }
+
+  currentParts[partName] = { ...currentParts[partName], name: variantName };
   focusCameraOnNode(node);
   hideLoading();
   render();
   showPartInfo(variantName);
 }
+
 
 function refreshThumbnailsInUI() {
   document.querySelectorAll(".variant-item").forEach((itemEl) => {
