@@ -989,7 +989,7 @@ canvas,
 #fps-meter {
   position: fixed;
   top: 80px;
-  right: 300px;
+  right:400px;
   background: var(--glass-bg);
   backdrop-filter: var(--blur-medium);
   -webkit-backdrop-filter: var(--blur-medium);
@@ -1007,7 +1007,7 @@ canvas,
 #res-meter {
   position: fixed;
   top: 80px;
-  right: 420px;
+  right: 500px;
   background: var(--glass-bg);
   backdrop-filter: var(--blur-medium);
   -webkit-backdrop-filter: var(--blur-medium);
@@ -1143,7 +1143,7 @@ button:focus-visible,
   position: fixed;
   top: 0;
   right: 0;
-  width: 260px;
+  width: 350px;
   height: 100vh;
   background: var(--background-secondary);
   color: var(--foreground);
@@ -1170,7 +1170,7 @@ button:focus-visible,
   font-size: 16px;
 }
 #closeSidebar {
-    position: relative;
+  position: relative;
   z-index: 10000;        /* iznad svega u sidebaru */
   pointer-events: auto;  /* osigurava da prima klik */
   background: none;
@@ -1186,8 +1186,18 @@ button:focus-visible,
   padding: 20px;
 }
 .sidebar-menu li {
-  margin-bottom: 15px;
+  margin: 0;
+  padding: 20px;
+  border: none;
+  background: var(--glass-bg);
+  backdrop-filter: var(--blur-medium);
+  -webkit-backdrop-filter: var(--blur-medium);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  margin-bottom: 4px;
+  overflow: hidden;
 }
+
 .sidebar-menu a {
   color: var(--foreground);
   text-decoration: none;
@@ -1196,6 +1206,76 @@ button:focus-visible,
 }
 .sidebar-menu a:hover {
   color: var(--primary);
+}
+#sidebarList li {
+  position: relative;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+#sidebarList li:hover {
+  background: var(--background-tertiary);
+}
+
+.item-desc {
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.4;
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.contact-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 14px;
+}
+
+.contact-form label {
+  font-weight: 600;
+  color: var(--foreground);
+  font-size: 13px;
+}
+
+.contact-form input,
+.contact-form textarea {
+  background: var(--background-tertiary);
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: none;
+}
+
+.contact-form input:focus,
+.contact-form textarea:focus {
+  outline: 1px solid var(--primary);
+  border-color: var(--primary);
+}
+
+.contact-form button {
+  margin-top: 8px;
+  background: var(--primary);
+  border: none;
+  color: var(--foreground);
+  padding: 10px;
+  font-weight: 600;
+  font-size: 13px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.contact-form button:hover {
+  background: var(--primary-glow);
 }
 
 html, body {

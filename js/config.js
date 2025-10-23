@@ -196,3 +196,46 @@ export const VARIANT_GROUPS = {
     },
   },
 };
+
+export const SIDEBAR_INFO = {
+  contact: `
+  <form id="contactForm" class="contact-form">
+    <p><b>Get in touch</b><br>
+    Have a question or project in mind? Send us a message below.</p>
+
+    <label>Name</label>
+    <input type="text" name="name" placeholder="Your name" required>
+
+    <label>Email</label>
+    <input type="email" name="email" placeholder="Your email" required>
+
+    <label>Message</label>
+    <textarea name="message" placeholder="Write your message here..." rows="4" required></textarea>
+
+    <button type="submit">Send Message</button>
+  </form>
+`,
+help: "Quick troubleshooting and usage guide for the Luxen Engine.",
+
+about: `
+  <p><b>Luxen Engine</b> is the technology that brings every model to life. It turns complex 3D design into a smooth, realistic, and interactive experience — right inside your browser, with no downloads or apps required.</p>
+
+  <p><b>How it works</b><br>
+  Every surface, reflection, and color you see reacts naturally to light and movement. The engine was built from the ground up to capture how materials truly look and feel — from polished metal and glass to the ocean surface and sky above.</p>
+
+  <p><b>Why it stands out</b><br>
+  Luxen Engine focuses on realism, speed, and immersion. It’s not just about viewing a model — it’s about feeling the product as if it were right in front of you. Each change in color, material, or detail appears instantly and seamlessly.</p>
+
+  <p><b>What it enables</b><br>
+  • Instantly customize and preview any configuration<br>
+  • Export beautiful presentation PDFs with images and pricing<br>
+  • Maintain smooth performance on any modern device<br>
+  • Present products in natural light and realistic environments<br>
+  • Adapt the experience to any brand or design style</p>
+
+  <p><b>The idea behind it</b><br>
+  Luxen Engine was created to close the gap between imagination and reality. It allows customers to explore, interact, and connect with the product — not just see it. That’s what makes it more than software. It’s a full experience.</p>
+`,
+
+  settings: "Customize preferences, performance options, and camera sensitivity here."
+};

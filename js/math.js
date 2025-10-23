@@ -164,6 +164,7 @@ export function mulMat4Vec4(out, M, v) {
   return out;
 }
 export const v3 = {
+  add: (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]],  // 👈 dodaj ovu liniju
   sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
   cross: (a, b) => [
     a[1] * b[2] - a[2] * b[1],
@@ -175,8 +176,9 @@ export const v3 = {
     const l = Math.hypot(...v);
     return [v[0] / l, v[1] / l, v[2] / l];
   },
-  scale: (v, s) => [v[0] * s, v[1] * s, v[2] * s], // ✅ dodaj ovu
+  scale: (v, s) => [v[0] * s, v[1] * s, v[2] * s],
 };
+
 
 export const mat4 = {
   invert: (out, a) => {

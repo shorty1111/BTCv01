@@ -8,6 +8,7 @@ import {
   BASE_PRICE,
   VARIANT_GROUPS,
   BOAT_INFO,
+  SIDEBAR_INFO 
 } from "./config.js";
 
 import {
@@ -142,8 +143,8 @@ let modelMetallics = [];
 let modelRoughnesses = [];
 let lastFrameTime = 0;
 
-const KERNEL_SIZE = 128;
-const SSAO_NOISE_SIZE = 30;
+const KERNEL_SIZE = 64;
+const SSAO_NOISE_SIZE = 100
 const thumbnails = {};
 const cachedVariants = {}; // url -> ArrayBuffer
 const preparedVariants = {}; // url -> [ { vao, count, type, baseColor, metallic, roughness, trisWorld }... ]
@@ -440,6 +441,13 @@ document
         const targetRy = Math.PI / 6;
         rxTarget += (targetRx - rxTarget) * 0.4;
         ryTarget += (targetRy - ryTarget) * 0.4;
+          // 🔹 Resetuj poziciju kamere na početnu (centar modela)
+        pan = window.sceneBoundingCenter.slice();
+        rx = rxTarget = Math.PI / 10;
+        ry = ryTarget = Math.PI / 6;
+        distTarget = window.sceneBoundingRadius * 1.5; // ili 1.5 ako želiš bliže
+        dist = distTarget;
+        updateView();
 
       } else {
         // prelazak u ortho — zapamti trenutnu persp distancu
@@ -729,7 +737,14 @@ async function exportPDF() {
   pdf.setLineWidth(0.8);
   pdf.line(margin, y, 210 - margin, y);
   y += 10;
+  // === PRIVREMENO PREBACI NA FRONT POGLED ZA PDF ===
+  const oldView = currentView;
+  const oldUseOrtho = useOrtho;
 
+  currentView = "front";
+  useOrtho = true;
+  updateView();
+  render();
   // === RENDER SCENA (screenshot canvasa) ===
   const canvas = document.querySelector("#glCanvas");
   const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true });
@@ -743,7 +758,11 @@ async function exportPDF() {
 
   y += renderHeight + 10;
   canvas.getContext("webgl2", { preserveDrawingBuffer: false });
-
+  // === VRATI STARU POZICIJU KAMERE POSLE PDF RENDERA ===
+  currentView = oldView;
+  useOrtho = oldUseOrtho;
+  updateView();
+  render();
   // === SPECIFIKACIJE ===
   pdf.setFontSize(14);
   pdf.setFont("helvetica", "bold");
@@ -802,8 +821,7 @@ async function exportPDF() {
   y += 10;
 
   // === TOTAL ===
-  const total =
-    document.querySelector(".sidebar-total .price")?.textContent || "";
+  const total =document.querySelector(".sidebar-total .price")?.textContent || "";
   pdf.setFont("helvetica", "bold");
   pdf.setTextColor(30, 144, 255);
   pdf.setFontSize(13);
@@ -1395,14 +1413,10 @@ canvas.addEventListener(
 );
 canvas.addEventListener("wheel", (e) => {
   distTarget += e.deltaY * 0.01;
-
-  // ograniči da ne uletiš kroz model
   distTarget = Math.max(0.2, distTarget);
 
-  // pomeri tačku pan da uvek ostane ispred kamere (da zoom ide tamo gde gledaš)
-  const dir = v3.norm(v3.sub(pan, camWorld));
-  pan = v3.add(camWorld, v3.scale(dir, distTarget));
-
+  // ⚙️ Umesto da menjaš referencu `pan`, samo izračunaj novi dist
+  // Kamera i dalje gleda ka istom `pan` centru
   updateView();
 }, { passive: true });
 
@@ -3610,32 +3624,65 @@ init().then(async () => {
   await loadDefaultModel(DEFAULT_MODEL);
   initDropdown();
   initWeatherButtons();
-
 const hamburger = document.getElementById("hamburger");
 const sidebarMenu = document.getElementById("sidebarMenu");
 const closeSidebar = document.getElementById("closeSidebar");
 
+// prvo ovo
+document.querySelectorAll("#sidebarList li").forEach(li => {
+  li.addEventListener("click", e => {
+    // ako klik dolazi iz forme (input, textarea, button), ignorisi
+    if (e.target.closest("form")) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const existing = li.querySelector(".item-desc");
+    if (existing) {
+      existing.remove();
+      return;
+    }
+
+    document.querySelectorAll("#sidebarList .item-desc").forEach(el => el.remove());
+
+    const key = li.dataset.key;
+    const text = SIDEBAR_INFO[key] || "No description available.";
+
+    const desc = document.createElement("div");
+    desc.className = "item-desc";
+    desc.innerHTML = text;
+    li.appendChild(desc);
+  });
+});
+
+// tek POSLE toga dodaj ovo
 if (hamburger && sidebarMenu && closeSidebar) {
-  hamburger.addEventListener("click", (e) => {
+  hamburger.addEventListener("click", e => {
     e.stopPropagation();
     sidebarMenu.classList.add("open");
   });
 
-  closeSidebar.addEventListener("click", (e) => {
+  closeSidebar.addEventListener("click", e => {
     e.stopPropagation();
     sidebarMenu.classList.remove("open");
   });
+document.addEventListener("click", e => {
+  const clickedInsideSidebar = sidebarMenu.contains(e.target);
+  const clickedHamburger = e.target === hamburger;
+  const clickedContactForm = e.target.closest("#contactForm");
 
-  document.addEventListener("click", (e) => {
-    if (
-      sidebarMenu.classList.contains("open") &&
-      !sidebarMenu.contains(e.target) &&
-      e.target !== hamburger
-    ) {
-      sidebarMenu.classList.remove("open");
-    }
-  });
+  if (
+    sidebarMenu.classList.contains("open") &&
+    !clickedInsideSidebar &&
+    !clickedHamburger &&
+    !clickedContactForm
+  ) {
+    sidebarMenu.classList.remove("open");
+  }
+});
+
 }
+
 
   renderLoop();
   renderBoatInfo(BOAT_INFO);
