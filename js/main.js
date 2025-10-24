@@ -1,5 +1,6 @@
 import { createShaderProgram } from "./shader.js";
 import { initWater, drawWater } from "./water.js";
+import { initCamera } from "./camera.js";
 import { initSky, drawSky, bakeSkyToCubemap } from "./sky.js";
 import { DEFAULT_SKY } from "./sky.js";
 import {
@@ -108,13 +109,13 @@ let reflectionColorProgram = null;
 let envSize = 512; // kontrola kvaliteta/performansi
 let cubeMaxMip = Math.floor(Math.log2(envSize));
 let showWater = true;
-let depthOnlyProgram = null;
+
 let originalGlassByPart = {};
 let transparentMeshes = [];
 let envTex = null;
 let brdfTex = null;
 let realOriginalParts = {}; // permanentno čuvamo početni model (A)
-let useOrtho = false;
+let previewGL = null;
 let boatMin = null;
 let boatMax = null;
 let showDimensions = false;
@@ -123,12 +124,12 @@ let ssaoFBO, ssaoBlurFBO, ssaoColorBuffer, ssaoBlurBuffer;
 let ssaoKernel = [];
 let ssaoNoiseTexture;
 let lineProgram; // globalna promenljiva
-let currentView = "iso"; // "front", "left", "top", "iso"
+
 let boatLengthLine = null;
 let gBufferProgram, ssaoProgram, blurProgram; // Za nove šejder programe
 let quadVAO = null; // Za iscrtavanje preko celog ekrana
 let modelMatrices = [];
-let camWorld = [0, 0, 0]; // globalno
+
 let nodesMeta = []; // {id, name, renderIdx}
 let renderToNodeId = {}; // renderIdx -> id
 let selectedColors = {};
@@ -143,8 +144,8 @@ let modelMetallics = [];
 let modelRoughnesses = [];
 let lastFrameTime = 0;
 
-const KERNEL_SIZE = 64;
-const SSAO_NOISE_SIZE = 100
+const KERNEL_SIZE = 96;
+const SSAO_NOISE_SIZE = 6.0;
 const thumbnails = {};
 const cachedVariants = {}; // url -> ArrayBuffer
 const preparedVariants = {}; // url -> [ { vao, count, type, baseColor, metallic, roughness, trisWorld }... ]
@@ -307,14 +308,14 @@ function createFinalColorTarget(w, h) {
   gl.bindTexture(gl.TEXTURE_2D, null);
 }
 
-
 function focusCameraOnNode(node) {
-  if (node.cachedBounds) {
-  pan = node.cachedBounds.center;
-  distTarget = node.cachedBounds.dist;
-  return;
-}
   if (!node) return;
+
+  if (node.cachedBounds) {
+    camera.pan = node.cachedBounds.center;
+    camera.distTarget = node.cachedBounds.dist;   // 🔹 umesto .dist
+    return;
+  }
 
   let min = [Infinity, Infinity, Infinity];
   let max = [-Infinity, -Infinity, -Infinity];
@@ -349,16 +350,18 @@ function focusCameraOnNode(node) {
   const newDist = size / (2 * Math.tan(fovY / 2));
 
   window.currentBoundingRadius = size / 2;
-  pan = center;
-  distTarget = newDist * 0.7; // samo cilj, dist neka interpolira
-  rxTarget = Math.PI / 6;
-  ryTarget = 0;
-  minDist = newDist * 0.2;
-  maxDist = newDist * 3.0;
-  distTarget = Math.min(Math.max(distTarget, minDist), maxDist);
-  node.cachedBounds = { center, dist: distTarget };
-}
 
+  camera.pan = center;
+  camera.distTarget = newDist * 0.7;   // 🔹 koristi target, ne direktno
+  camera.rxTarget = Math.PI / 6;       // 🔹 koristi target
+  camera.ryTarget = 0;
+
+  const minDist = newDist * 0.2;
+  const maxDist = newDist * 3.0;
+  camera.distTarget = Math.min(Math.max(camera.distTarget, minDist), maxDist);
+
+  node.cachedBounds = { center, dist: camera.distTarget };
+}
 
 function renderBoatInfo(infoObj) {
   const container = document.getElementById("boat-info");
@@ -419,44 +422,33 @@ function createPreviewProgram(gl2) {
     throw new Error(gl2.getProgramInfoLog(prog));
   return prog;
 }
-
-let lastPerspDist = 5;
-
 document
   .querySelectorAll("#camera-controls button[data-view]")
   .forEach((btn) => {
     btn.addEventListener("click", () => {
       const viewName = btn.getAttribute("data-view");
-      currentView = viewName;
+      camera.currentView = viewName;
 
       if (viewName === "iso") {
-        useOrtho = false;
+        camera.useOrtho = false;
 
-        // vrati staru persp distancu
-        distTarget = lastPerspDist;
-        dist = distTarget;
-
-        // lagani blend u ugao
+        // resetuj sve kao u starom kodu
         const targetRx = Math.PI / 10;
-        const targetRy = Math.PI / 6;
-        rxTarget += (targetRx - rxTarget) * 0.4;
-        ryTarget += (targetRy - ryTarget) * 0.4;
-          // 🔹 Resetuj poziciju kamere na početnu (centar modela)
-        pan = window.sceneBoundingCenter.slice();
-        rx = rxTarget = Math.PI / 10;
-        ry = ryTarget = Math.PI / 6;
-        distTarget = window.sceneBoundingRadius * 1.5; // ili 1.5 ako želiš bliže
-        dist = distTarget;
-        updateView();
+        const targetRy = Math.PI / 20;
 
+        camera.rx = camera.rxTarget = targetRx;
+        camera.ry = camera.ryTarget = targetRy;
+
+        camera.pan = window.sceneBoundingCenter.slice();
+        camera.dist = camera.distTarget = (window.sceneBoundingRadius || 1) * 1.5;
+
+        ({ proj, view, camWorld } = camera.updateView());
       } else {
-        // prelazak u ortho — zapamti trenutnu persp distancu
-        lastPerspDist = dist;
-        useOrtho = true;
+        lastPerspDist = camera.dist;
+        camera.useOrtho = true;
       }
 
-      pan = window.sceneBoundingCenter || [0, 0, 0];
-      updateView();
+      ({ proj, view, camWorld } = camera.updateView());
       render();
     });
   });
@@ -538,8 +530,13 @@ render();             // sad tek nacrtaj prvi frame
 });
 
 const canvas = document.getElementById("glCanvas");
+const camera = initCamera(canvas);
+if (canvas.__glContext) {
+  const loseExt = canvas.__glContext.getExtension("WEBGL_lose_context");
+  if (loseExt) loseExt.loseContext();
+}
 const gl = canvas.getContext("webgl2", { alpha: true, antialias: true });
-
+canvas.__glContext = gl;
 if (!gl) alert("WebGL2 nije podržan u ovom pregledaču.");
 gl.getExtension("EXT_color_buffer_float");
 gl.getExtension("OES_texture_float_linear");
@@ -675,7 +672,228 @@ function initDropdown() {
       // TODO: ovde ubaciš svoj share handler
     });
   }
+  // Save konfiguracija
+  const saveBtn = document.getElementById("saveConfig");
+  if (saveBtn) {
+    saveBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      dropdown.classList.add("hidden");
+      saveConfiguration();
+    });
+  }
+
 }
+function initSavedConfigs() {
+  const container = document.getElementById("savedConfigsContainer");
+  const saveBtn = document.getElementById("saveConfigBtn");
+
+  // --- helper za čitanje/validaciju localStorage ---
+  function loadAll() {
+    try {
+      const data = JSON.parse(localStorage.getItem("boatConfigs") || "[]");
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
+    }
+  }
+
+function renderSavedConfigs() {
+  const all = loadAll();
+  container.innerHTML = "";
+
+  if (all.length === 0) {
+    container.innerHTML = `<div class="empty">No saved configs.</div>`;
+    return;
+  }
+
+  all.forEach((cfg, i) => {
+    const row = document.createElement("div");
+    row.className = "saved-item";
+    row.innerHTML = `
+      <button class="saved-item" data-i="${i}">
+        ${cfg.name}
+        <span class="del-btn" data-i="${i}">✕</span>
+      </button>
+    `;
+    container.appendChild(row);
+  });
+
+// klik na stavku -> load
+container.querySelectorAll(".saved-item").forEach(btn => {
+  btn.addEventListener("click", async (e) => {
+    if (e.target.classList.contains("del-btn")) return;
+    const i = parseInt(e.currentTarget.dataset.i);
+    if (isNaN(i)) return;
+    await loadSavedConfig(i);
+  });
+});
+
+// klik na X -> delete
+container.querySelectorAll(".del-btn").forEach(btn => {
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const i = parseInt(e.currentTarget.dataset.i);
+    if (isNaN(i)) return;
+    const all = loadAll();
+    all.splice(i, 1);
+    localStorage.setItem("boatConfigs", JSON.stringify(all));
+    renderSavedConfigs();
+  });
+});
+
+}
+
+
+
+// sada bez prompt-a — koristi modal iz HTML-a
+function saveToLocal(name) {
+  const all = loadAll();
+  const data = {
+    name,
+    timestamp: Date.now(),
+    currentParts,
+    savedColorsByPart,
+    weather: SUN.dir[1] > 0.5 ? "day" : "sunset",
+    camera: {
+      pan: camera.pan,
+      dist: camera.distTarget,
+      rx: camera.rxTarget,
+      ry: camera.ryTarget,
+    },
+  };
+  all.push(data);
+  localStorage.setItem("boatConfigs", JSON.stringify(all));
+  renderSavedConfigs();
+}
+
+// --- otvaranje i upravljanje modalom ---
+const modal = document.getElementById("saveConfigModal");
+const nameInput = document.getElementById("configNameInput");
+const confirmBtn = document.getElementById("confirmSave");
+const cancelBtn = document.getElementById("cancelSave");
+
+// klik na "Save Configuration" otvara modal
+saveBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  nameInput.value = "";
+  modal.classList.remove("hidden");
+  nameInput.focus();
+});
+
+// potvrdi snimanje
+confirmBtn.addEventListener("click", () => {
+  const name = nameInput.value.trim() || `Config ${new Date().toLocaleString()}`;
+  saveToLocal(name);
+  modal.classList.add("hidden");
+});
+
+// otkaži
+cancelBtn.addEventListener("click", () => {
+  modal.classList.add("hidden");
+});
+
+
+async function loadSavedConfig(index) {
+  const all = JSON.parse(localStorage.getItem("boatConfigs") || "[]");
+  const cfg = all[index];
+  if (!cfg) return alert("Config not found.");
+
+  window.__suppressFocusCamera = true;
+
+  currentParts = cfg.currentParts || {};
+  savedColorsByPart = cfg.savedColorsByPart || {};
+  setWeather(cfg.weather || "day");
+
+  // reset UI selekcija
+  document.querySelectorAll(".variant-item").forEach(el => el.classList.remove("active"));
+  document.querySelectorAll(".color-swatch").forEach(el => el.classList.remove("selected"));
+
+  // 1️⃣ Učitaj standardne delove
+  for (const [part, variant] of Object.entries(currentParts)) {
+    const node = nodesMeta.find(n => n.name === part);
+    if (variant.src) {
+      await replaceSelectedWithURL(variant.src, variant.name, part);
+    }
+
+    // primeni boju ili teksturu
+    if (variant.selectedColor) {
+      const group = Object.values(VARIANT_GROUPS).find(g => part in g);
+      const colorData = group?.[part]?.models
+        ?.find(m => m.name === variant.name)
+        ?.colors?.find(c => c.name === variant.selectedColor);
+      if (colorData) {
+        if (colorData.type === "color") {
+          if (node) {
+            for (const r of node.renderIdxs) {
+              modelBaseColors[r.idx] = new Float32Array(colorData.color);
+              modelBaseTextures[r.idx] = null;
+            }
+          }
+        } else if (colorData.type === "texture" && colorData.texture) {
+          const img = new Image();
+          await new Promise(res => {
+            img.onload = res;
+            img.src = colorData.texture;
+          });
+          const tex = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, tex);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+          gl.generateMipmap(gl.TEXTURE_2D);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          if (node) {
+            for (const r of node.renderIdxs) modelBaseTextures[r.idx] = tex;
+          }
+        }
+      }
+    }
+
+    // selektuj u UI
+    const item = document.querySelector(`.variant-item[data-part="${part}"][data-variant="${variant.name}"]`);
+    if (item) {
+      item.classList.add("active");
+      const colors = item.querySelectorAll(".color-swatch");
+      colors.forEach(sw => {
+        if (sw.title === variant.selectedColor) sw.classList.add("selected");
+      });
+    }
+
+    // info panel update
+    showPartInfo(`${variant.name}${variant.selectedColor ? ` (${variant.selectedColor})` : ""}`);
+  }
+
+// 2️⃣ Aktiviraj ADDITIONAL (nema src, samo cena)
+for (const [part, variant] of Object.entries(currentParts)) {
+  if (!variant.src) {
+    // označi u UI
+    const addItem = document.querySelector(`.variant-item[data-variant="${variant.name}"]`);
+    if (addItem) {
+      addItem.classList.add("active");
+      // osveži cenu odmah ispod kartice (ako postoji)
+      const footer = addItem.querySelector(".price");
+      if (footer) footer.textContent = variant.price === 0 ? "Included" : `+${variant.price} €`;
+    }
+
+    // ako je taj deo dodatne opreme u nekoj grupi, otvori tu grupu
+    const parentGroup = addItem?.closest(".variant-group");
+    if (parentGroup && !parentGroup.classList.contains("open")) {
+      parentGroup.classList.add("open");
+    }
+  }
+}
+
+
+  // 3️⃣ Osveži tabele i cene
+  buildPartsTable();
+  updateTotalPrice();
+  window.__suppressFocusCamera = false;
+  render();
+}
+
+  renderSavedConfigs();
+}
+
+
 function initWeatherButtons() {
   const buttons = document.querySelectorAll("#camera-controls button[data-weather]");
   buttons.forEach((btn) => {
@@ -685,7 +903,6 @@ function initWeatherButtons() {
     });
   });
 }
-
 async function exportPDF() {
   console.log("Export PDF clicked");
 
@@ -694,12 +911,12 @@ async function exportPDF() {
   const margin = 15;
   let y = margin;
 
-  const boatName = BOAT_INFO.Model || "Luxen Boat";
+  const boatName = BOAT_INFO.Model || "Lunea Boat";
   const dateStr = new Date().toLocaleDateString("en-GB");
 
   // === LOGO HEADER ===
   const logoImg = new Image();
-  logoImg.src = "assets/luxen_logo.png";
+  logoImg.src = "assets/lunea_logo.png";
   await new Promise((res) => (logoImg.onload = res));
 
   const logoAspect = logoImg.width / logoImg.height;
@@ -737,18 +954,20 @@ async function exportPDF() {
   pdf.setLineWidth(0.8);
   pdf.line(margin, y, 210 - margin, y);
   y += 10;
-  // === PRIVREMENO PREBACI NA FRONT POGLED ZA PDF ===
-  const oldView = currentView;
-  const oldUseOrtho = useOrtho;
 
-  currentView = "front";
-  useOrtho = true;
-  updateView();
+  // === PRIVREMENO PREBACI NA FRONT POGLED ZA PDF ===
+  const oldView = camera.currentView;
+  const oldUseOrtho = camera.useOrtho;
+
+  camera.currentView = "front";
+  camera.useOrtho = true;
+  ({ proj, view, camWorld } = camera.updateView());
   render();
+
   // === RENDER SCENA (screenshot canvasa) ===
   const canvas = document.querySelector("#glCanvas");
   const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true });
-  render(); // obavezno osveži poslednji frame
+  render(); // osveži kadar
   const imageData = canvas.toDataURL("image/png");
 
   const imgAspect = canvas.width / canvas.height;
@@ -758,11 +977,13 @@ async function exportPDF() {
 
   y += renderHeight + 10;
   canvas.getContext("webgl2", { preserveDrawingBuffer: false });
+
   // === VRATI STARU POZICIJU KAMERE POSLE PDF RENDERA ===
-  currentView = oldView;
-  useOrtho = oldUseOrtho;
-  updateView();
+  camera.currentView = oldView;
+  camera.useOrtho = oldUseOrtho;
+  ({ proj, view, camWorld } = camera.updateView());
   render();
+
   // === SPECIFIKACIJE ===
   pdf.setFontSize(14);
   pdf.setFont("helvetica", "bold");
@@ -821,7 +1042,7 @@ async function exportPDF() {
   y += 10;
 
   // === TOTAL ===
-  const total =document.querySelector(".sidebar-total .price")?.textContent || "";
+  const total = document.querySelector(".sidebar-total .price")?.textContent || "";
   pdf.setFont("helvetica", "bold");
   pdf.setTextColor(30, 144, 255);
   pdf.setFontSize(13);
@@ -832,11 +1053,10 @@ async function exportPDF() {
   pdf.rect(0, 285, 210, 12, "F");
   pdf.setTextColor(255);
   pdf.setFontSize(9);
-  pdf.text("Generated by Luxen Engine © 2025", 105, 292, { align: "center" });
+  pdf.text("Generated by Lunea Engine © 2025", 105, 292, { align: "center" });
 
   pdf.save(`${boatName.replace(/\s+/g, "_")}_Report.pdf`);
 }
-
 function autoAdjustSSAA() {
   if (adjustCooldown > 0) {
     adjustCooldown--;
@@ -974,7 +1194,6 @@ function createGBuffer() {
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
-
 function createSSAOBuffers() {
   // 📱 Ako je tablet/mobilni → pola rezolucije
   const w = canvas.width;
@@ -1031,7 +1250,6 @@ function createSSAOBuffers() {
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
-
 function generateSSAOKernel() {
   const lerp = (a, b, f) => a + f * (b - a);
   let kernel = [];
@@ -1065,7 +1283,6 @@ function generateSSAOKernel() {
   }
   ssaoKernel = new Float32Array(kernel);
 }
-
 function generateNoiseTexture() {
   let noise = [];
   for (let i = 0; i < SSAO_NOISE_SIZE * SSAO_NOISE_SIZE; i++) {
@@ -1174,6 +1391,7 @@ const vec4 = {
 
 let proj = persp(60, canvas.width / canvas.height, 0.1, 10000);
 let view = new Float32Array(16);
+let camWorld = [0, 0, 0];
 const model = new Float32Array([
   1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
 ]);
@@ -1183,242 +1401,6 @@ function setMatrices(p) {
   gl.uniformMatrix4fv(gl.getUniformLocation(p, "uView"), false, view);
   gl.uniformMatrix4fv(gl.getUniformLocation(p, "uModel"), false, model);
 }
-
-/* -------------------------------------------------
-   SIMPLE ORBIT + PAN + ZOOM CAMERA
---------------------------------------------------*/
-let rx = 0,
-  ry = 0,
-  dist = 5;
-let minDist = 0.1;
-let maxDist = 100.0;
-let pan = [0, 0, 0]; // target point
-let rxTarget = rx,
-  ryTarget = ry,
-  distTarget = dist;
-
-function animateCamera() {
-  
-  const minRx = 0.025; // ~6 stepeni iznad horizonta
-  const maxRx = Math.PI / 2 - 0.01;
-  rxTarget = Math.max(minRx, Math.min(maxRx, rxTarget));
-  if (rxTarget > maxRx) rxTarget += (maxRx - rxTarget) * 0.25;
-  rx += (rxTarget - rx) * 0.16;
-  ry += (ryTarget - ry) * 0.16;
-
-  // Clamp zoom
-  const fovY = Math.PI / 4;
-  let minDistDynamic =
-    ((window.currentBoundingRadius || window.sceneBoundingRadius || 1.5) /
-      Math.tan(fovY / 2)) *
-    0.3;
-  let maxDistDynamic =
-    (window.currentBoundingRadius || window.sceneBoundingRadius || 5) * 10.0;
-
-  if (distTarget < minDistDynamic)
-    distTarget += (minDistDynamic - distTarget) * 0.2;
-  if (distTarget > maxDistDynamic)
-    distTarget += (maxDistDynamic - distTarget) * 0.2;
-
-  dist += (distTarget - dist) * 0.14;
-}
-
-function updateView() {
-  const aspect = canvas.width / canvas.height;
-
-  // 👇 Uvek koristimo istu perspektivu — više nema ortho
-  proj = persp(60, aspect, 0.1, 100000);
-
- if (useOrtho) {
-  // resetuj orijentaciju da ne nosi orbit kameru
-  rx = 0;
-  ry = 0;
-  dist = 1;
-
-  const radius = window.sceneBoundingRadius || 5;
-  const size = radius * 0.8;
-  const d = radius * 1.5;
-
-  let eye, up;
-  switch (currentView) {
-    case "front":
-      eye = [0, size * 0.3, d];
-      up = [0, 1, 0];
-      break;
-    case "back":
-      eye = [0, size * 0.3, -d];
-      up = [0, 1, 0];
-      break;
-    case "left":
-      eye = [-d, size * 0.3, 0];
-      up = [0, 1, 0];
-      break;
-    case "right":
-      eye = [d, size * 0.3, 0];
-      up = [0, 1, 0];
-      break;
-    case "top":
-      eye = [0, d, 0];
-      up = [0, 0, -1];
-      break;
-    default:
-      eye = [d, d, d];
-      up = [0, 1, 0];
-      break;
-  }
-
-  view.set(look(eye, pan, up));
-  camWorld = eye.slice();
-}
- else {
-    // 👇 Orbit kamera ostaje ista
-    const eye = [
-      dist * Math.cos(rx) * Math.sin(ry) + pan[0],
-      dist * Math.sin(rx) + pan[1],
-      dist * Math.cos(rx) * Math.cos(ry) + pan[2],
-    ];
-
-    view.set(look(eye, pan, [0, 1, 0]));
-    camWorld = eye.slice();
-  }
-}
-
-
-
-// === TOUCH KONTROLE ===
-let touchDragging = false;
-let touchLastX = 0, touchLastY = 0;
-let pinchLastDist = null;
-let touchPanLastMid = null; // nova promenljiva za 2-prsta pan
-
-canvas.addEventListener("mousemove", (e) => {
-  if (e.buttons === 1) {
-    ryTarget += e.movementX * 0.001;
-    rxTarget += e.movementY * 0.005;
-  } else if (e.buttons === 4) {
-    const panSpeed = 0.001 * dist; // brže kad je kamera dalje
-    const eye = [
-      dist * Math.cos(rx) * Math.sin(ry) + pan[0],
-      dist * Math.sin(rx) + pan[1],
-      dist * Math.cos(rx) * Math.cos(ry) + pan[2],
-    ];
-    const target = pan;
-    const viewDir = v3.norm(v3.sub(target, eye)); // pogled
-    const right = v3.norm(v3.cross([0, 1, 0], viewDir)); // čisto desno
-    const up = v3.cross(viewDir, right); // čisto gore
-    pan[0] += (e.movementX * right[0] + e.movementY * up[0]) * panSpeed;
-    pan[1] += (e.movementX * right[1] + e.movementY * up[1]) * panSpeed;
-    pan[2] += (e.movementX * right[2] + e.movementY * up[2]) * panSpeed;
-
-    updateView();
-  }
-});
-// Rotacija jednim prstom + pinch zoom + pan sa dva prsta
-canvas.addEventListener(
-  "touchstart",
-  (e) => {
-    if (e.touches.length === 1) {
-      touchDragging = true;
-      touchLastX = e.touches[0].clientX;
-      touchLastY = e.touches[0].clientY;
-    }
-    if (e.touches.length === 2) {
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      pinchLastDist = Math.sqrt(dx * dx + dy * dy);
-
-      // setuj početnu srednju tačku za pan
-      touchPanLastMid = {
-        x: (e.touches[0].clientX + e.touches[1].clientX) * 0.5,
-        y: (e.touches[0].clientY + e.touches[1].clientY) * 0.5,
-      };
-    }
-    e.preventDefault();
-  },
-  { passive: false }
-);
-canvas.addEventListener(
-  "touchmove",
-  (e) => {
-    if (e.touches.length === 1 && touchDragging) {
-      const dx = e.touches[0].clientX - touchLastX;
-      const dy = e.touches[0].clientY - touchLastY;
-
-      ryTarget += dx * 0.003; // horizontalna rotacija
-      rxTarget += dy * 0.005; // vertikalna rotacija
-
-      touchLastX = e.touches[0].clientX;
-      touchLastY = e.touches[0].clientY;
-    }
-
-    if (e.touches.length === 2) {
-      // === pinch zoom ===
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      const distNow = Math.sqrt(dx * dx + dy * dy);
-
-      if (pinchLastDist !== null) {
-        const delta = pinchLastDist - distNow;
-        distTarget += delta * 0.01; // isto što i wheel zoom
-      }
-      pinchLastDist = distNow;
-
-      // === pan sa dva prsta ===
-      const midNow = {
-        x: (e.touches[0].clientX + e.touches[1].clientX) * 0.5,
-        y: (e.touches[0].clientY + e.touches[1].clientY) * 0.5,
-      };
-
-      if (touchPanLastMid) {
-        const dxMid = midNow.x - touchPanLastMid.x;
-        const dyMid = midNow.y - touchPanLastMid.y;
-
-        const panSpeed = 0.001 * dist; // isto kao kod miša
-
-        // preračunaj kamerine vektore
-        const eye = [
-          dist * Math.cos(rx) * Math.sin(ry) + pan[0],
-          dist * Math.sin(rx) + pan[1],
-          dist * Math.cos(rx) * Math.cos(ry) + pan[2],
-        ];
-        const target = pan;
-        const viewDir = v3.norm(v3.sub(target, eye));
-        const right = v3.norm(v3.cross([0, 1, 0], viewDir));
-        const up = v3.cross(viewDir, right);
-
-        pan[0] += (dxMid * right[0] + dyMid * up[0]) * panSpeed;
-        pan[1] += (dxMid * right[1] + dyMid * up[1]) * panSpeed;
-        pan[2] += (dxMid * right[2] + dyMid * up[2]) * panSpeed;
-
-        updateView();
-      }
-      touchPanLastMid = midNow;
-    }
-
-    e.preventDefault();
-  },
-  { passive: false }
-);
-canvas.addEventListener(
-  "touchend",
-  (e) => {
-    if (e.touches.length === 0) {
-      touchDragging = false;
-      pinchLastDist = null;
-      touchPanLastMid = null;
-    }
-    e.preventDefault();
-  },
-  { passive: false }
-);
-canvas.addEventListener("wheel", (e) => {
-  distTarget += e.deltaY * 0.01;
-  distTarget = Math.max(0.2, distTarget);
-
-  // ⚙️ Umesto da menjaš referencu `pan`, samo izračunaj novi dist
-  // Kamera i dalje gleda ka istom `pan` centru
-  updateView();
-}, { passive: true });
 
 function makeLengthLine(min, max) {
   const y = min[1];
@@ -1443,7 +1425,7 @@ function makeLengthLine(min, max) {
 /* ------------------------------------------------------------------
    GLOBALS
 ------------------------------------------------------------------ */
-let program, grid;
+let program;
 let shadowProgram;
 let programGlass;
 let modelVAOs = [];
@@ -1478,39 +1460,7 @@ async function init() {
     r.text()
   );
   gBufferProgram = createShaderProgram(gl, gBufferVertSrc, gBufferFragSrc);
-  const depthOnlyVert = `#version 300 es
-layout(location=0) in vec3 aPos;
-uniform mat4 uProjection;
-uniform mat4 uView;
-uniform mat4 uModel;
 
-out vec3 vWorldPos;
-
-void main() {
-  vec4 world = uModel * vec4(aPos, 1.0);
-  vWorldPos = world.xyz;
-  gl_Position = uProjection * uView * world;
-}
-`;
-
-  const depthOnlyFrag = `#version 300 es
-precision highp float;
-in vec3 vWorldPos;
-uniform float uClipY;   // nivo vode
-out vec4 fragColor;
-
-void main() {
-    // ako je clip aktivan (tj. > -999) seci sve iznad vode
-    if (uClipY > -999.0 && vWorldPos.y > uClipY)
-        discard;
-
-    // crveno = trup ispod vode
-    fragColor = vec4(0.0, 0.0, 0.0, 1.0);
-}
-`;
-
-  // kreiraj program
-  depthOnlyProgram = createShaderProgram(gl, depthOnlyVert, depthOnlyFrag);
   const quadVertSrc = await fetch("../shaders/quad.vert").then((r) => r.text());
 
   const ssaoFragSrc = await fetch("../shaders/ssao.frag").then((r) => r.text());
@@ -1678,8 +1628,9 @@ gl.deleteProgram(prog);
 
   cubeMaxMip = Math.floor(Math.log2(envSize));
 
-  updateView();
+  ({ proj, view, camWorld } = camera.updateView());
 }
+
 function buildVariantSidebar() {
   const sidebar = document.getElementById("variantSidebar");
   sidebar.innerHTML = "";
@@ -1920,19 +1871,17 @@ function buildPartsTable() {
   const tbody = document.querySelector("#partsTable tbody");
   tbody.innerHTML = "";
 
+  // standardni delovi iz VARIANT_GROUPS
   for (const [groupName, parts] of Object.entries(VARIANT_GROUPS)) {
     for (const [partKey, data] of Object.entries(parts)) {
       const defaultVariant = data.models?.[0];
       if (!defaultVariant) continue;
 
-      // 1) Pročitaj trenutno izabrano (ako ga ima), inače koristi samo za prikaz default,
-      //    ali NEMOJ pisati u currentParts ovde.
       const chosen = currentParts[partKey] ?? defaultVariant;
       const chosenName =
         chosen.selectedColor ? `${chosen.name} (${chosen.selectedColor})` : chosen.name;
       const price = chosen.price ?? 0;
 
-      // 2) Napiši red (uvek jedan red po osnovnom delu / partKey)
       const tr = document.createElement("tr");
       tr.dataset.part = partKey;
       tr.innerHTML = `
@@ -1943,8 +1892,23 @@ function buildPartsTable() {
       tbody.appendChild(tr);
     }
   }
-}
 
+  // dodatni (additional) delovi iz currentParts koji NISU u VARIANT_GROUPS
+  for (const [key, variant] of Object.entries(currentParts)) {
+    const isAdditional = !Object.values(VARIANT_GROUPS)
+      .some(g => Object.keys(g).includes(key));
+    if (isAdditional) {
+      const tr = document.createElement("tr");
+      tr.dataset.part = variant.name;
+      tr.innerHTML = `
+        <td>Additional</td>
+        <td>${variant.name}</td>
+        <td>${variant.price === 0 ? "Included" : `+${variant.price} €`}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+  }
+}
 
 function updatePartsTable(partKey, newVariantName) {
   let variant = null;
@@ -1999,7 +1963,6 @@ function updatePartsTable(partKey, newVariantName) {
   updateTotalPrice();
 }
 
-
 function updateTotalPrice() {
   let total = BASE_PRICE;
 
@@ -2027,8 +1990,6 @@ function updateTotalPrice() {
   if (sidebarPrice)
     sidebarPrice.textContent = `${total.toLocaleString("de-DE")} €`;
 }
-
-
 
 function highlightTreeSelection(id) {
   document
@@ -2068,8 +2029,8 @@ function computeLightBounds(min, max, lightView) {
 function render() {
   let reflView = null;
   // === 1. Animacija kamere i matrica pogleda ===
-  animateCamera();
-  updateView();
+  camera.animateCamera();
+  ({ proj, view, camWorld } = camera.updateView());
 
   // === 1A. CLEAR FINALNI FBO NA POČETKU (OBAVEZNO!) ===
   gl.bindFramebuffer(gl.FRAMEBUFFER, finalFBO);
@@ -2157,7 +2118,7 @@ gl.disable(gl.POLYGON_OFFSET_FILL);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
 
-    let reflCam = getReflectedCamera(camWorld, pan, [0, 1, 0]);
+    let reflCam = getReflectedCamera(camWorld, camera.pan, [0, 1, 0]);
     let reflProj = proj;
 
     reflView = reflCam.view;
@@ -2530,7 +2491,7 @@ gl.depthMask(true);
     gl.frontFace(gl.CCW);  
 
 // (bolje sortiranje: po „najdaljem z“ duž pravca pogleda)
-const V = v3.norm(v3.sub(pan, camWorld)); // view dir: target - eye
+const V = v3.norm(v3.sub(camera.pan, camWorld)); // view dir: target - eye
 transparentMeshes.forEach(m => {
   if (!m._bbComputed) {
     const b = computeBounds(m.pos);
@@ -2662,7 +2623,6 @@ function showPartInfo(name) {
     partInfo.textContent = `Izabran deo: ${name}`;
   }
 }
-
 /* ------------------------------------------------------------------
    GLB LOADER + TREE-VIEW META
 ------------------------------------------------------------------ */
@@ -2931,20 +2891,18 @@ async function loadGLB(buf) {
   const radius = window.sceneBoundingRadius || 1;
 
   // koliko treba da stane ceo model u širinu ekrana
-  const neededDist = radius / Math.sin(fovY / 2);
+// koliko treba da stane ceo model u širinu ekrana
+const neededDist = radius / Math.sin(fovY / 2);
 
-  // malo pomeri nazad da ima prostora (faktor 1.1 – 1.2)
-  distTarget = neededDist * 0.6;
-  dist = distTarget;
+// --- VRATI ORIGINALNI NAČIN KAMERE ---
+camera.dist = neededDist * 0.6;     // početna distanca (dalje od modela)
+camera.distTarget = neededDist * 0.6;
+camera.rx = Math.PI / 10;
+camera.ry = Math.PI / 20;
+camera.pan = window.sceneBoundingCenter.slice();
+camera.updateView();
 
-  // centriraj kameru
-  pan = window.sceneBoundingCenter.slice();
-
-  // default orijentacija
-  rx = rxTarget = Math.PI / 10;
-  ry = ryTarget = Math.PI / 20;
-
-  updateView();
+  ({ proj, view, camWorld } = camera.updateView());
   // Sačekaj da se sve teksture spuste u GPU
   while (window.pendingTextures > 0) {
     await new Promise(r => setTimeout(r, 50)); // proverava na svakih 50ms
@@ -3194,6 +3152,9 @@ async function replaceSelectedWithURL(url, variantName, partName) {
   showLoading();
 
   const node = nodesMeta.find((n) => n.name === partName);
+  if (node && currentParts[partName]?.name !== variantName) {
+  delete node.cachedBounds;
+}
   if (!node) {
     console.warn("Node not found:", partName);
     hideLoading();
@@ -3326,12 +3287,13 @@ async function replaceSelectedWithURL(url, variantName, partName) {
   }
 
   currentParts[partName] = { ...currentParts[partName], name: variantName };
+  if (!window.__suppressFocusCamera) {
   focusCameraOnNode(node);
+}
   hideLoading();
   render();
   showPartInfo(variantName);
 }
-
 
 function refreshThumbnailsInUI() {
   document.querySelectorAll(".variant-item").forEach((itemEl) => {
@@ -3376,9 +3338,18 @@ async function preloadAllVariants() {
 }
 
 async function generateThumbnailForVariant(partName, variant) {
-  const gl2 = document.createElement("canvas").getContext("webgl2");
+  // 🔹 koristi jedan jedini WebGL2 context za sve thumbnail rendere
+  if (!window.previewGL) {
+    const previewCanvas = document.createElement("canvas");
+    previewCanvas.width = 256;
+    previewCanvas.height = 256;
+    window.previewGL = previewCanvas.getContext("webgl2");
+  }
+
+  const gl2 = window.previewGL;
   gl2.canvas.width = 256;
   gl2.canvas.height = 256;
+
 
   const preview = await prepareVariantPreview(variant, partName, gl2);
   if (!preview || !preview.draws || !preview.draws.length) return null;
@@ -3619,10 +3590,17 @@ async function prepareVariantPreview(variant, partName, gl2) {
 
   return null; /* fallback */
 }
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    const lose = canvas.__glContext?.getExtension("WEBGL_lose_context");
+    lose?.loseContext();
+  });
+}
 
 init().then(async () => {
   await loadDefaultModel(DEFAULT_MODEL);
   initDropdown();
+  initSavedConfigs();
   initWeatherButtons();
 const hamburger = document.getElementById("hamburger");
 const sidebarMenu = document.getElementById("sidebarMenu");

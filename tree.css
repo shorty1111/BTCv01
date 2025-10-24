@@ -93,6 +93,7 @@ body {
   margin: 0;
   padding: 0;
   overflow: hidden;
+  
   background: var(--gradient-background);
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     sans-serif;
@@ -245,6 +246,130 @@ body {
 .dropdown-menu button:hover {
   background: var(--background-secondary);
 }
+.saved-configs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.saved-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* razdvoji ih */
+  width: 100%;                    /* da flex ima prostor */
+  background: none;
+  border: none;
+  color: var(--foreground);
+  text-align: left;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.saved-item .cfg-name {
+  flex-grow: 1;                   /* zauzmi sav prostor levo */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.saved-item .del-btn {
+  flex-shrink:1;                 /* X ostaje na kraju */
+  background: none;
+  border: none;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.saved-item:hover {
+  background: var(--background-secondary);
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  transition: opacity 0.25s ease;
+}
+
+.modal.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.modal-content {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 24px 28px;
+  box-shadow: var(--shadow-medium);
+  text-align: center;
+  min-width: 280px;
+  backdrop-filter: var(--blur-medium);
+  -webkit-backdrop-filter: var(--blur-medium);
+}
+
+.modal-content h3 {
+  margin: 0 0 12px 0;
+  color: var(--foreground);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.modal-content input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--background-tertiary);
+  color: var(--foreground);
+  font-size: 13px;
+  margin-bottom: 14px;
+  outline: none;
+}
+
+.modal-content input:focus {
+  border-color: var(--primary);
+}
+
+.modal-buttons {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.modal-buttons button {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  transition: var(--transition-fast);
+}
+
+#cancelSave {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+#confirmSave {
+  background: var(--primary);
+  color: var(--foreground);
+}
+
+#confirmSave:hover {
+  background: var(--primary-glow);
+}
 
 /* =========================
    CANVAS - 0 STYLE
@@ -276,9 +401,6 @@ canvas,
   box-shadow: var(--shadow-medium);
   z-index: 10000;
 }
-
-
-
 #camera-controls button {
   width:50px;
   height: 50px;
@@ -328,6 +450,31 @@ canvas,
 }
 #camera-controls button[data-view="iso"] {
   grid-area: iso;
+}
+
+#camera-controls .btn-weather {
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  color: var(--secondary-foreground);
+  background-size: contain !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  border: none;
+  cursor: pointer;
+}
+#camera-controls .btn-weather.active {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-glow);}
+
+#camera-controls .btn-weather.day {
+  background-image: url("../assets/sun_up.png") !important;
+}
+
+#camera-controls .btn-weather.sunset {
+  background-image: url("../assets/sun_down.png") !important;
 }
 
 #toggleDims {
@@ -877,8 +1024,7 @@ canvas,
   display: flex;
   align-items: center;
   justify-content: center;
-
-  background: var(--gradient-glass);
+  background: var(--background-secondary);
   border-bottom: 1px solid var(--border);
   color: var(--foreground);
   cursor: pointer;
@@ -886,7 +1032,6 @@ canvas,
   font-weight: 600;
   z-index: 101;
   transition: var(--transition-smooth);
-  position: relative;
   overflow: hidden;
 }
 
@@ -1140,6 +1285,8 @@ button:focus-visible,
 
 /* Sidebar panel */
 .sidebar-menu {
+  overflow-y: auto;             /* omogućava skrol */
+  overscroll-behavior: contain; /* sprečava bubble na body */
   position: fixed;
   top: 0;
   right: 0;
@@ -1159,6 +1306,10 @@ button:focus-visible,
 }
 
 .sidebar-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--background-secondary);
   display: flex;
   justify-content: space-between;
   align-items: center;

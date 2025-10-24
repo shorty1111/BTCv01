@@ -10,12 +10,12 @@ uniform sampler2D gNormal;
 uniform sampler2D tNoise;
 uniform mat4 uView;
 uniform mat4 uProjection;
-uniform vec3 samples[64];
+uniform vec3 samples[96];
 
 uniform float uFrame;       // za frame jitter
 uniform vec2  uNoiseScale;  // postavlja se iz JS: (canvas.width / SSAO_NOISE_SIZE, canvas.height / SSAO_NOISE_SIZE)
 
-const int   KERNEL_SIZE = 64;
+const int   KERNEL_SIZE = 96;
 const float radius      = 2.5;
 const float bias        = 0.025;
 const float powerAO     = 2.5;
@@ -89,10 +89,10 @@ void main() {
     occlusion = clamp(occlusion, 0.0, 1.0);
     occlusion = pow(occlusion, powerAO);
 
+
     // --- Bent normal ---
     if (visibleSamples > 0.0) {
-        bentNormal = normalize(bentNormal / visibleSamples);
-        bentNormal = normalize(TBN * bentNormal);
+        bentNormal = normalize(bentNormal / visibleSamples); // već u view space
         float a = max(dot(bentNormal, normal), 0.0);
         bentNormal = normalize(mix(normal, bentNormal, smoothstep(0.4, 1.0, a)));
     } else {

@@ -8,25 +8,44 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <meta charset="UTF-8" />
-    <title>Luxen Engine</title>
+    <title>Lunea Engine</title>
     <style></style>
   </head>
   <body>
 <div class="global-header">
-  <div class="header-left">
-    
-        <span class="boat-name">TIARA 56</span>
-    <button class="dropdown-toggle">▾</button>
-       <div class="dropdown-menu hidden">
-      <button id="exportPDF">Export PDF</button>
-      <button id="shareConfig">Share Configuration</button>
-      <button id="copyConfig">Copy Link</button>
+<div class="header-left">
+  <span class="boat-name">TIARA 56</span>
+  <button class="dropdown-toggle">▾</button>
+
+<div class="dropdown-menu hidden">
+  <button id="exportPDF">Export PDF</button>
+  <button id="shareConfig">Share Configuration</button>
+  <button id="copyConfig">Copy Link</button>
+  <hr style="border: 0; border-top: 1px solid var(--border); margin: 6px 0;" />
+
+  <button id="saveConfigBtn">Save Configuration</button>
+
+  <div id="savedConfigsContainer" class="saved-configs">
+    <div class="empty">No saved configs.</div>
+  </div>
+</div>
+</div>
+
+
+<div id="saveConfigModal" class="modal hidden">
+  <div class="modal-content">
+    <h3>Save configuration</h3>
+    <input type="text" id="configNameInput" placeholder="Configuration name" />
+    <div class="modal-buttons">
+      <button id="cancelSave">Cancel</button>
+      <button id="confirmSave">Save</button>
     </div>
   </div>
+</div>
 
 <div class="header-center">
   <div class="boat-name-wrapper">
-<img src="assets/luxen_logo.png" alt="Logo" class="logo">
+<img src="assets/lunea_logo.png" alt="Logo" class="logo">
 
   </div>
 </div>
@@ -38,7 +57,7 @@
 <!-- Sidebar -->
 <nav id="sidebarMenu" class="sidebar-menu">
   <div class="sidebar-header">
-    <span class="sidebar-title">Luxen Engine</span>
+    <span class="sidebar-title">Lunea Engine</span>
     <button id="closeSidebar">×</button>
   </div>
   <ul id="sidebarList">
@@ -70,8 +89,8 @@
       <button data-view="iso">Persp</button>
       <button id="toggleDims">Show Dims</button>
       <button id="toggleWater">Show Water</button>
-      <button data-weather="day">Day</button>
-      <button data-weather="sunset">Sunset</button>
+      <button class="btn-weather day" data-weather="day"></button>
+      <button class="btn-weather sunset" data-weather="sunset"></button>
     </div>
 
     <aside id="sidebar" class="tree">
@@ -95,13 +114,11 @@
       </div>
     </aside>
 
-    <link rel="stylesheet" href="tree.css?v=2b21555a8" />
-    <script type="module" src="js/main.js?v=2811112as"></script>
-    <div
-      id="fps-meter">
-      FPS: <span id="fps-value">0</span>
+    <link rel="stylesheet" href="tree.css?v=2bf1bbbffhFs5a8" />
+    <script type="module" src="js/main.js?v=28h11bfffbbfas"></script>
+    <div id="fps-meter" class="hidden">FPS: <span id="fps-value">0</span></div>
     </div>
-    <div id="res-meter"></div>
+    <div id="res-meter hidden"></div>
     <div id="info-panel">
       <div id="info-content">
         <h3>Informacije o delovima</h3>

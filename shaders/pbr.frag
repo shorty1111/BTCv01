@@ -97,17 +97,18 @@ void main(){
     float D  = distributionGGX(N,H,rough);
     float G  = geometrySmith(NdotV,NdotL,rough);
     vec3  F  = fresnelSchlickRoughness(max(dot(H,V),0.0),F0,rough);
-    vec3  specBRDF = (D*G*F)/(4.0*NdotV*NdotL+0.001);
+    vec3  specBRDF = (D*G*F)/(4.0*max(NdotV*NdotL, 0.001));
 
     vec3 kd   = (1.0-F)*(1.0-metal);
     vec3 diff = kd*baseColor/3.141592;
     vec3 skyIrradiance = textureLod(uEnvMap, vec3(0.0,1.0,0.0), uCubeMaxMip).rgb;
     diff += kd * skyIrradiance * 0.3; // blagi fill light
     vec3 radiance = uSunColor*uSunIntensity;
-    vec3 direct = (diff+specBRDF)*radiance*NdotL*(shadow*1.5);
+    vec3 direct = (diff+specBRDF)*radiance*NdotL*(shadow*1.25);
 
     /* --- IBL only --- */
-    vec3 envDiff = textureLod(uEnvMap, normalize(invV3*bentN), uCubeMaxMip*0.98).rgb;
+    vec3 bentBoost = normalize(mix(N, bentN, 0.6)); // 0.5–0.8 je obično sweet spot
+    vec3 envDiff = textureLod(uEnvMap, normalize(invV3*bentBoost), uCubeMaxMip*0.98).rgb;
     float mip    = clamp(rough*uCubeMaxMip,0.0,uCubeMaxMip);
     vec3 envSpec = textureLod(uEnvMap, normalize(Rw), mip).rgb;
     vec2 brdf    = texture(uBRDFLUT, vec2(NdotV,rough)).rg;
@@ -117,6 +118,6 @@ void main(){
     float energyComp = 1.0 - 0.5 * rough;
     vec3 specIBL = envSpec * (F_ibl * brdf.x + brdf.y) * energyComp;
 
-    vec3 color = direct + diffIBL * mix(1.0, ao, 0.85) + specIBL;
-    fragColor = vec4(color, 1.0);
+    vec3 color = direct + diffIBL * ao  + specIBL;
+    fragColor = vec4(vec3(color), 1.0);
 }
