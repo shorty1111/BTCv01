@@ -151,6 +151,31 @@ body {
   justify-content: flex-start;
 }
 
+.tooltip {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  transform: translateY(4px);
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  font-size: 13px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+/* kad se doda show-tooltip klasa */
+.header-left.show-tooltip .tooltip {
+  opacity: 1;
+}
+
+/* kad klikneš na strelicu (dodaš .clicked) tooltip nestaje */
+.header-left.clicked .tooltip {
+  opacity: 0;
+}
 .header-center {
   justify-content: center;
 }
@@ -670,18 +695,13 @@ canvas,
    SIDEBAR - 0 STYLE
 ========================= */
 .tree {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 384px;
-  height: 100vh;
-  background: var(--card);
-  border-right: 1px solid var(--card-border);
   display: flex;
   flex-direction: column;
-  overflow-y: auto;     /* 👈 dozvoljava skrol */
-  overflow-x: hidden;
-  scroll-behavior: smooth;
+  width: 384px;
+  height: 100dvh;              /* umesto 100vh */
+  background: var(--card);
+  border-right: 1px solid var(--card-border);
+  overflow: hidden;            /* sprečava da total iseče ivicu */
 }
 /* =========================
    VARIANT GROUPS - 0 STYLE
@@ -690,12 +710,17 @@ canvas,
   margin: 0;
   border: none;
   background: var(--glass-bg);
-  backdrop-filter: var(--blur-medium);
-  -webkit-backdrop-filter: var(--blur-medium);
+  /* backdrop-filter: var(--blur-medium);
+  -webkit-backdrop-filter: var(--blur-medium); */
   border: 1px solid var(--card-border);
   border-radius: 12px;
   margin-bottom: 4px;
   overflow: hidden;
+}
+.variant-sidebar {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;               /* bitno za iOS */
 }
 
 .variant-group:first-child {
@@ -891,13 +916,12 @@ canvas,
 /* cena */
 .variant-footer {
   position: absolute;
-  bottom: 10px;
-  right: 14px;
+  top: calc(12px + 22px); /* isto kao naslov + mali razmak */
+  left: calc(120px + 10px); /* koliko je širina thumb + padding */
   font-weight: 700;
   font-size: 14px;
   color: var(--primary);
 }
-
 /* ----------- OPIS ---------- */
 .variant-description {
   flex-basis: 100%; /* 👈 širi se celom širinom kartice */
@@ -924,9 +948,9 @@ canvas,
 /* dugme */
 .desc-toggle {
   position: absolute;
-  top: 40px;
-  left: 130px;
-  padding: 5px 10px;
+  top: 10px;
+  right: 10px;
+  padding: 5px;
   font-size: 13px;
   font-weight: 600;
   color: var(--primary);
@@ -948,13 +972,8 @@ canvas,
    SIDEBAR TOTAL - 0 STYLE
 ========================= */
 .sidebar-total {
-  position: sticky;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  background: var(--card);
-  backdrop-filter: var(--blur-strong);
-  -webkit-backdrop-filter: var(--blur-strong);
+  flex-shrink: 0;
+  background: var(--background-secondary);
   border-top: 1px solid var(--card-border);
   padding: 20px 24px;
   display: flex;
@@ -964,12 +983,11 @@ canvas,
   font-weight: 600;
   color: var(--foreground);
   box-shadow: 0 -8px 32px hsl(220, 15%, 5%, 0.5);
-  margin-top: auto;
 }
 
 .sidebar-total .price {
   font-weight: bold;
-  font-size: 24px;
+  font-size: 20px;
   color: var(--primary);
   text-shadow: var(--shadow-glow);
 }

@@ -95,32 +95,43 @@ void main() {
     // udaljenost od kamere (koristi se za fade)
     float distCam = distance(uCameraPos.xz, basePos.xz);
 
-    // ↓↓↓ dodato: fade za udaljenost — smanjuje amplitude talasa i nagibe
-   float baseFade = smoothstep(100.0, 800.0, distCam);
-float distanceFade = clamp(1.0 - pow(baseFade, 0.2), 0.1, 1.0); // <– brži pad
-
-    // 150.0 = početak smirivanja, 600.0 = potpuno ravno
+    // fade za udaljenost — smanjuje amplitude talasa i nagibe
+    float baseFade = smoothstep(100.0, 800.0, distCam);
+    float distanceFade = clamp(1.0 - pow(baseFade, 0.2), 0.1, 1.0);
 
     float ampNoise = 1.5 + 0.2 * noise(normXZ * 0.05 + uTime * 0.1);
 
-    vec3 dispLarge = vec3(0.0);
-    vec3 dispMid   = vec3(0.0);
-    vec3 dispSmall = vec3(0.0);
+    vec3 dispSum = vec3(0.0);
     vec3 dX = vec3(1.0, 0.0, 0.0);
     vec3 dZ = vec3(0.0, 0.0, 1.0);
 
     for (int i = 0; i < uWaveCount; ++i) {
-        float phaseNoise = 1.1 * fbm(normXZ * 2.3 + float(i)*3.3 + uTime * 0.10);
+        // dodato: blagi fazni pomak po lokaciji
+        float localPhase = dot(normXZ, vec2(0.7, -0.4)) * 4.0 + uTime * 0.15;
+        float phaseNoise = 1.1 * fbm(normXZ * 2.3 + float(i)*3.3 + uTime * 0.10 + localPhase);
+
+        // dodato: globalni "vetar" koji lagano menja pravac
+        vec2 windDir = normalize(vec2(sin(uTime * 0.05), cos(uTime * 0.05)));
+        vec2 dirWarp = normalize(mix(uWaveDir[i], windDir, 0.1));
+
         WaveResult r = gerstnerWave(basePos, normXZ,
                                     uWaveA[i], uWaveL[i], uWaveQ[i],
-                                    uWaveDir[i], uWavePhase[i], uWaveOmega[i], uTime, phaseNoise);
+                                    dirWarp, uWavePhase[i], uWaveOmega[i], uTime, phaseNoise);
 
-        dispLarge += r.disp * mask * ampNoise;
+        // interferencijski damping
+        float inter = 0.8 + 0.2 * sin(dot(r.disp.xz, vec2(0.5)) + uTime);
+        dispSum += r.disp * mask * ampNoise * inter;
         dX += r.derivX * mask * ampNoise;
         dZ += r.derivZ * mask * ampNoise;
     }
 
-    vec3 disp = (dispLarge + dispMid + dispSmall) * distanceFade; // ← fade primenjen ovde
+    // fade po udaljenosti
+    vec3 disp = dispSum * distanceFade;
+
+    // view-based amplitude damping (nagib pogleda)
+    float NdotV = abs(dot(normalize(basePos - uCameraPos), vec3(0.0,1.0,0.0)));
+    float viewFade = mix(0.7, 1.0, pow(NdotV, 0.3));
+    disp *= viewFade;
 
     // --- Normale ---
     vec3 waveNormal = normalize(cross(dZ, dX));
@@ -128,7 +139,7 @@ float distanceFade = clamp(1.0 - pow(baseFade, 0.2), 0.1, 1.0); // <– brži pa
 
     // --- Transformacija u world-space ---
     mat3 worldMat = mat3(uModel);
-    dX = normalize(worldMat * dX * distanceFade); // ← i ovde fade
+    dX = normalize(worldMat * dX * distanceFade);
     dZ = normalize(worldMat * dZ * distanceFade);
     waveNormal = normalize(worldMat * waveNormal);
     flatNormal = normalize(worldMat * flatNormal);
@@ -136,6 +147,10 @@ float distanceFade = clamp(1.0 - pow(baseFade, 0.2), 0.1, 1.0); // <– brži pa
     // --- Kombinacija ---
     vec3 worldPos = basePos + disp;
     vNormal = normalize(mix(flatNormal, waveNormal, mask * distanceFade));
+
+    // micro-chop za blagu hrapavost
+    float chop = fbm(normXZ * 20.0 + uTime * 0.5) * 0.03;
+    vNormal = normalize(mix(vNormal, vec3(0.0,1.0,0.0), chop));
 
     vTBN_N = normalize(vNormal);
     vTBN_T = normalize(dX);

@@ -64,34 +64,24 @@ function updateSun() {
     SUN.intensity *= 0.3 * glow;
   }
 }
-async function setWeather(presetName) {
-  const presets = {
-    day:  { y: 1.0 },
-    sunset: { y: 0.15 },
-  };
-
+function setWeather(presetName) {
+  const presets = { day:{y:1.0}, sunset:{y:0.15} };
   const preset = presets[presetName];
   if (!preset) return;
 
-  // 1️⃣ Promeni samo Y komponentu sunca
   SUN.dir = v3.norm([-0.8, preset.y, 0.3]);
-
-  // 2️⃣ Ažuriraj boju i jačinu
   updateSun();
 
-  // 3️⃣ Re-bake envMap SAMO jednom, asinhrono (ne blokira rendering)
-  requestIdleCallback(() => {
-    envTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
-      ...DEFAULT_SKY,
-      sunColor: SUN.color,
-      sunIntensity: SUN.intensity,
-      useTonemap: false,
-      hideSun: true,
-    });
-    cubeMaxMip = Math.floor(Math.log2(envSize));
+  // direktno bake-uj envmap, bez idle callbacka
+  envTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
+    ...DEFAULT_SKY,
+    sunColor: SUN.color,
+    sunIntensity: SUN.intensity,
+    useTonemap: false,
+    hideSun: true,
   });
+  cubeMaxMip = Math.floor(Math.log2(envSize));
 
-  // 4️⃣ Odmah osveži nebo (vizuelna promena bez čekanja bake-a)
   render();
 }
 
@@ -99,6 +89,7 @@ function smoothstep(edge0, edge1, x) {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
 }
+
 
 
 window.pendingTextures = 0;
@@ -144,7 +135,7 @@ let modelMetallics = [];
 let modelRoughnesses = [];
 let lastFrameTime = 0;
 
-const KERNEL_SIZE = 96;
+const KERNEL_SIZE = 64;
 const SSAO_NOISE_SIZE = 6.0;
 const thumbnails = {};
 const cachedVariants = {}; // url -> ArrayBuffer
@@ -250,7 +241,7 @@ function createFinalColorTarget(w, h) {
   if (finalColorTex) gl.deleteTexture(finalColorTex);
   if (window.finalDepthTex) gl.deleteTexture(window.finalDepthTex);
 
-  // Color
+  // === COLOR TEXTURA ===
   finalColorTex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, finalColorTex);
   gl.texImage2D(
@@ -264,10 +255,15 @@ function createFinalColorTarget(w, h) {
     gl.HALF_FLOAT,
     null
   );
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
-  // Depth
+  // 🔹 OVO JE KLJUČNO 🔹
+  // Omogući mipmap i linearno filtriranje (potrebno za SSAA downsample)
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+  // === DEPTH TEXTURA ===
   window.finalDepthTex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, window.finalDepthTex);
   gl.texImage2D(
@@ -286,7 +282,7 @@ function createFinalColorTarget(w, h) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-  // FBO
+  // === FBO ===
   finalFBO = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, finalFBO);
   gl.framebufferTexture2D(
@@ -304,6 +300,13 @@ function createFinalColorTarget(w, h) {
     0
   );
   gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+
+  // ✅ Provera da li je kompletan
+  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+    console.error("❌ Final FBO nije kompletan!");
+  }
+
+  // Očisti bind
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.bindTexture(gl.TEXTURE_2D, null);
 }
@@ -425,32 +428,29 @@ function createPreviewProgram(gl2) {
 document
   .querySelectorAll("#camera-controls button[data-view]")
   .forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const viewName = btn.getAttribute("data-view");
-      camera.currentView = viewName;
+btn.addEventListener("click", () => {
+  const viewName = btn.getAttribute("data-view");
+  camera.currentView = viewName;
 
-      if (viewName === "iso") {
-        camera.useOrtho = false;
+  if (viewName === "iso") {
+    camera.useOrtho = false;
+    const targetRx = Math.PI / 10;
+    const targetRy = Math.PI / 20;
+    camera.rx = camera.rxTarget = targetRx;
+    camera.ry = camera.ryTarget = targetRy;
+    camera.pan = window.sceneBoundingCenter.slice();
+    camera.dist = camera.distTarget = (window.sceneBoundingRadius || 1) * 1.5;
+  } else {
+    camera.useOrtho = true;
+    camera.rx = 0;
+    camera.ry = 0;
+    camera.dist = 1;
+  }
 
-        // resetuj sve kao u starom kodu
-        const targetRx = Math.PI / 10;
-        const targetRy = Math.PI / 20;
+  ({ proj, view, camWorld } = camera.updateView());
+  render();
+});
 
-        camera.rx = camera.rxTarget = targetRx;
-        camera.ry = camera.ryTarget = targetRy;
-
-        camera.pan = window.sceneBoundingCenter.slice();
-        camera.dist = camera.distTarget = (window.sceneBoundingRadius || 1) * 1.5;
-
-        ({ proj, view, camWorld } = camera.updateView());
-      } else {
-        lastPerspDist = camera.dist;
-        camera.useOrtho = true;
-      }
-
-      ({ proj, view, camWorld } = camera.updateView());
-      render();
-    });
   });
 
 
@@ -536,6 +536,7 @@ if (canvas.__glContext) {
   if (loseExt) loseExt.loseContext();
 }
 const gl = canvas.getContext("webgl2", { alpha: true, antialias: true });
+
 canvas.__glContext = gl;
 if (!gl) alert("WebGL2 nije podržan u ovom pregledaču.");
 gl.getExtension("EXT_color_buffer_float");
@@ -566,17 +567,17 @@ function createDepthTexture(w, h) {
     gl.UNSIGNED_INT,
     null
   );
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   return tex;
 }
 let ssaa = 1.0; // start (dinamički će se menjati)
 let targetSSAA = 1.0;
-let targetFPS = 24;
+let targetFPS = 22;
 let ssaaMin = 1.0;
-let ssaaMax = 1.4;
+let ssaaMax = 1.5;
 let adjustCooldown = 0;
 
 function resizeCanvas() {
@@ -599,18 +600,21 @@ function resizeCanvas() {
   let targetW = Math.min(cssW, maxRenderW);
   let targetH = Math.round(targetW / aspect);
 
-  const dpr = Math.min(window.devicePixelRatio || 1,1.4);
+  const dpr = Math.min(window.devicePixelRatio || 1,1.5);
   const realW = Math.round(targetW * ssaa * dpr);
   const realH = Math.round(targetH * ssaa * dpr);
 
-  canvas.width = realW;
-  canvas.height = realH;
+canvas.width = realW;
+canvas.height = realH;
 
-  // CSS dimenzije → canvas ispod headera
-  canvas.style.width = cssW + "px";
-  canvas.style.height = cssH + "px";
-  canvas.style.left = sidebarW + "px";
-  canvas.style.top = headerH + "px"; // ⬅️ gurni ispod headera
+// DOWNsample → prikazi manju CSS veličinu (ovo je poenta SSAA)
+canvas.style.width = targetW + "px";
+canvas.style.height = targetH + "px";
+canvas.style.left = sidebarW + "px";
+canvas.style.top = headerH + "px";
+
+// (opciono za bolju interpolaciju na nekim browserima)
+canvas.style.imageRendering = "auto";
 
   gl.viewport(0, 0, realW, realH);
 
@@ -1779,14 +1783,16 @@ function buildVariantSidebar() {
         const footer = document.createElement("div");
         footer.className = "variant-footer";
         const rawPrice = variant.price ?? 0;
-        const priceText = rawPrice === 0 ? "Included" : `+${rawPrice} €`;
+        const priceText = rawPrice === 0
+          ? "Included (incl. VAT)"
+          : `+${rawPrice} € (incl. VAT)`;
         footer.innerHTML = `<span class="price">${priceText}</span>`;
         itemEl.appendChild(footer);
 // ➕ Dodaj dugme i opis ako postoji opis u configu
 if (variant.description) {
   const descBtn = document.createElement("button");
   descBtn.className = "desc-toggle";
-  descBtn.textContent = "Pročitaj opis";
+  descBtn.textContent = "ℹ️";
   itemEl.appendChild(descBtn);
 
   const descEl = document.createElement("div");
@@ -1981,14 +1987,15 @@ function updateTotalPrice() {
 
   totalRow.innerHTML = `
     <td colspan="2" style="text-align:right; font-weight:700;">Total:</td>
-    <td style="font-size:16px; font-weight:700; color:#3aa4ff;">
-      ${total.toLocaleString("de-DE")} €
-    </td>
+<td style="font-size:16px; font-weight:700; color:#3aa4ff;">
+  ${total.toLocaleString("de-DE")} € (incl. VAT)
+</td>
   `;
 
   const sidebarPrice = document.querySelector(".sidebar-total .price");
   if (sidebarPrice)
-    sidebarPrice.textContent = `${total.toLocaleString("de-DE")} €`;
+    sidebarPrice.textContent = `${total.toLocaleString("de-DE")} € (incl. VAT)`;
+
 }
 
 function highlightTreeSelection(id) {
@@ -2367,8 +2374,8 @@ gl.depthMask(true);
   if (!window.sceneColorTex) {
     window.sceneColorTex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, window.sceneColorTex);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   }
@@ -3660,8 +3667,6 @@ document.addEventListener("click", e => {
 });
 
 }
-
-
   renderLoop();
   renderBoatInfo(BOAT_INFO);
   generateAllThumbnails()
@@ -3675,4 +3680,18 @@ document.addEventListener("click", e => {
   setTimeout(() => {
     preloadAllVariants().then(() => {});
   }, 2000);
+});
+
+// === Tooltip hint za boat name ===
+window.addEventListener("DOMContentLoaded", () => {
+  const header = document.querySelector(".header-left");
+  const toggle = document.getElementById("menuToggle");
+
+  if (!header || !toggle) return; // ako se ne nađu, ne radi ništa
+
+ header.classList.add("show-tooltip");
+  toggle.addEventListener("click", () => {
+    header.classList.remove("show-tooltip");
+    localStorage.setItem("boatTooltipSeen", "1");
+  });
 });

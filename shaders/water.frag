@@ -65,16 +65,18 @@ void main() {
     float depthM      = abs((vWorldPos.y - uWaterLevel) - uBottomOffsetM);
     float depthFactor = clamp(depthM / DEPTH_SCALE, 0.0, 1.0);
 
+
+
     // --- Normal mapa (2 animirane) ---
-    vec2 animUV1 = vUV * 1.0 + vec2(uTime * 0.02,  uTime * 0.05);
-    vec2 animUV2 = vUV * 0.6 - vec2(uTime * 0.01, -uTime * 0.005);
+    vec2 animUV1 = vUV * 2.2 + vec2(uTime * 0.02,  uTime * 0.05);
+    vec2 animUV2 = vUV * 0.8 - vec2(uTime * 0.01, -uTime * 0.005);
     vec3 n1 = texture(waterNormalTex, animUV1).xyz * 2.0 - 1.0;
     vec3 n2 = texture(waterNormalTex, animUV2).xyz * 2.0 - 1.0;
     vec3 tangentNormal = normalize(mix(n1, n2, 0.5));
 
     float df = clamp(depthM / (DEPTH_SCALE * 1.5), 0.0, 1.0);
     float fade = mix(1.0, 0.4, pow(df, 0.5));
-    tangentNormal.xy *= 0.75 * fade;
+    tangentNormal.xy *= 1.0 * mix(1.0, 0.4, pow(df, 1.2));
 
     vec3 N = normalize(
         tangentNormal.x * vTBN_T +
@@ -112,13 +114,11 @@ void main() {
     // clamp da ne izbiješ iz FBO-a
     reflUV = clamp(reflUV, 0.001, 0.999);
 
-vec3 planarReflection = texture(uReflectionTex, reflUV).rgb;
+    vec3 planarReflection = texture(uReflectionTex, reflUV).rgb;
 
-// ton-map da ne pregori svetlo, ali zadrži tamno
-planarReflection = pow(planarReflection, vec3(0.8));  // kompresuj energiju
-planarReflection *= 0.6;                              // globalni damping
-
-
+    // ton-map da ne pregori svetlo, ali zadrži tamno
+    planarReflection = pow(planarReflection, vec3(0.8));  // kompresuj energiju
+    planarReflection *= 0.6;                              // globalni damping
 
     // --- Environment refleksija ---
     vec3 envRefl = textureLod(uEnvTex, normalize(R), uRoughness).rgb;
@@ -163,5 +163,6 @@ planarReflection *= 0.6;                              // globalni damping
     vec3 color = mix(refracted , reflected, fresnel);
 
     color += sunHighlight * reflectionFade;
+    
     fragColor = vec4(vec3(color), 1.0);
 }

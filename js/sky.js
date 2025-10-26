@@ -240,6 +240,11 @@ vec3 applySaturation(vec3 c, float s){
 
 // ========================= MAIN =========================
 void main(){
+    // wavelength-based Rayleigh tint
+    vec3 waveLambda = vec3(680e-9, 550e-9, 440e-9); // R, G, B u metrima
+    vec3 rayleighColor = pow(waveLambda, vec3(-4.0));
+    rayleighColor /= max(max(rayleighColor.r, rayleighColor.g), rayleighColor.b);
+
     vec3  dir   = normalize(vDir);
     vec3  sunV  = normalize(uSunDir);
     float sunAlt = clamp(sunV.y, -1.0, 1.0);
@@ -282,7 +287,7 @@ void main(){
     float gMix = smoothstep(-0.25, 0.05, dir.y);
     vec3 groundColor = mix(vec3(0.10, 0.07, 0.05), vec3(0.16, 0.11, 0.07), 1.0 - sunAlt);
     base = mix(groundColor, base, gMix);
-
+base *= mix(vec3(1.0), rayleighColor, uRayleighStrength * 0.3);
 
     // === 2. Procedural clouds, halo, sunset boost ===
     // (ostaje kao ranije – možeš da ga pojačaš po želji)
@@ -382,7 +387,8 @@ vec3  sunLight = uSunColor * (disk*uSunIntensity + limb*(uSunIntensity*0.18));
     float g = 0.8;
     float mie = (1.0 - g*g) / pow(1.0 + g*g - 2.0*g*cosToSun, 1.5);
     mie *= 0.015 * (1.0 + 2.0*(1.0 - sunAlt)) * uSunHaloScale * uMieStrength;
-    sunLight += uSunColor * mie * uSunIntensity;
+    float halo = exp(-pow(ang / (sunSize * 6.0), 1.3));
+sunLight += uSunColor * halo * uSunIntensity * 0.05;
 
     // === 4. Ground & bounce ===
     float skyMask    = smoothstep(-0.04, 0.02, dir.y);

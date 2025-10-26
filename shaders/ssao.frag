@@ -10,15 +10,15 @@ uniform sampler2D gNormal;
 uniform sampler2D tNoise;
 uniform mat4 uView;
 uniform mat4 uProjection;
-uniform vec3 samples[96];
+uniform vec3 samples[64];
 
 uniform float uFrame;       // za frame jitter
 uniform vec2  uNoiseScale;  // postavlja se iz JS: (canvas.width / SSAO_NOISE_SIZE, canvas.height / SSAO_NOISE_SIZE)
 
-const int   KERNEL_SIZE = 96;
+const int   KERNEL_SIZE = 64;
 const float radius      = 2.5;
 const float bias        = 0.025;
-const float powerAO     = 2.5;
+const float powerAO     = 1.5;
 
 /* ---------- helper ---------- */
 float rand(vec2 co) {
@@ -73,7 +73,7 @@ void main() {
         if (dist > adapt)
             continue;
 
-        float rangeCheck = 1.0 - smoothstep(0.0, adapt, dist);
+        float rangeCheck = 1.0 - smoothstep(adapt * 0.5, adapt, dist);
         float occ = step(samplePos.z + bias, sampleDepth) * rangeCheck;
         occlusion += occ;
 
@@ -100,7 +100,7 @@ void main() {
     }
 
     // blago smirenje
-    bentNormal = normalize(mix(normal, bentNormal, 0.5));
+    bentNormal = normalize(mix(normal, bentNormal, occlusion));
 
     fragColor = vec4(bentNormal * 0.5 + 0.5, occlusion);
 }

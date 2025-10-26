@@ -4,31 +4,28 @@
   <head>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
     <meta charset="UTF-8" />
     <title>Lunea Engine</title>
     <style></style>
   </head>
   <body>
 <div class="global-header">
+
 <div class="header-left">
-  <span class="boat-name">TIARA 56</span>
-  <button class="dropdown-toggle">▾</button>
-
-<div class="dropdown-menu hidden">
-  <button id="exportPDF">Export PDF</button>
-  <button id="shareConfig">Share Configuration</button>
-  <button id="copyConfig">Copy Link</button>
-  <hr style="border: 0; border-top: 1px solid var(--border); margin: 6px 0;" />
-
-  <button id="saveConfigBtn">Save Configuration</button>
-
-  <div id="savedConfigsContainer" class="saved-configs">
-    <div class="empty">No saved configs.</div>
+    <span class="boat-name">TIARA 56</span>
+    <button class="dropdown-toggle" id="menuToggle">▾</button>
+    <div class="tooltip">Click "▾" for more options</div>
+  <div class="dropdown-menu hidden">
+      <button id="exportPDF">Export PDF</button>
+      <button id="shareConfig">Share Configuration</button>
+      <button id="copyConfig">Copy Link</button>
+      <button id="saveConfigBtn">Save Configuration</button>
+      <hr style="border: 0; border-top: 1px solid var(--border); margin: 6px 0;" />
+        <div id="savedConfigsContainer" class="saved-configs">
+          <div class="empty">No saved configs.</div>
+      </div>
   </div>
-</div>
 </div>
 
 
@@ -54,6 +51,7 @@
     ☰ Menu
   </button>
 </div>
+
 <!-- Sidebar -->
 <nav id="sidebarMenu" class="sidebar-menu">
   <div class="sidebar-header">
@@ -94,31 +92,19 @@
     </div>
 
     <aside id="sidebar" class="tree">
-      <!-- <label class="upload-btn">
-        + Load GLB
-        <input type="file" id="glbInput" accept=".glb" hidden />
-      </label> -->
-      <input
-        id="glbInput"
-        type="file"
-        accept=".glb,.gltf"
-        style="display: none"
-      />
-
-      <!-- <ul id="nodeTree"></ul> -->
+      <input id="glbInput"type="file" accept=".glb,.gltf"style="display: none"/>
       <div id="variantSidebar" class="variant-sidebar"></div>
       <div class="sidebar-total">
         <span class="label">Total Price:</span>
-        <span class="price"></span>
-        
+        <span class="price"></span>        
       </div>
     </aside>
 
-    <link rel="stylesheet" href="tree.css?v=2bf1bbbffhFs5a8" />
-    <script type="module" src="js/main.js?v=28h11bfffbbfas"></script>
-    <div id="fps-meter" class="hidden">FPS: <span id="fps-value">0</span></div>
+    <link rel="stylesheet" href="tree.css?v=2kj11ffF8" />
+    <script type="module" src="js/main.js?v=2D1c1as"></script>
+    <div id="fps-meter">FPS: <span id="fps-value">0</span></div>
     </div>
-    <div id="res-meter hidden"></div>
+    <div id="res-meter"></div>
     <div id="info-panel">
       <div id="info-content">
         <h3>Informacije o delovima</h3>
@@ -130,9 +116,7 @@
               <th>Cena</th>
             </tr>
           </thead>
-          <tbody>
-            <!-- Popunjava se iz main.js -->
-          </tbody>
+          <tbody><!-- Popunjava se iz main.js --></tbody>
         </table>
       </div>
       <div id="boat-info" class="info-section"></div>

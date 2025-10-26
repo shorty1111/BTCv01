@@ -48,18 +48,21 @@ float getShadowView(vec3 Pv, vec3 Nw){
     vec3 uvw = lp.xyz/lp.w*0.5+0.5;
     if (uvw.x<0.0||uvw.x>1.0||uvw.y<0.0||uvw.y>1.0||uvw.z>1.0) return 1.0;
 
-    const vec2 disk[4]=vec2[](
-        vec2(0.5,0.5), vec2(-0.5,0.5),
-        vec2(0.5,-0.5), vec2(-0.5,-0.5));
+const vec2 disk[9]=vec2[](
+    vec2( 0.0, 0.0),
+    vec2( 1.0, 0.0), vec2(-1.0, 0.0),
+    vec2( 0.0, 1.0), vec2( 0.0,-1.0),
+    vec2( 1.0, 1.0), vec2(-1.0, 1.0),
+    vec2( 1.0,-1.0), vec2(-1.0,-1.0));
 
     vec2 texel  = 1.0/uShadowMapSize;
     float sh=0.0;
-    for(int i=0;i<4;i++){
-        vec2 offs = disk[i]*texel;
-        float d   = texture(uShadowMap, uvw.xy+offs).r;
-        sh += step(uvw.z-bias, d);
-    }
-    return sh/4.0;
+for(int i=0;i<9;i++){
+    vec2 offs = disk[i]*texel;
+    float d   = texture(uShadowMap, uvw.xy+offs).r;
+    sh += step(uvw.z-bias, d);
+}
+    return sh/9.0;
 }
 
 /* ========================================================= */
@@ -101,22 +104,34 @@ void main(){
 
     vec3 kd   = (1.0-F)*(1.0-metal);
     vec3 diff = kd*baseColor/3.141592;
-    vec3 skyIrradiance = textureLod(uEnvMap, vec3(0.0,1.0,0.0), uCubeMaxMip).rgb;
-    diff += kd * skyIrradiance * 0.3; // blagi fill light
+
+// === diffuse IBL (koristi najmutniji mip nivo kao ambient) ===
+float mipDiff = uCubeMaxMip; // najmutniji mip iz sky cubemape
+vec3 envDiff = textureLod(uEnvMap, normalize(invV3 * bentN), mipDiff).rgb;
+
+// blago pojačaj jer niži mipovi umeju da potamne nebo
+envDiff *= 1.0;
+
+// koristi kao fill light, pomnoži sa albedom i AO
+diff += kd * envDiff *  0.6;
+diff *= ao; 
+
     vec3 radiance = uSunColor*uSunIntensity;
-    vec3 direct = (diff+specBRDF)*radiance*NdotL*(shadow*1.25);
+    vec3 direct = (diff + specBRDF) * radiance * NdotL * shadow;
 
     /* --- IBL only --- */
-    vec3 bentBoost = normalize(mix(N, bentN, 0.6)); // 0.5–0.8 je obično sweet spot
-    vec3 envDiff = textureLod(uEnvMap, normalize(invV3*bentBoost), uCubeMaxMip*0.98).rgb;
+   vec3 bentBoost = normalize(mix(N, bentN, sqrt(0.6)));
+   
     float mip    = clamp(rough*uCubeMaxMip,0.0,uCubeMaxMip);
     vec3 envSpec = textureLod(uEnvMap, normalize(Rw), mip).rgb;
     vec2 brdf    = texture(uBRDFLUT, vec2(NdotV,rough)).rg;
 
     vec3 F_ibl   = fresnelSchlickRoughness(NdotV, F0, rough);
     vec3 diffIBL = envDiff * baseColor * (1.0 - metal);
-    float energyComp = 1.0 - 0.5 * rough;
-    vec3 specIBL = envSpec * (F_ibl * brdf.x + brdf.y) * energyComp;
+    vec3 specIBL = envSpec * (F_ibl * brdf.x + brdf.y);
+    float specOccl = clamp(pow(NdotV + ao, 2.0) - 1.0 + ao, 0.0, 1.0);
+    specIBL *= specOccl;
+    
 
     vec3 color = direct + diffIBL * ao  + specIBL;
     fragColor = vec4(vec3(color), 1.0);
