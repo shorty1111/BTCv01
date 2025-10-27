@@ -14,7 +14,8 @@ out vec2 vUV_out;
 void main() {
     mat4 modelView = uView * uModel;
     vFragPosView = vec3(modelView * vec4(aPos, 1.0));
-    vNormalView = normalize(mat3(transpose(inverse(modelView))) * aNormal);
+    mat3 normalMatrix = mat3(uView * uModel);
+vNormalView = normalize(normalMatrix * aNormal);
     vUV_out = aUV;
     gl_Position = uProjection * modelView * vec4(aPos, 1.0);
 }

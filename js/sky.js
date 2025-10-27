@@ -394,16 +394,15 @@ sunLight += uSunColor * halo * uSunIntensity * 0.05;
     float skyMask    = smoothstep(-0.04, 0.02, dir.y);
     float groundMask = 1.0 - skyMask;
 
-    vec3 groundBase   = vec3(0.035,0.03,0.03) * groundMask * uSunIntensity;
+    vec3 groundBase   = vec3(0.03,0.03,0.04) * groundMask * uSunIntensity;
     float below       = smoothstep(0.0, 0.25, max(0.0, -dir.y));
-    vec3 groundBounce = vec3(0.035,0.03,0.03) * (0.3 + 0.7*(1.0 - sunAlt)) *
+    vec3 groundBounce = vec3(0.03,0.03,0.03) * (0.3 + 0.7*(1.0 - sunAlt)) *
                         below * (uGroundScatter*1.5) * uSunIntensity;
 
     // === 5. Finalna kompozicija ===
     vec3 color = (base * skyMask * uSunIntensity) +
                  (sunLight * skyMask) +
-                 groundBase +
-                 groundBounce;
+                 groundBase;
 
     // Fade celo nebo kad je noć (noć je nightAmt)
     color = mix(color, nightZenith, nightAmt*0.95);

@@ -18,7 +18,7 @@ uniform vec2  uNoiseScale;  // postavlja se iz JS: (canvas.width / SSAO_NOISE_SI
 const int   KERNEL_SIZE = 64;
 const float radius      = 2.5;
 const float bias        = 0.025;
-const float powerAO     = 1.5;
+const float powerAO     = 2.5;
 
 /* ---------- helper ---------- */
 float rand(vec2 co) {
@@ -45,7 +45,7 @@ void main() {
     float visibleSamples = 0.0;
 
     float camDepth = -fragPos.z;
-    float adapt = mix(3.0, 8.0, clamp(camDepth / 200.0, 0.0, 1.0));
+    float adapt = mix(10.0, 50.0, clamp(camDepth / 200.0, 0.0, 1.0));
 
     // jitter po frame-u
     float frameJitter = rand(vUV + vec2(uFrame * 0.37, uFrame * 0.11));
@@ -73,7 +73,7 @@ void main() {
         if (dist > adapt)
             continue;
 
-        float rangeCheck = 1.0 - smoothstep(adapt * 0.5, adapt, dist);
+        float rangeCheck = 1.0 - smoothstep(0.0, adapt, dist);
         float occ = step(samplePos.z + bias, sampleDepth) * rangeCheck;
         occlusion += occ;
 
@@ -89,10 +89,10 @@ void main() {
     occlusion = clamp(occlusion, 0.0, 1.0);
     occlusion = pow(occlusion, powerAO);
 
-
     // --- Bent normal ---
     if (visibleSamples > 0.0) {
-        bentNormal = normalize(bentNormal / visibleSamples); // već u view space
+        bentNormal = normalize(bentNormal / visibleSamples);
+        bentNormal = normalize(TBN * bentNormal);
         float a = max(dot(bentNormal, normal), 0.0);
         bentNormal = normalize(mix(normal, bentNormal, smoothstep(0.4, 1.0, a)));
     } else {
@@ -100,7 +100,7 @@ void main() {
     }
 
     // blago smirenje
-    bentNormal = normalize(mix(normal, bentNormal, occlusion));
+    bentNormal = normalize(mix(normal, bentNormal, 0.5));
 
     fragColor = vec4(bentNormal * 0.5 + 0.5, occlusion);
 }

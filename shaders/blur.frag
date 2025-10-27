@@ -34,8 +34,8 @@ void main() {
             float depthDiff  = abs(centerDepth - sampleDepth);
             float normalDiff = 1.0 - dot(centerNormal, sampleNormal);
 
-            float wDepth  = exp(-pow(depthDiff * depthSigma, 2.0));
-            float wNormal = exp(-pow(normalDiff * normalSigma, 2.0));
+    float wDepth  = 1.0 / (1.0 + depthDiff * depthSigma);
+    float wNormal = 1.0 / (1.0 + normalDiff * normalSigma);
             float weight = wDepth * wNormal;
 
             sum += sampleAO * weight;

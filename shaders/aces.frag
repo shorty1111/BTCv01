@@ -20,7 +20,7 @@ void main() {
     vec3 bloom = texture(uBloom, vUV).rgb;
 
     // HDR blend pre tonemap
-    col += bloom * 0.6;
+    col += bloom * 0.8;
 
     // ACES tonemap
     col = ACESFilm(col);
@@ -28,7 +28,7 @@ void main() {
     // EVE-like filmic tweaks
     col = pow(col, vec3(1.0));
     col *= vec3(1.25, 1.2, 1.15);
-    float lift = 0.05;
+    float lift = 0.08;
     col = mix(vec3(lift), col, 0.880);
     col = mix(col, ACESFilm(col * 1.2), 0.65);
     col = pow(col, vec3(1.0 / 2.2));

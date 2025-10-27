@@ -3,43 +3,19 @@ import { initWater, drawWater } from "./water.js";
 import { initCamera } from "./camera.js";
 import { initSky, drawSky, bakeSkyToCubemap } from "./sky.js";
 import { DEFAULT_SKY } from "./sky.js";
-import {
-  MAX_FPS,
-  DEFAULT_MODEL,
-  BASE_PRICE,
-  VARIANT_GROUPS,
-  BOAT_INFO,
-  SIDEBAR_INFO 
-} from "./config.js";
-
-import {
-  mat4mul,
-  persp,
-  ortho,
-  look,
-  composeTRS,
-  computeBounds,
-  mulMat4Vec4,
-  v3,
-} from "./math.js";
+import {MAX_FPS,DEFAULT_MODEL,BASE_PRICE,VARIANT_GROUPS,BOAT_INFO,SIDEBAR_INFO } from "./config.js";
+import {mat4mul,persp,ortho,look,composeTRS,computeBounds,mulMat4Vec4, v3,} from "./math.js";
 
 let acesProgram = null;
 let finalFBO = null;
 let finalColorTex = null;
 
 // CENTRALNO SUNCE
-const SUN = {
-  dir: v3.norm([-0.8,0.8, 0.3]), // položaj
-  color: [1.0, 0.92, 0.76],
-  intensity: 0.0, // jačina
+const SUN = {dir: v3.norm([-0.8,0.8, 0.3]), color: [1.0, 0.92, 0.76], intensity: 0.0, 
 };
-
 updateSun();
-
 function updateSun() {
   const alt = Math.max(-1.0, Math.min(1.0, SUN.dir[1]));
-
-  // === 1️⃣  Boja (topliji ton pri zalasku) ===
   const dayColor = [1.0, 0.97, 0.94];
   const sunsetColor = [1.0, 0.35, 0.1];
   const tColor = smoothstep(0.0, 0.6, alt);
@@ -49,18 +25,12 @@ function updateSun() {
     sunsetColor[2] + (dayColor[2] - sunsetColor[2]) * tColor,
   ];
 
-  // === 2️⃣  Fade postojećeg intenziteta (bez maxIntensity) ===
   const fade = Math.pow(Math.max(alt, 0.0), 0.4);
-  SUN.intensity = 1.0 * fade; // ili tvoj faktor
+  SUN.intensity = 1.0 * fade; 
 
-  // === 3️⃣  Afterglow — refleks ispod horizonta ===
   if (alt < 0.0) {
     const glow = smoothstep(-0.3, 0.0, alt);
-    SUN.color = [
-      SUN.color[0] * (0.4 + 0.6 * glow),
-      SUN.color[1] * (0.4 + 0.6 * glow),
-      SUN.color[2] * (0.6 + 0.4 * glow),
-    ];
+    SUN.color = [ SUN.color[0] * (0.4 + 0.6 * glow), SUN.color[1] * (0.4 + 0.6 * glow), SUN.color[2] * (0.6 + 0.4 * glow),];
     SUN.intensity *= 0.3 * glow;
   }
 }
@@ -69,10 +39,9 @@ function setWeather(presetName) {
   const preset = presets[presetName];
   if (!preset) return;
 
-  SUN.dir = v3.norm([-0.8, preset.y, 0.3]);
+  SUN.dir = v3.norm([-0.90, preset.y, 0.3]);
   updateSun();
 
-  // direktno bake-uj envmap, bez idle callbacka
   envTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
     ...DEFAULT_SKY,
     sunColor: SUN.color,
@@ -81,7 +50,6 @@ function setWeather(presetName) {
     hideSun: true,
   });
   cubeMaxMip = Math.floor(Math.log2(envSize));
-
   render();
 }
 
@@ -89,7 +57,6 @@ function smoothstep(edge0, edge1, x) {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
 }
-
 
 
 window.pendingTextures = 0;
@@ -100,7 +67,6 @@ let reflectionColorProgram = null;
 let envSize = 512; // kontrola kvaliteta/performansi
 let cubeMaxMip = Math.floor(Math.log2(envSize));
 let showWater = true;
-
 let originalGlassByPart = {};
 let transparentMeshes = [];
 let envTex = null;
@@ -115,12 +81,10 @@ let ssaoFBO, ssaoBlurFBO, ssaoColorBuffer, ssaoBlurBuffer;
 let ssaoKernel = [];
 let ssaoNoiseTexture;
 let lineProgram; // globalna promenljiva
-
 let boatLengthLine = null;
 let gBufferProgram, ssaoProgram, blurProgram; // Za nove šejder programe
 let quadVAO = null; // Za iscrtavanje preko celog ekrana
 let modelMatrices = [];
-
 let nodesMeta = []; // {id, name, renderIdx}
 let renderToNodeId = {}; // renderIdx -> id
 let selectedColors = {};
@@ -171,34 +135,14 @@ function createReflectionTarget(gl, width, height) {
   
   reflectionTex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, reflectionTex);
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.RGBA16F,
-    canvas.width,
-    canvas.height,
-    0,
-    gl.RGBA,
-    gl.HALF_FLOAT,
-    null
-  );
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,canvas.width, canvas.height,0,gl.RGBA, gl.HALF_FLOAT,null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
-  // === DODAJ OVO ZA DEPTH ===
   window.reflectionDepthTex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, window.reflectionDepthTex);
   gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.DEPTH_COMPONENT24, // ili gl.DEPTH_COMPONENT16
-    width,
-    height,
-    0,
-    gl.DEPTH_COMPONENT,
-    gl.UNSIGNED_INT,
-    null
-  );
+  gl.TEXTURE_2D, 0,gl.DEPTH_COMPONENT24,  width,height,0, gl.DEPTH_COMPONENT,gl.UNSIGNED_INT,null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -206,23 +150,8 @@ function createReflectionTarget(gl, width, height) {
 
   reflectionFBO = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, reflectionFBO);
-  
-  gl.framebufferTexture2D(
-    gl.FRAMEBUFFER,
-    gl.COLOR_ATTACHMENT0,
-    gl.TEXTURE_2D,
-    reflectionTex,
-    0
-  );
-  // === ZAKACI DEPTH TEKSTURU ===
-  gl.framebufferTexture2D(
-    gl.FRAMEBUFFER,
-    gl.DEPTH_ATTACHMENT,
-    gl.TEXTURE_2D,
-    window.reflectionDepthTex,
-    0
-  );
-
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,reflectionTex,0);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.TEXTURE_2D,window.reflectionDepthTex,0 );
   gl.bindTexture(gl.TEXTURE_2D, null);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
@@ -241,82 +170,37 @@ function createFinalColorTarget(w, h) {
   if (finalColorTex) gl.deleteTexture(finalColorTex);
   if (window.finalDepthTex) gl.deleteTexture(window.finalDepthTex);
 
-  // === COLOR TEXTURA ===
+  // Color
   finalColorTex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, finalColorTex);
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.RGBA16F,
-    w,
-    h,
-    0,
-    gl.RGBA,
-    gl.HALF_FLOAT,
-    null
-  );
+  gl.texImage2D(gl.TEXTURE_2D,0, gl.RGBA16F, w,h,0,gl.RGBA, gl.HALF_FLOAT,null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
-  // 🔹 OVO JE KLJUČNO 🔹
-  // Omogući mipmap i linearno filtriranje (potrebno za SSAA downsample)
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-  // === DEPTH TEXTURA ===
+  // Depth
   window.finalDepthTex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, window.finalDepthTex);
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.DEPTH_COMPONENT24,
-    w,
-    h,
-    0,
-    gl.DEPTH_COMPONENT,
-    gl.UNSIGNED_INT,
-    null
-  );
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.DEPTH_COMPONENT24,w,h,0,gl.DEPTH_COMPONENT,gl.UNSIGNED_INT,null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-  // === FBO ===
+  // FBO
   finalFBO = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, finalFBO);
-  gl.framebufferTexture2D(
-    gl.FRAMEBUFFER,
-    gl.COLOR_ATTACHMENT0,
-    gl.TEXTURE_2D,
-    finalColorTex,
-    0
-  );
-  gl.framebufferTexture2D(
-    gl.FRAMEBUFFER,
-    gl.DEPTH_ATTACHMENT,
-    gl.TEXTURE_2D,
-    window.finalDepthTex,
-    0
-  );
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,finalColorTex,0);
+  gl.framebufferTexture2D( gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.TEXTURE_2D,window.finalDepthTex,0);
   gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
-
-  // ✅ Provera da li je kompletan
-  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
-    console.error("❌ Final FBO nije kompletan!");
-  }
-
-  // Očisti bind
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.bindTexture(gl.TEXTURE_2D, null);
 }
 
 function focusCameraOnNode(node) {
   if (!node) return;
-
   if (node.cachedBounds) {
     camera.pan = node.cachedBounds.center;
-    camera.distTarget = node.cachedBounds.dist;   // 🔹 umesto .dist
+    camera.distTarget = node.cachedBounds.dist;  
     return;
   }
 
@@ -348,21 +232,16 @@ function focusCameraOnNode(node) {
     (min[2] + max[2]) / 2,
   ];
   const size = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2]);
-
   const fovY = Math.PI / 4;
   const newDist = size / (2 * Math.tan(fovY / 2));
-
   window.currentBoundingRadius = size / 2;
-
   camera.pan = center;
   camera.distTarget = newDist * 0.7;   // 🔹 koristi target, ne direktno
   camera.rxTarget = Math.PI / 6;       // 🔹 koristi target
   camera.ryTarget = 0;
-
   const minDist = newDist * 0.2;
   const maxDist = newDist * 3.0;
   camera.distTarget = Math.min(Math.max(camera.distTarget, minDist), maxDist);
-
   node.cachedBounds = { center, dist: camera.distTarget };
 }
 
@@ -425,10 +304,10 @@ function createPreviewProgram(gl2) {
     throw new Error(gl2.getProgramInfoLog(prog));
   return prog;
 }
-document
-  .querySelectorAll("#camera-controls button[data-view]")
-  .forEach((btn) => {
-btn.addEventListener("click", () => {
+  document
+    .querySelectorAll("#camera-controls button[data-view]")
+    .forEach((btn) => {
+  btn.addEventListener("click", () => {
   const viewName = btn.getAttribute("data-view");
   camera.currentView = viewName;
 
@@ -446,7 +325,6 @@ btn.addEventListener("click", () => {
     camera.ry = 0;
     camera.dist = 1;
   }
-
   ({ proj, view, camWorld } = camera.updateView());
   render();
 });
@@ -458,8 +336,8 @@ async function loadDefaultModel(url) {
   showLoading();
   const res = await fetch(url);
   const buf = await res.arrayBuffer();
-  await loadGLB(buf);  // čekaj dok model i teksture ne budu gotovi
-  hideLoading();        // sad tek skloni loading
+  await loadGLB(buf);  
+  hideLoading();     
   render();       
 }
 
@@ -502,11 +380,7 @@ function showLoading() {
 
 function hideLoading() {
   loadingScr.style.opacity = "0";
-
-  /* ➜  ODMAH ukini pointer-events da canvas dobije klik */
   loadingScr.style.pointerEvents = "none";
-
-  /* Prebaci se na ‘transitionend’ – radi čak i posle tab-switcha */
   const onEnd = () => {
     loadingScr.classList.add("hidden");
     loadingScr.removeEventListener("transitionend", onEnd);
@@ -526,7 +400,7 @@ input.addEventListener("change", async (e) => {
 hideLoading();        // sad sigurno sve gotovo
 render();             // sad tek nacrtaj prvi frame
 
-  input.value = ""; // da bi mogao da uvezeš isti fajl opet
+  input.value = ""; 
 });
 
 const canvas = document.getElementById("glCanvas");
@@ -536,7 +410,6 @@ if (canvas.__glContext) {
   if (loseExt) loseExt.loseContext();
 }
 const gl = canvas.getContext("webgl2", { alpha: true, antialias: true });
-
 canvas.__glContext = gl;
 if (!gl) alert("WebGL2 nije podržan u ovom pregledaču.");
 gl.getExtension("EXT_color_buffer_float");
@@ -556,29 +429,19 @@ function createDepthTexture(w, h) {
   //  ←  NOVA funkcija
   const tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.DEPTH_COMPONENT24, // 24-bit dubina
-    w,
-    h,
-    0,
-    gl.DEPTH_COMPONENT,
-    gl.UNSIGNED_INT,
-    null
-  );
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.DEPTH_COMPONENT24,  w,h,0,gl.DEPTH_COMPONENT,gl.UNSIGNED_INT,null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   return tex;
 }
-let ssaa = 1.0; // start (dinamički će se menjati)
-let targetSSAA = 1.0;
-let targetFPS = 22;
-let ssaaMin = 1.0;
-let ssaaMax = 1.5;
-let adjustCooldown = 0;
+  let ssaa = 1.0; // start (dinamički će se menjati)
+  let targetSSAA = 1.0;
+  let targetFPS = 30;
+  let ssaaMin = 1.0;
+  let ssaaMax = 1.0;
+  let adjustCooldown = 0;
 
 function resizeCanvas() {
   const sidebarW = document.getElementById("sidebar").offsetWidth;
@@ -599,29 +462,24 @@ function resizeCanvas() {
 
   let targetW = Math.min(cssW, maxRenderW);
   let targetH = Math.round(targetW / aspect);
-
-  const dpr = Math.min(window.devicePixelRatio || 1,1.5);
+  const dpr = 1.5;
   const realW = Math.round(targetW * ssaa * dpr);
   const realH = Math.round(targetH * ssaa * dpr);
 
-canvas.width = realW;
-canvas.height = realH;
+  canvas.width = realW;
+  canvas.height = realH;
 
-// DOWNsample → prikazi manju CSS veličinu (ovo je poenta SSAA)
-canvas.style.width = targetW + "px";
-canvas.style.height = targetH + "px";
-canvas.style.left = sidebarW + "px";
-canvas.style.top = headerH + "px";
-
-// (opciono za bolju interpolaciju na nekim browserima)
-canvas.style.imageRendering = "auto";
+  canvas.style.width = cssW + "px";
+  canvas.style.height = cssH + "px";
+  canvas.style.left = sidebarW + "px";
+  canvas.style.top = headerH + "px"; 
 
   gl.viewport(0, 0, realW, realH);
 
   if (sceneDepthTex) gl.deleteTexture(sceneDepthTex);
   sceneDepthTex = createDepthTexture(realW, realH);
   createGBuffer(realW, realH);
-  createSSAOBuffers(Math.round(realW * 0.5), Math.round(realH * 0.5));
+  createSSAOBuffers(Math.round(realW * 1.0), Math.round(realH * 1.0));
   createFinalColorTarget(canvas.width, canvas.height);
 
   if (reflectionFBO) {
@@ -801,56 +659,65 @@ async function loadSavedConfig(index) {
   const all = JSON.parse(localStorage.getItem("boatConfigs") || "[]");
   const cfg = all[index];
   if (!cfg) return alert("Config not found.");
-
   window.__suppressFocusCamera = true;
-
   currentParts = cfg.currentParts || {};
   savedColorsByPart = cfg.savedColorsByPart || {};
   setWeather(cfg.weather || "day");
-
   // reset UI selekcija
   document.querySelectorAll(".variant-item").forEach(el => el.classList.remove("active"));
   document.querySelectorAll(".color-swatch").forEach(el => el.classList.remove("selected"));
-
   // 1️⃣ Učitaj standardne delove
   for (const [part, variant] of Object.entries(currentParts)) {
     const node = nodesMeta.find(n => n.name === part);
-    if (variant.src) {
-      await replaceSelectedWithURL(variant.src, variant.name, part);
-    }
+if (variant.src) {
+  await replaceSelectedWithURL(variant.src, variant.name, part);
+}
 
-    // primeni boju ili teksturu
-    if (variant.selectedColor) {
-      const group = Object.values(VARIANT_GROUPS).find(g => part in g);
-      const colorData = group?.[part]?.models
-        ?.find(m => m.name === variant.name)
-        ?.colors?.find(c => c.name === variant.selectedColor);
-      if (colorData) {
-        if (colorData.type === "color") {
-          if (node) {
-            for (const r of node.renderIdxs) {
-              modelBaseColors[r.idx] = new Float32Array(colorData.color);
-              modelBaseTextures[r.idx] = null;
-            }
-          }
-        } else if (colorData.type === "texture" && colorData.texture) {
-          const img = new Image();
-          await new Promise(res => {
-            img.onload = res;
-            img.src = colorData.texture;
-          });
-          const tex = gl.createTexture();
-          gl.bindTexture(gl.TEXTURE_2D, tex);
-          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-          gl.generateMipmap(gl.TEXTURE_2D);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-          if (node) {
-            for (const r of node.renderIdxs) modelBaseTextures[r.idx] = tex;
+// sada sigurni da je model već zamenjen → tek sad primeni boju
+if (variant.selectedColor) {
+  const group = Object.values(VARIANT_GROUPS).find(g => part in g);
+  const mainMat = group?.[part]?.mainMat || "";
+  const colorData = group?.[part]?.models
+    ?.find(m => m.name === variant.name)
+    ?.colors?.find(c => c.name === variant.selectedColor);
+
+  if (colorData) {
+    if (colorData.type === "color") {
+      const node = nodesMeta.find(n => n.name === part);
+      if (node) {
+        for (const r of node.renderIdxs) {
+          if (mainMat && r.matName === mainMat) {
+            modelBaseColors[r.idx] = new Float32Array(colorData.color);
+            modelBaseTextures[r.idx] = null;
+          } else if (!mainMat && r === node.renderIdxs[0]) {
+            modelBaseColors[r.idx] = new Float32Array(colorData.color);
+            modelBaseTextures[r.idx] = null;
           }
         }
       }
+    } else if (colorData.type === "texture" && colorData.texture) {
+      const img = new Image();
+      await new Promise(res => {
+        img.onload = res;
+        img.src = colorData.texture;
+      });
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      const node = nodesMeta.find(n => n.name === part);
+      if (node) {
+        for (const r of node.renderIdxs) {
+          if (mainMat && r.matName === mainMat) modelBaseTextures[r.idx] = tex;
+          else if (!mainMat && r === node.renderIdxs[0]) modelBaseTextures[r.idx] = tex;
+        }
+      }
     }
+  }
+}
+
 
     // selektuj u UI
     const item = document.querySelector(`.variant-item[data-part="${part}"][data-variant="${variant.name}"]`);
@@ -885,15 +752,11 @@ for (const [part, variant] of Object.entries(currentParts)) {
     }
   }
 }
-
-
-  // 3️⃣ Osveži tabele i cene
   buildPartsTable();
   updateTotalPrice();
   window.__suppressFocusCamera = false;
   render();
 }
-
   renderSavedConfigs();
 }
 
@@ -939,9 +802,7 @@ async function exportPDF() {
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(11);
   pdf.text(dateStr, 200, 17, { align: "right" });
-
   y = 35;
-
   // === NASLOV ===
   pdf.setTextColor(0);
   pdf.setFont("helvetica", "bold");
@@ -1061,21 +922,7 @@ async function exportPDF() {
 
   pdf.save(`${boatName.replace(/\s+/g, "_")}_Report.pdf`);
 }
-function autoAdjustSSAA() {
-  if (adjustCooldown > 0) {
-    adjustCooldown--;
-    return;
-  }
 
-  // dead zone: ne reaguj ako je fps skoro oko targeta
-  if (fps > targetFPS + 2 && targetSSAA < ssaaMax) {
-    targetSSAA = Math.min(targetSSAA + 0.1, ssaaMax);
-    adjustCooldown = 20; // ~0.75s
-  } else if (fps < targetFPS - 2 && targetSSAA > ssaaMin) {
-    targetSSAA = Math.max(targetSSAA - 0.1, ssaaMin);
-    adjustCooldown = 20; // ~0.75s
-  }
-}
 function createGBuffer() {
   gBuffer = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, gBuffer);
@@ -1083,144 +930,58 @@ function createGBuffer() {
   // Tekstura za pozicije (u View-space, potrebna za SSAO)
   gPosition = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, gPosition);
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.RGBA16F,
-    canvas.width,
-    canvas.height,
-    0,
-    gl.RGBA,
-    gl.FLOAT,
-    null
-  );
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,canvas.width,canvas.height,0,gl.RGBA, gl.FLOAT,null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.framebufferTexture2D(
-    gl.FRAMEBUFFER,
-    gl.COLOR_ATTACHMENT0,
-    gl.TEXTURE_2D,
-    gPosition,
-    0
-  );
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,gPosition,0 );
 
   // Tekstura za normale (u View-space)
   gNormal = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, gNormal);
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.RGBA16F,
-    canvas.width,
-    canvas.height,
-    0,
-    gl.RGBA,
-    gl.FLOAT,
-    null
-  );
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,canvas.width,canvas.height,0,gl.RGBA,gl.FLOAT,null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.framebufferTexture2D(
-    gl.FRAMEBUFFER,
-    gl.COLOR_ATTACHMENT1,
-    gl.TEXTURE_2D,
-    gNormal,
-    0
-  );
+  gl.framebufferTexture2D( gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D,gNormal, 0);
 
   // Tekstura za boju (Albedo)
   gAlbedo = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, gAlbedo);
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.RGBA,
-    canvas.width,
-    canvas.height,
-    0,
-    gl.RGBA,
-    gl.UNSIGNED_BYTE,
-    null
-  );
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,canvas.width,canvas.height,0,gl.RGBA, gl.UNSIGNED_BYTE,null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.framebufferTexture2D(
-    gl.FRAMEBUFFER,
-    gl.COLOR_ATTACHMENT2,
-    gl.TEXTURE_2D,
-    gAlbedo,
-    0
-  );
+  gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT2,gl.TEXTURE_2D,gAlbedo,0);
   // NOVO: 4. Tekstura za materijal (Roughness, Metallic)
   gMaterial = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, gMaterial);
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-     gl.RGBA8,
-    canvas.width,
-    canvas.height,
-    0,
-    gl.RGBA,
-    gl.UNSIGNED_BYTE,
-    null
-  );
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,canvas.width,canvas.height,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.framebufferTexture2D(
-    gl.FRAMEBUFFER,
-    gl.COLOR_ATTACHMENT3,
-    gl.TEXTURE_2D,
-    gMaterial,
-    0
-  );
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT3,gl.TEXTURE_2D, gMaterial,0);
 
   // Kažemo WebGL-u da piše u SVA 4 attachment-a
-  gl.drawBuffers([
-    gl.COLOR_ATTACHMENT0,
-    gl.COLOR_ATTACHMENT1,
-    gl.COLOR_ATTACHMENT2,
-    gl.COLOR_ATTACHMENT3,
-  ]);
+  gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1,gl.COLOR_ATTACHMENT2,gl.COLOR_ATTACHMENT3,]);
 
   // Poveži postojeći depth texture
-  gl.framebufferTexture2D(
-    gl.FRAMEBUFFER,
-    gl.DEPTH_ATTACHMENT,
-    gl.TEXTURE_2D,
-    sceneDepthTex,
-    0
-  );
-
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.TEXTURE_2D,sceneDepthTex,0);
   if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
     console.error("G-Buffer frejmbafer nije kompletan!");
   }
-
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
-function createSSAOBuffers() {
-  // 📱 Ako je tablet/mobilni → pola rezolucije
-  const w = canvas.width;
-  const h = canvas.height;
-  // === FBO za računanje SSAO ===
+function createSSAOBuffers(w, h) {
+  const width = w || canvas.width;
+  const height = h || canvas.height;
+
+  // === FBO za SSAO ===
   ssaoFBO = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, ssaoFBO);
 
   ssaoColorBuffer = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, ssaoColorBuffer);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.FLOAT, null);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, width, height, 0, gl.RGBA, gl.FLOAT, null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.framebufferTexture2D(
-    gl.FRAMEBUFFER,
-    gl.COLOR_ATTACHMENT0,
-    gl.TEXTURE_2D,
-    ssaoColorBuffer,
-    0
-  );
-
-  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE)
-    console.error("SSAO frejmbafer nije kompletan!");
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, ssaoColorBuffer, 0);
 
   // === FBO za SSAO Blur ===
   ssaoBlurFBO = gl.createFramebuffer();
@@ -1228,32 +989,15 @@ function createSSAOBuffers() {
 
   ssaoBlurBuffer = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, ssaoBlurBuffer);
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.RGBA16F,
-    w,
-    h,
-    0,
-    gl.RGBA, // <-- OVO!
-    gl.FLOAT, // <-- I OVO!
-    null
-  );
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, width, height, 0, gl.RGBA, gl.FLOAT, null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.framebufferTexture2D(
-    gl.FRAMEBUFFER,
-    gl.COLOR_ATTACHMENT0,
-    gl.TEXTURE_2D,
-    ssaoBlurBuffer,
-    0
-  );
-
-  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE)
-    console.error("SSAO Blur frejmbafer nije kompletan!");
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, ssaoBlurBuffer, 0);
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
+
+
 function generateSSAOKernel() {
   const lerp = (a, b, f) => a + f * (b - a);
   let kernel = [];
@@ -1298,17 +1042,7 @@ function generateNoiseTexture() {
 
   ssaoNoiseTexture = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, ssaoNoiseTexture);
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.RGB16F,
-    SSAO_NOISE_SIZE,
-    SSAO_NOISE_SIZE,
-    0,
-    gl.RGB,
-    gl.FLOAT,
-    new Float32Array(noise)
-  );
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGB16F,SSAO_NOISE_SIZE,SSAO_NOISE_SIZE,0,gl.RGB,gl.FLOAT,new Float32Array(noise));
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
@@ -1326,7 +1060,7 @@ window.addEventListener("resize", () => {
 resizeCanvas();
 
 let shadowFBO, shadowDepthTex;
-const SHADOW_RES = 4096;
+const SHADOW_RES = Math.min(4096, canvas.width);
 
 function initShadowMap() {
   shadowFBO = gl.createFramebuffer();
@@ -1336,33 +1070,14 @@ function initShadowMap() {
   gl.bindTexture(gl.TEXTURE_2D, shadowDepthTex);
 
   // alociramo depth teksturu
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.DEPTH_COMPONENT24, // internal format
-    SHADOW_RES,
-    SHADOW_RES,
-    0,
-    gl.DEPTH_COMPONENT, // format
-    gl.UNSIGNED_INT, // type
-    null
-  );
-
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.DEPTH_COMPONENT24, SHADOW_RES,SHADOW_RES,0,gl.DEPTH_COMPONENT, gl.UNSIGNED_INT,null);
   // NEAREST je sigurniji za depth mapu
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
   // zakači depth teksturu na FBO
-  gl.framebufferTexture2D(
-    gl.FRAMEBUFFER,
-    gl.DEPTH_ATTACHMENT,
-    gl.TEXTURE_2D,
-    shadowDepthTex,
-    0
-  );
-
+  gl.framebufferTexture2D( gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.TEXTURE_2D,shadowDepthTex,0);
   // pošto nemamo color attachment → mora ovako
   gl.drawBuffers([gl.NONE]);
   gl.readBuffer(gl.NONE);
@@ -1426,9 +1141,6 @@ function makeLengthLine(min, max) {
   return { vao, count: 2 };
 }
 
-/* ------------------------------------------------------------------
-   GLOBALS
------------------------------------------------------------------- */
 let program;
 let shadowProgram;
 let programGlass;
@@ -1436,12 +1148,7 @@ let modelVAOs = [];
 let idxCounts = [];
 let idxTypes = [];
 
-/* ------------------------------------------------------------------
-   SHADER INIT
------------------------------------------------------------------- */
-
 async function init() {
-  // 1. Priprema Framebuffer-a i podataka za efekte
   initShadowMap();
   createGBuffer();
   createSSAOBuffers();
@@ -1484,11 +1191,7 @@ async function init() {
   );
   const acesFragSrc = await fetch("shaders/aces.frag").then((r) => r.text());
   acesProgram = createShaderProgram(gl, quadVertSrc, acesFragSrc);
-  reflectionColorProgram = createShaderProgram(
-    gl,
-    reflectionVertSrc,
-    reflectionFragSrc
-  );
+  reflectionColorProgram = createShaderProgram(gl,reflectionVertSrc,reflectionFragSrc);
 
   const pbrFragSrc = await fetch("../shaders/pbr.frag").then((r) => r.text());
   program = createShaderProgram(gl, quadVertSrc, pbrFragSrc);
@@ -1633,6 +1336,21 @@ gl.deleteProgram(prog);
   cubeMaxMip = Math.floor(Math.log2(envSize));
 
   ({ proj, view, camWorld } = camera.updateView());
+    // === PREWARM SSAO ===
+  generateSSAOKernel();
+  generateNoiseTexture();
+  createSSAOBuffers(Math.round(canvas.width * 1.0), Math.round(canvas.height * 1.0));
+
+  // Nacrtaj SSAO jednom pre loop-a da popuni teksture
+  gl.bindFramebuffer(gl.FRAMEBUFFER, ssaoFBO);
+  gl.clearColor(1, 1, 1, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, ssaoBlurFBO);
+  gl.clearColor(1, 1, 1, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
 
 function buildVariantSidebar() {
@@ -1741,13 +1459,16 @@ function buildVariantSidebar() {
                   render();
                 };
               } else if (c.type === "color" && c.color) {
-                for (const r of node.renderIdxs) {
-                  if (!mainMat || r.matName === mainMat) {
-                    modelBaseColors[r.idx] = new Float32Array(c.color);
-                    modelBaseTextures[r.idx] = null;
+                  for (const r of node.renderIdxs) {
+                    if (mainMat && r.matName === mainMat) {
+                      modelBaseColors[r.idx] = new Float32Array(c.color);
+                      modelBaseTextures[r.idx] = null;
+                    } else if (!mainMat && r === node.renderIdxs[0]) {
+                      modelBaseColors[r.idx] = new Float32Array(c.color);
+                      modelBaseTextures[r.idx] = null;
+                    }
                   }
                 }
-              }
 
               // zapamti varijantu i boju
               currentParts[partKey] = { ...variant, selectedColor: c.name };
@@ -1828,10 +1549,6 @@ if (isEquipmentOnly) {
   updateTotalPrice();
   return;
 }
-
-
-
-  // standardni deo (ima model)
   const node = nodesMeta.find((n) => n.name === partKey);
   if (!node) return;
 
@@ -1843,21 +1560,18 @@ if (prev && prev.selectedColor) {
   if (!savedColorsByPart[partKey]) savedColorsByPart[partKey] = {};
   savedColorsByPart[partKey][prev.name] = prev.selectedColor;
 }
-
   replaceSelectedWithURL(variant.src, variant.name, partKey);
   updatePartsTable(partKey, variant.name);
   currentParts[partKey] = variant;
-
   itemsDiv.querySelectorAll(".variant-item").forEach((el) => el.classList.remove("active"));
   itemEl.classList.add("active");
-
   focusCameraOnNode(node);
   render();
   showPartInfo(variant.name);
 });
 
 
-        itemsDiv.appendChild(itemEl);
+   itemsDiv.appendChild(itemEl);
       });
     }
 
@@ -1898,8 +1612,6 @@ function buildPartsTable() {
       tbody.appendChild(tr);
     }
   }
-
-  // dodatni (additional) delovi iz currentParts koji NISU u VARIANT_GROUPS
   for (const [key, variant] of Object.entries(currentParts)) {
     const isAdditional = !Object.values(VARIANT_GROUPS)
       .some(g => Object.keys(g).includes(key));
@@ -2058,13 +1770,10 @@ function render() {
     gl.bindVertexArray(quadVAO);
     gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
     gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
-
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 20, 0);
-
     gl.enableVertexAttribArray(1);
     gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 20, 12);
-
     gl.bindVertexArray(null);
   }
 
@@ -2073,11 +1782,10 @@ gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFBO);
 gl.viewport(0, 0, SHADOW_RES, SHADOW_RES);
 gl.clear(gl.DEPTH_BUFFER_BIT);
 
-// --- shadow render state ---
 gl.enable(gl.CULL_FACE);
-gl.cullFace(gl.BACK);             // 👈 backface culling zamenjen front-face
+gl.cullFace(gl.BACK);             
 gl.enable(gl.POLYGON_OFFSET_FILL);
-gl.polygonOffset(6.0, 8.0);        // 👈 blaži offset, dovoljno za acne
+gl.polygonOffset(6.0, 8.0);
 
   const lightPos = [SUN.dir[0] * 20, SUN.dir[1] * 20, SUN.dir[2] * 20];
   const lightView = look(lightPos, [0, 0, 0], [0, 1, 0]);
@@ -2093,7 +1801,7 @@ gl.polygonOffset(6.0, 8.0);        // 👈 blaži offset, dovoljno za acne
     boatMax[2] + SHADOW_EXPAND,
   ];
   const { lmin, lmax } = computeLightBounds(minBB, maxBB, lightView);
-const lightProj = ortho(lmin[0], lmax[0], lmin[1], lmax[1], -lmax[2], -lmin[2]);
+  const lightProj = ortho(lmin[0], lmax[0], lmin[1], lmax[1], -lmax[2], -lmin[2]);
   const lightVP = mat4mul(lightProj, lightView);
 
   gl.useProgram(shadowProgram);
@@ -2230,57 +1938,31 @@ gl.disable(gl.POLYGON_OFFSET_FILL);
   gl.viewport(0, 0, canvas.width, canvas.height);
   gl.bindFramebuffer(gl.FRAMEBUFFER, gBuffer);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-gl.enable(gl.DEPTH_TEST);
-gl.depthMask(true);
+  gl.enable(gl.DEPTH_TEST);
+  gl.depthMask(true);
   gl.useProgram(gBufferProgram);
-  gl.uniformMatrix4fv(
-    gl.getUniformLocation(gBufferProgram, "uProjection"),
-    false,
-    proj
-  );
-  gl.uniformMatrix4fv(
-    gl.getUniformLocation(gBufferProgram, "uView"),
-    false,
-    view
-  );
+  gl.uniformMatrix4fv(gl.getUniformLocation(gBufferProgram, "uProjection"),false,proj);
+  gl.uniformMatrix4fv( gl.getUniformLocation(gBufferProgram, "uView"),false,view);
   for (let i = 0; i < modelVAOs.length; ++i) {
     if (!idxCounts[i]) continue;
-    gl.uniformMatrix4fv(
-      gl.getUniformLocation(gBufferProgram, "uModel"),
-      false,
-      modelMatrices[i]
-    );
-    gl.uniform3fv(
-      gl.getUniformLocation(gBufferProgram, "uBaseColor"),
-      modelBaseColors[i] || [1, 1, 1]
-    );
-    gl.uniform1f(
-      gl.getUniformLocation(gBufferProgram, "uMetallic"),
-      modelMetallics[i] ?? 1.0
-    );
-    gl.uniform1f(
-      gl.getUniformLocation(gBufferProgram, "uRoughness"),
-      modelRoughnesses[i] ?? 1.0
-    );
+    gl.uniformMatrix4fv(gl.getUniformLocation(gBufferProgram, "uModel"),false, modelMatrices[i]);
+    gl.uniform3fv( gl.getUniformLocation(gBufferProgram, "uBaseColor"),modelBaseColors[i] || [1, 1, 1]);
+    gl.uniform1f(gl.getUniformLocation(gBufferProgram, "uMetallic"),modelMetallics[i] ?? 1.0);
+    gl.uniform1f(gl.getUniformLocation(gBufferProgram, "uRoughness"), modelRoughnesses[i] ?? 1.0);
     if (modelBaseTextures[i]) {
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, modelBaseTextures[i]);
       gl.uniform1i(gl.getUniformLocation(gBufferProgram, "uBaseColorTex"), 0);
-      gl.uniform1i(
-        gl.getUniformLocation(gBufferProgram, "uUseBaseColorTex"),
-        1
-      );
+      gl.uniform1i(gl.getUniformLocation(gBufferProgram, "uUseBaseColorTex"),1);
     } else {
-      gl.uniform1i(
-        gl.getUniformLocation(gBufferProgram, "uUseBaseColorTex"),
-        0
-      );
+      gl.uniform1i(gl.getUniformLocation(gBufferProgram, "uUseBaseColorTex"),0 );
     }
     gl.bindVertexArray(modelVAOs[i]);
     gl.drawElements(gl.TRIANGLES, idxCounts[i], idxTypes[i], 0);
   }
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, ssaoFBO);
+  gl.viewport(0, 0, canvas.width * 1.0, canvas.height * 1.0);
   gl.clear(gl.COLOR_BUFFER_BIT);
   gl.useProgram(ssaoProgram);
   gl.activeTexture(gl.TEXTURE0);
@@ -2305,6 +1987,7 @@ gl.depthMask(true);
 
   // === 6. SSAO blur ===
   gl.bindFramebuffer(gl.FRAMEBUFFER, ssaoBlurFBO);
+  gl.viewport(0, 0, canvas.width * 1.0, canvas.height * 1.0);
   gl.clear(gl.COLOR_BUFFER_BIT);
   gl.useProgram(blurProgram);
   gl.activeTexture(gl.TEXTURE0);
@@ -2374,8 +2057,8 @@ gl.depthMask(true);
   if (!window.sceneColorTex) {
     window.sceneColorTex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, window.sceneColorTex);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   }
@@ -2383,17 +2066,7 @@ gl.depthMask(true);
     // copy current color (sky + opaque geometry) into sceneColorTex
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, finalFBO);
     gl.bindTexture(gl.TEXTURE_2D, window.sceneColorTex);
-    gl.copyTexImage2D(
-      gl.TEXTURE_2D,
-      0,
-      gl.RGBA16F,
-      0,
-      0,
-      canvas.width,
-      canvas.height,
-      0
-    );
-
+    gl.copyTexImage2D(gl.TEXTURE_2D, 0,gl.RGBA16F,0,0,canvas.width,canvas.height,0);
     gl.generateMipmap(gl.TEXTURE_2D);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
 
@@ -2406,18 +2079,7 @@ gl.depthMask(true);
     // ⬇️ Kopiraj depth iz gBuffer u finalFBO pre crtanja vode
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, gBuffer);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, finalFBO);
-    gl.blitFramebuffer(
-      0,
-      0,
-      canvas.width,
-      canvas.height,
-      0,
-      0,
-      canvas.width,
-      canvas.height,
-      gl.DEPTH_BUFFER_BIT,
-      gl.NEAREST
-    );
+    gl.blitFramebuffer(0,0,canvas.width,canvas.height,0,0,canvas.width,canvas.height,gl.DEPTH_BUFFER_BIT,gl.NEAREST);
     drawWater(
       gl,
       proj,
@@ -2598,20 +2260,17 @@ function renderLoop() {
   const FRAME_INTERVAL = 1000 / MAX_FPS; // uvek koristi trenutni MAX_FPS
   const now = performance.now();
   const delta = now - lastFrameTime;
-
   if (delta >= FRAME_INTERVAL) {
     lastFrameTime = now - (delta % FRAME_INTERVAL);
     // 🔽 ovde interpolacija
-    ssaa += (targetSSAA - ssaa) * 0.6;
+    ssaa = 1.0;
 
     // ako se dovoljno promenilo, tek tad resize
     if (Math.abs(targetSSAA - ssaa) > 0.01) {
       resizeCanvas();
     }
-
     render();
     updateFPS();
-    autoAdjustSSAA();
   }
 
   requestAnimationFrame(renderLoop);
@@ -2896,18 +2555,14 @@ async function loadGLB(buf) {
 
   const fovY = Math.PI / 4;
   const radius = window.sceneBoundingRadius || 1;
+  const neededDist = radius / Math.sin(fovY / 2);
 
-  // koliko treba da stane ceo model u širinu ekrana
-// koliko treba da stane ceo model u širinu ekrana
-const neededDist = radius / Math.sin(fovY / 2);
-
-// --- VRATI ORIGINALNI NAČIN KAMERE ---
-camera.dist = neededDist * 0.6;     // početna distanca (dalje od modela)
-camera.distTarget = neededDist * 0.6;
-camera.rx = Math.PI / 10;
-camera.ry = Math.PI / 20;
-camera.pan = window.sceneBoundingCenter.slice();
-camera.updateView();
+  camera.dist = neededDist * 0.6;     // početna distanca (dalje od modela)
+  camera.distTarget = neededDist * 0.6;
+  camera.rx = Math.PI / 10;
+  camera.ry = Math.PI / 20;
+  camera.pan = window.sceneBoundingCenter.slice();
+  camera.updateView();
 
   ({ proj, view, camWorld } = camera.updateView());
   // Sačekaj da se sve teksture spuste u GPU
@@ -2924,12 +2579,10 @@ function loadTextureFromImage(gltf, bin, texIndex) {
   const samplerDef = gltf.samplers
     ? gltf.samplers[textureDef.sampler || 0]
     : {};
-
   const bufferView = gltf.bufferViews[imageDef.bufferView];
   const byteOffset = bufferView.byteOffset || 0;
   const byteLength = bufferView.byteLength;
   const mimeType = imageDef.mimeType;
-
   const blob = new Blob([bin.slice(byteOffset, byteOffset + byteLength)], {
     type: mimeType,
   });
@@ -2941,18 +2594,7 @@ function loadTextureFromImage(gltf, bin, texIndex) {
   gl.bindTexture(gl.TEXTURE_2D, tex);
 
   // Temporary 1x1 pixel while image loads
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.RGBA,
-    1,
-    1,
-    0,
-    gl.RGBA,
-    gl.UNSIGNED_BYTE,
-    new Uint8Array([255, 0, 255, 255])
-  );
-
+  gl.texImage2D(gl.TEXTURE_2D,0, gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([255, 0, 255, 255]));
   image.onload = () => {
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
@@ -2967,12 +2609,8 @@ function loadTextureFromImage(gltf, bin, texIndex) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, minFilter);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, magFilter);
 
-    if (isPowerOf2(image.width) && isPowerOf2(image.height)) {
-      gl.generateMipmap(gl.TEXTURE_2D);
-    } else {
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    }
-
+    if (isPowerOf2(image.width) && isPowerOf2(image.height)) {gl.generateMipmap(gl.TEXTURE_2D);
+    } else {gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);}
     URL.revokeObjectURL(url);
     window.pendingTextures--;
   };
@@ -3268,7 +2906,10 @@ async function replaceSelectedWithURL(url, variantName, partName) {
     if (c) {
       if (c.type === "color") {
         for (const r of node.renderIdxs) {
-          if (!mainMat || r.matName === mainMat) {
+          if (mainMat && r.matName === mainMat) {
+            modelBaseColors[r.idx] = new Float32Array(c.color);
+            modelBaseTextures[r.idx] = null;
+          } else if (!mainMat && r === node.renderIdxs[0]) {
             modelBaseColors[r.idx] = new Float32Array(c.color);
             modelBaseTextures[r.idx] = null;
           }
@@ -3389,11 +3030,7 @@ async function generateThumbnailForVariant(partName, variant) {
     1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
   ]);
 
-  gl2.uniformMatrix4fv(
-    gl2.getUniformLocation(prog, "uProjection"),
-    false,
-    proj
-  );
+  gl2.uniformMatrix4fv( gl2.getUniformLocation(prog, "uProjection"), false,proj);
   gl2.uniformMatrix4fv(gl2.getUniformLocation(prog, "uView"), false, view);
   gl2.uniformMatrix4fv(gl2.getUniformLocation(prog, "uModel"), false, model);
 
@@ -3403,7 +3040,7 @@ async function generateThumbnailForVariant(partName, variant) {
   gl2.enable(gl2.DEPTH_TEST);
 
   const uColorLoc = gl2.getUniformLocation(prog, "uBaseColor");
-  const uOpacityLoc = gl2.getUniformLocation(prog, "uOpacity"); // 👈 NOVO
+  const uOpacityLoc = gl2.getUniformLocation(prog, "uOpacity"); 
 
   // 🔑 nacrtaj SVE materijale/primitive
   for (const d of preview.draws) {
@@ -3413,17 +3050,14 @@ async function generateThumbnailForVariant(partName, variant) {
     }
 
     gl2.uniform3fv(uColorLoc, d.baseColor || new Float32Array([0.7, 0.7, 0.7]));
-    gl2.uniform1f(uOpacityLoc, d.opacity !== undefined ? d.opacity : 1.0); // 👈 NOVO
+    gl2.uniform1f(uOpacityLoc, d.opacity !== undefined ? d.opacity : 1.0);
     gl2.bindVertexArray(d.vao);
     gl2.drawElements(gl2.TRIANGLES, d.count, d.type, 0);
 
-    if (d.isBlend) {
-      gl2.disable(gl2.BLEND);
-    }
+    if (d.isBlend) {gl2.disable(gl2.BLEND);}
   }
 
   gl2.bindVertexArray(null);
-
   return gl2.canvas.toDataURL("image/png");
 }
 
