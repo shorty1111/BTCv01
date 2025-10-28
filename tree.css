@@ -412,8 +412,8 @@ canvas,
 ========================= */
 #camera-controls {
   position: fixed;
-  bottom: 10%;
-  left: calc(50% + 384px / 2);
+  top: 10%;
+  left: calc(20% + 384px / 2);
   transform: translateX(-50%);
   display: flex;
   gap: 8px;

@@ -109,87 +109,80 @@ void main(){
     float rough    = clamp(m.r,0.04,1.0);
     float metal    = clamp(m.g,0.0,1.0);
 
-    // Bent + AO (u VIEW space)
-    vec4 bnAO  = texture(tBentNormalAO, vUV);
-    vec3 bentV = normalize(bnAO.rgb * 2.0 - 1.0);
-    float ao   = bnAO.a;
+    vec4 bnAO      = texture(tBentNormalAO, vUV);
 
-    // Matrice / prostori
-    mat3 V3     = mat3(uView);
-    mat3 invV3  = transpose(V3);
-    vec3 N      = normalize(normalV);          // view
-    vec3 Nw     = normalize(invV3 * N);        // world
-    vec3 V      = normalize(-fragPosV);        // view
-    vec3 Lv     = normalize(V3 * normalize(uSunDir));
-    vec3 H      = normalize(V + Lv);
-    vec3 Rv     = reflect(-V, N);
-    vec3 Rw     = invV3 * Rv;
-    vec3 bentW  = normalize(invV3 * bentV);    // bent u world
+    // bent u VIEW prostoru (po tvom opisu “sve mi je u view space”)
+    vec3 bentV     = normalize(bnAO.rgb * 2.0 - 1.0);
+    float ao       = bnAO.a;
 
-    /* --- Direct lighting --- */
+    // world matrice
+    mat3  V3    = mat3(uView);
+    mat3  invV3 = transpose(V3);
+
+    vec3  N     = normalize(normalV);          // view
+    vec3  Nw    = normalize(invV3 * N);        // world
+    vec3  bentW = normalize(invV3 * bentV);    // bent u world
+    vec3 V  = normalize(-fragPosV);
+    vec3 Lv = normalize(V3*normalize(uSunDir));
+    vec3 H  = normalize(V+Lv);
+    vec3 Rv = reflect(-V,N);
+    vec3 Rw = invV3*Rv;
+
+    /* --- direct lighting --- */
     float shadow = getShadowView(fragPosV, N);
-    float NdotL  = max(dot(N, Lv), 0.0);
-    float NdotV  = max(dot(N, V ), 0.0);
+    float NdotL  = max(dot(N,Lv),0.0);
+    float NdotV  = max(dot(N,V ),0.0);
 
     vec3  F0 = mix(vec3(0.04), baseColor, metal);
-    float D  = distributionGGX(N, H, rough);
-    float G  = geometrySmith(NdotV, NdotL, rough);
-    vec3  F  = fresnelSchlickRoughness(max(dot(H, V), 0.0), F0, rough);
-    vec3  specBRDF = (D * G * F) / (4.0 * max(NdotV * NdotL, 0.001));
+    float D  = distributionGGX(N,H,rough);
+    float G  = geometrySmith(NdotV,NdotL,rough);
+    vec3  F  = fresnelSchlickRoughness(max(dot(H,V),0.0),F0,rough);
+    vec3  specBRDF = (D*G*F)/(4.0*max(NdotV*NdotL, 0.001));
 
-    vec3 kd   = (1.0 - F) * (1.0 - metal);
-    vec3 diff = kd * baseColor / 3.141592;
+    vec3 kd   = (1.0-F)*(1.0-metal);
+    vec3 diff = kd*baseColor/3.141592;
 
-    /* === Diffuse IBL — slabiji uticaj bent/AO (da senka ne bude crna rupa) === */
-    // Parametri koji "otvaraju" senku
-    const float AO_STRENGTH = 0.96;   // 0 = ignoriši AO u ambientu, 1 = pun AO. (bilo implicitno 1.0)
-    const float AO_FLOOR    = 0.005;  // minimalna ambijenta u senci (podiže dno)
-    const float BENT_MIX    = 0.2;  // koliko bent skreće normalu za diffuse IBL
+    /* === Ambient / diffuse IBL sa bent normalom === */
+    // mekši, stabilniji diffuse IBL
+    float mipDiff   = clamp(uCubeMaxMip * 1.0, 0.0, uCubeMaxMip);
+    vec3  NdiffW    = normalize(mix(Nw, bentW, 0.5));             // 0.5 = dobar start
+    vec3  envBent   = textureLod(uEnvMap, NdiffW, mipDiff).rgb;
 
-    float mipDiff = clamp(uCubeMaxMip * 0.9, 0.0, uCubeMaxMip); // svetlije probe
-    vec3  NdiffW  = normalize(mix(Nw, bentW, BENT_MIX));
-    vec3  envBent = textureLod(uEnvMap, NdiffW, mipDiff).rgb;
+    // AO ne spuštaj ispod minimuma da ne bude “prljavo”
+    float aoLin     = clamp(ao, 0.2, 1.0);
+    vec3  ambient   = envBent * aoLin;
 
-    // “Otvoreniji” AO + oslabljena težina + pod
-    float aoLinRaw = clamp(ao, 0.0, 1.0);
-    float aoLin    = 1.0 - pow(1.1 - aoLinRaw, 0.25); // gamma < 1 → svetlije
-    float aoUsed   = mix(1.0, aoLin, AO_STRENGTH);   // slabiji uticaj AO
-    aoUsed         = max(aoUsed, AO_FLOOR);          // pod
+    vec3  radiance  = uSunColor * uSunIntensity;
 
-    vec3 ambient   = envBent * aoUsed;
-    vec3 radiance  = uSunColor * uSunIntensity;
 
-    /* --- Specular IBL — spec occlusion nikad ne spusti ispod MIN --- */
-    float mip    = clamp(rough * uCubeMaxMip, 0.0, uCubeMaxMip);
-    vec3  envSpec = textureLod(uEnvMap, normalize(Rw), mip).rgb;
-    vec2  brdf    = texture(uBRDFLUT, vec2(NdotV, rough)).rg;
+    /* --- Specular IBL --- */
+    float mip    = clamp(rough*uCubeMaxMip,0.0,uCubeMaxMip);
+    vec3 envSpec = textureLod(uEnvMap, normalize(Rw), mip).rgb;
+    vec2 brdf    = texture(uBRDFLUT, vec2(NdotV,rough)).rg;
 
-    vec3  F_ibl   = fresnelSchlickRoughness(NdotV, F0, rough);
-    vec3  diffIBL = ambient * baseColor * (1.0 - metal);
+    vec3 F_ibl   = fresnelSchlickRoughness(NdotV, F0, rough);
+    vec3 diffIBL = ambient * baseColor * (1.0 - metal);
 
-    // Mekši SO + minimalna granica (da ne uguši previše)
-    const float SO_MIN = 0.70;                       // donja granica
-    float soExp    = mix(1.3, 2.2, clamp(rough, 0.0, 1.0));
-    float soDot    = max(dot(N, bentV), 0.0);
-    float specOccl = max(pow(soDot, soExp) * (0.6 + 0.4 * aoLin), SO_MIN);
+    // SO koristi VIEW dot (N · bentV) + već “podignut” AO
+    float specOccl   = pow(max(dot(N, bentV), 0.0), 3.0) * aoLin;
 
     vec3  specIBL    = envSpec * (F_ibl * brdf.x + brdf.y);
     float energyComp = 1.0 - 0.5 * rough;
-    specIBL *= energyComp * specOccl;
+    specIBL *= energyComp;
+    specIBL *= specOccl;     // ← ključno
 
-    /* --- Direct lighting mix --- */
+    /* --- Direct lighting --- */
     vec3 direct = (diff + specBRDF) * radiance * NdotL * shadow;
 
-    /* --- Fake GI — dodatni lift baš u senci --- */
-    vec3  hemi        = normalize(vec3(0.0, 1.0, 0.0));
-    float bounceFactor= max(dot(N, hemi), 0.0);
-    vec3  hemiWorld   = invV3 * hemi;
-    vec3  envBounce   = textureLod(uEnvMap, hemiWorld, uCubeMaxMip * 0.8).rgb;
-    float shadowLift  = 0.25 * (1.0 - NdotL); // jači lift u senci
-    vec3  fakeGI      = envBounce * baseColor * (bounceFactor * 0.95 + shadowLift)
-                        * (1.0 - metal) * aoUsed;
+    /* --- Fejk GI bounce --- */
+    vec3 hemi = normalize(vec3(0.0, 1.0, 0.0));              // smera neba
+    float bounceFactor = max(dot(N, hemi), 0.0);
+    vec3 hemiWorld = invV3 * hemi;
+    vec3 envBounce = textureLod(uEnvMap, hemiWorld, uCubeMaxMip * 0.8).rgb;
+    vec3 fakeGI = envBounce * baseColor * bounceFactor * 0.45 * (1.0 - metal) * ao;
 
-    /* --- Final --- */
+    /* --- Final mix --- */
     vec3 color = direct + diffIBL + specIBL + fakeGI;
+
     fragColor = vec4(vec3(color), 1.0);
 }

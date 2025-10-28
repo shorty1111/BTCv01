@@ -315,7 +315,7 @@ if (segLen > 0.0) {
 
         float cl = 0.0, amp = 1.0;
         vec3 p = samplePos * 0.0015;
-        for (int o = 0; o < 5; ++o) {
+        for (int o = 0; o < 4; ++o) {
             cl += noise3d(p) * amp;
             p *= 2.2;
             amp *= 0.55;
@@ -378,17 +378,17 @@ cloudCol = mix(cloudCol, vec3(0.9, 0.9, 0.95), 1.0 - heightMix);
     float cosToSun = dot(dir, sunV);
     float sunSize  = radians(uSunSizeDeg);
     float ang      = acos(cosToSun);
-
     float disk = exp(-pow(ang/(sunSize*0.9), 2.0));
-float limb = exp(-pow(ang/(sunSize*2.2), 2.0)); // uže, izraženije
-vec3  sunLight = uSunColor * (disk*uSunIntensity + limb*(uSunIntensity*0.18));
+
+  float limb = exp(-pow(ang/(sunSize*2.2), 2.0)); // uže, izraženije
+  vec3  sunLight = uSunColor * (disk*uSunIntensity + limb*(uSunIntensity*0.18));
 
 
     float g = 0.8;
     float mie = (1.0 - g*g) / pow(1.0 + g*g - 2.0*g*cosToSun, 1.5);
     mie *= 0.015 * (1.0 + 2.0*(1.0 - sunAlt)) * uSunHaloScale * uMieStrength;
     float halo = exp(-pow(ang / (sunSize * 6.0), 1.3));
-sunLight += uSunColor * halo * uSunIntensity * 0.05;
+  sunLight += uSunColor * halo * uSunIntensity * 0.05;
 
     // === 4. Ground & bounce ===
     float skyMask    = smoothstep(-0.04, 0.02, dir.y);
@@ -592,14 +592,6 @@ export function bakeSkyToCubemap(
       0
     );
 
-    // ✅ ubaci sanity check
-    const fbStatus = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
-    console.log(
-      `Face ${face}: framebuffer status = 0x${fbStatus.toString(16)}`
-    );
-    if (fbStatus !== gl.FRAMEBUFFER_COMPLETE) {
-      console.error("❌ HDR framebuffer incomplete:", fbStatus.toString(16));
-    }
 
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);

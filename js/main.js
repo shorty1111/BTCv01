@@ -58,13 +58,32 @@ function smoothstep(edge0, edge1, x) {
   return t * t * (3 - 2 * t);
 }
 
+let fxaaProgram = null;
 
+let toneMapTex = null;
+let toneMapFBO = null;
+function createToneMapTarget(w, h) {
+  if (toneMapTex) gl.deleteTexture(toneMapTex);
+  if (toneMapFBO) gl.deleteFramebuffer(toneMapFBO);
+
+  toneMapTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, toneMapTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+  toneMapFBO = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, toneMapFBO);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, toneMapTex, 0);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
 window.pendingTextures = 0;
 let savedColorsByPart = {};
 let reflectionFBO = null;
 let reflectionTex = null;
 let reflectionColorProgram = null;
-let envSize = 512; // kontrola kvaliteta/performansi
+let envSize = 256; // kontrola kvaliteta/performansi
 let cubeMaxMip = Math.floor(Math.log2(envSize));
 let showWater = true;
 let originalGlassByPart = {};
@@ -410,10 +429,13 @@ if (canvas.__glContext) {
   if (loseExt) loseExt.loseContext();
 }
 const gl = canvas.getContext("webgl2", { alpha: true, antialias: true });
+
+
 canvas.__glContext = gl;
 if (!gl) alert("WebGL2 nije podržan u ovom pregledaču.");
 gl.getExtension("EXT_color_buffer_float");
 gl.getExtension("OES_texture_float_linear");
+
 // OVAJ KOD DODAJ OVDE:
 if (!gl.getExtension("EXT_color_buffer_float")) {
   alert(
@@ -436,12 +458,8 @@ function createDepthTexture(w, h) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   return tex;
 }
-  let ssaa = 1.0; // start (dinamički će se menjati)
-  let targetSSAA = 1.0;
-  let targetFPS = 30;
-  let ssaaMin = 1.0;
-  let ssaaMax = 1.0;
-  let adjustCooldown = 0;
+  let ssaa = 1.4; // start (dinamički će se menjati)
+  // let targetSSAA = 1.0;
 
 function resizeCanvas() {
   const sidebarW = document.getElementById("sidebar").offsetWidth;
@@ -454,7 +472,7 @@ function resizeCanvas() {
   let maxRenderW;
   const isMobile = /Mobi|Android|iPhone|iPad|Tablet/i.test(navigator.userAgent);
   if (isMobile) {
-    maxRenderW = Math.min(cssW * 1.0, 2048); // pusti više rezolucije
+    maxRenderW = Math.min(cssW * 1.0, 1080); // pusti više rezolucije
   } else {
     maxRenderW = cssW;
   }
@@ -462,7 +480,7 @@ function resizeCanvas() {
 
   let targetW = Math.min(cssW, maxRenderW);
   let targetH = Math.round(targetW / aspect);
-  const dpr = 1.5;
+  const dpr = 1.0;
   const realW = Math.round(targetW * ssaa * dpr);
   const realH = Math.round(targetH * ssaa * dpr);
 
@@ -481,7 +499,7 @@ function resizeCanvas() {
   createGBuffer(realW, realH);
   createSSAOBuffers(Math.round(realW * 1.0), Math.round(realH * 1.0));
   createFinalColorTarget(canvas.width, canvas.height);
-
+createToneMapTarget(canvas.width, canvas.height);
   if (reflectionFBO) {
     gl.deleteFramebuffer(reflectionFBO);
     gl.deleteTexture(reflectionTex);
@@ -1060,7 +1078,7 @@ window.addEventListener("resize", () => {
 resizeCanvas();
 
 let shadowFBO, shadowDepthTex;
-const SHADOW_RES = Math.min(4096, canvas.width);
+const SHADOW_RES = 2048;
 
 function initShadowMap() {
   shadowFBO = gl.createFramebuffer();
@@ -1072,10 +1090,10 @@ function initShadowMap() {
   // alociramo depth teksturu
   gl.texImage2D(gl.TEXTURE_2D,0,gl.DEPTH_COMPONENT24, SHADOW_RES,SHADOW_RES,0,gl.DEPTH_COMPONENT, gl.UNSIGNED_INT,null);
   // NEAREST je sigurniji za depth mapu
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   // zakači depth teksturu na FBO
   gl.framebufferTexture2D( gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.TEXTURE_2D,shadowDepthTex,0);
   // pošto nemamo color attachment → mora ovako
@@ -1192,6 +1210,10 @@ async function init() {
   const acesFragSrc = await fetch("shaders/aces.frag").then((r) => r.text());
   acesProgram = createShaderProgram(gl, quadVertSrc, acesFragSrc);
   reflectionColorProgram = createShaderProgram(gl,reflectionVertSrc,reflectionFragSrc);
+
+const fxaaFrag = await fetch("shaders/fxaa.frag").then(r=>r.text());
+const fxaaVert = await fetch("shaders/fxaa.vert").then(r=>r.text());
+fxaaProgram = createShaderProgram(gl, fxaaVert, fxaaFrag);
 
   const pbrFragSrc = await fetch("../shaders/pbr.frag").then((r) => r.text());
   program = createShaderProgram(gl, quadVertSrc, pbrFragSrc);
@@ -1787,22 +1809,46 @@ gl.cullFace(gl.BACK);
 gl.enable(gl.POLYGON_OFFSET_FILL);
 gl.polygonOffset(6.0, 8.0);
 
-  const lightPos = [SUN.dir[0] * 20, SUN.dir[1] * 20, SUN.dir[2] * 20];
-  const lightView = look(lightPos, [0, 0, 0], [0, 1, 0]);
-  const SHADOW_EXPAND = 0.0;
-  const minBB = [
-    boatMin[0] - SHADOW_EXPAND,
-    boatMin[1] - SHADOW_EXPAND,
-    boatMin[2] - SHADOW_EXPAND,
-  ];
-  const maxBB = [
-    boatMax[0] + SHADOW_EXPAND,
-    boatMax[1] + SHADOW_EXPAND,
-    boatMax[2] + SHADOW_EXPAND,
-  ];
-  const { lmin, lmax } = computeLightBounds(minBB, maxBB, lightView);
-  const lightProj = ortho(lmin[0], lmax[0], lmin[1], lmax[1], -lmax[2], -lmin[2]);
-  const lightVP = mat4mul(lightProj, lightView);
+// --- Sun light setup ---
+const lightPos = [
+  SUN.dir[0] * 20,
+  SUN.dir[1] * 20,
+  SUN.dir[2] * 20,
+];
+const lightView = look(lightPos, [0, 0, 0], [0, 1, 0]);
+
+// --- Base bounding box (u svetu) ---
+const BASE_EXPAND = 0.0;
+const minBB = [
+  boatMin[0] - BASE_EXPAND,
+  boatMin[1] - BASE_EXPAND,
+  boatMin[2] - BASE_EXPAND,
+];
+const maxBB = [
+  boatMax[0] + BASE_EXPAND,
+  boatMax[1] + BASE_EXPAND,
+  boatMax[2] + BASE_EXPAND,
+];
+
+// --- Transformiši u light-space ---
+let { lmin, lmax } = computeLightBounds(minBB, maxBB, lightView);
+
+// --- Prava kontrola: širenje / skupljanje frustuma u light-space-u ---
+const FRUSTUM_SCALE = 1.0;   // >1.0 = širi, <1.0 = uži
+const cx = (lmin[0] + lmax[0]) * 0.5;
+const cy = (lmin[1] + lmax[1]) * 0.5;
+const cz = (lmin[2] + lmax[2]) * 0.5;
+
+const hx = (lmax[0] - lmin[0]) * 0.5 * FRUSTUM_SCALE;
+const hy = (lmax[1] - lmin[1]) * 0.5 * FRUSTUM_SCALE;
+const hz = (lmax[2] - lmin[2]) * 0.5 * FRUSTUM_SCALE;
+
+lmin = [cx - hx, cy - hy, cz - hz];
+lmax = [cx + hx, cy + hy, cz + hz];
+
+// --- Ortho projekcija i kombinacija ---
+const lightProj = ortho(lmin[0], lmax[0], lmin[1], lmax[1], -lmax[2], -lmin[2]);
+const lightVP = mat4mul(lightProj, lightView);
 
   gl.useProgram(shadowProgram);
   gl.uniformMatrix4fv(
@@ -1823,6 +1869,7 @@ gl.polygonOffset(6.0, 8.0);
 
 // posle shadow passa
 gl.disable(gl.POLYGON_OFFSET_FILL);
+
 
   // === 3B. Reflection pass ===
   if (showWater) {
@@ -2047,10 +2094,11 @@ gl.disable(gl.POLYGON_OFFSET_FILL);
   gl.uniform3fv(gl.getUniformLocation(program, "uSunDir"), SUN.dir);
   gl.uniform3fv(gl.getUniformLocation(program, "uSunColor"), SUN.color);
   gl.uniform1f(gl.getUniformLocation(program, "uSunIntensity"), SUN.intensity);
-  gl.uniform1f(gl.getUniformLocation(program, "uLightSize"), 0.025);
+  gl.uniform1f(gl.getUniformLocation(program, "uLightSize"), 0.00025);
   gl.uniform2f(gl.getUniformLocation(program, "uShadowMapSize"),SHADOW_RES,SHADOW_RES);
+  gl.uniform1f(gl.getUniformLocation(program, "uNormalBias"), 0.005);
   gl.uniform1f(gl.getUniformLocation(program, "uBiasBase"), 0.0005);
-  gl.uniform1f(gl.getUniformLocation(program, "uBiasSlope"), 0.002);
+  gl.uniform1f(gl.getUniformLocation(program, "uBiasSlope"), 0.0015);
   gl.bindVertexArray(quadVAO);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
@@ -2236,7 +2284,7 @@ if (!window.bloomTex) {
 }
 
 // --- tonemap ---
-gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+gl.bindFramebuffer(gl.FRAMEBUFFER, toneMapFBO);
 gl.viewport(0, 0, canvas.width, canvas.height);
 gl.useProgram(acesProgram);
 gl.activeTexture(gl.TEXTURE0);
@@ -2248,6 +2296,26 @@ gl.uniform1i(gl.getUniformLocation(acesProgram, "uBloom"), 1);
 gl.bindVertexArray(quadVAO);
 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
+// ❌ izbaci ovaj dupli bind – ne sme da stoji:
+// gl.bindFramebuffer(gl.FRAMEBUFFER, toneMapFBO);
+
+// ✅ samo završi i pređi na FXAA
+gl.finish();
+gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+// --- FXAA ---
+gl.viewport(0, 0, canvas.width, canvas.height);
+gl.useProgram(fxaaProgram);
+gl.activeTexture(gl.TEXTURE0);
+gl.bindTexture(gl.TEXTURE_2D, toneMapTex);
+gl.uniform1i(gl.getUniformLocation(fxaaProgram, "uInput"), 0);
+gl.uniform2f(gl.getUniformLocation(fxaaProgram, "uResolution"), canvas.width, canvas.height);
+gl.bindVertexArray(quadVAO);
+const texelSize = [1.0 / canvas.width, 1.0 / canvas.height];
+gl.uniform2f(gl.getUniformLocation(fxaaProgram, "uTexelSize"), texelSize[0], texelSize[1]);
+gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+
 // ✅ tek sada resetuj GL stanje
 gl.disable(gl.BLEND);
 gl.depthMask(true);
@@ -2257,24 +2325,19 @@ gl.enable(gl.CULL_FACE);
 }
 
 function renderLoop() {
-  const FRAME_INTERVAL = 1000 / MAX_FPS; // uvek koristi trenutni MAX_FPS
+  const FRAME_INTERVAL = 1000 / MAX_FPS;
   const now = performance.now();
   const delta = now - lastFrameTime;
-  if (delta >= FRAME_INTERVAL) {
-    lastFrameTime = now - (delta % FRAME_INTERVAL);
-    // 🔽 ovde interpolacija
-    ssaa = 1.0;
 
-    // ako se dovoljno promenilo, tek tad resize
-    if (Math.abs(targetSSAA - ssaa) > 0.01) {
-      resizeCanvas();
-    }
+  if (delta >= FRAME_INTERVAL) {
+    lastFrameTime = now - (delta % FRAME_INTERVAL);   
     render();
     updateFPS();
   }
 
   requestAnimationFrame(renderLoop);
 }
+
 
 const infoPanel = document.getElementById("info-panel");
 const toggleBtn = document.getElementById("toggle-info");

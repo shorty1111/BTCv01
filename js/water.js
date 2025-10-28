@@ -164,7 +164,7 @@ const waveSetB = generateWaveSet(
 );
 
 // SPOJI
-const waveSet = [...waveSetA.slice(0, 16), ...waveSetB.slice(0, 16)];
+const waveSet = [...waveSetA.slice(0, 4), ...waveSetB.slice(0, 4)];
 // 3. Helper za upload
 function uploadWaveSet(gl, program, waveSet) {
   const count = waveSet.length;
@@ -210,7 +210,7 @@ export async function initWater(gl) {
   waterProgram = createShaderProgram(gl, vsSource, fsSource);
 
   // generiši adaptivni grid
-  const grid = createSmartAdaptiveGrid(100.0, 150, 15, 0.3);
+  const grid = createSmartAdaptiveGrid(100.0, 200, 12, 0.1);
   const vertices = grid.vertices;
   const indices = grid.indices;
   indexCount = indices.length;
@@ -400,6 +400,7 @@ export function drawWater(
   gl.activeTexture(gl.TEXTURE8);
   gl.bindTexture(gl.TEXTURE_2D, shadowDepthTex);
   gl.uniform1i(gl.getUniformLocation(waterProgram, "uShadowMap"), 8);
+  
   gl.uniformMatrix4fv(
     gl.getUniformLocation(waterProgram, "uLightVP"),
     false,

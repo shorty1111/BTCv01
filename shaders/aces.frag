@@ -7,11 +7,11 @@ uniform sampler2D uBloom;
 out vec4 fragColor;
 
 vec3 ACESFilm(vec3 x) {
-    float a = 2.51;
-    float b = 0.03;
-    float c = 2.43;
-    float d = 0.59;
-    float e = 0.14;
+float a = 1.8;
+float b = 0.04;
+float c = 1.8;
+float d = 0.25;
+float e = 0.1;
     return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
 }
 
@@ -23,15 +23,14 @@ void main() {
     col += bloom * 0.8;
 
     // ACES tonemap
-    col = ACESFilm(col);
-
-    // EVE-like filmic tweaks
-    col = pow(col, vec3(1.0));
-    col *= vec3(1.25, 1.2, 1.15);
-    float lift = 0.08;
-    col = mix(vec3(lift), col, 0.880);
-    col = mix(col, ACESFilm(col * 1.2), 0.65);
-    col = pow(col, vec3(1.0 / 2.2));
-
+col = ACESFilm(col);
+col = pow(col, vec3(1.0));
+col *= vec3(1.15, 1.1, 1.1);
+float lift = 0.08;
+col = mix(vec3(lift), col, 0.88);
+col = mix(col, ACESFilm(col * 1.1), 0.5);
+float luma = dot(col, vec3(0.299,0.587,0.114));
+col = mix(vec3(luma), col, 0.9);
+col = pow(col, vec3(1.0 / 2.2));
     fragColor = vec4(col, 1.0);
 }
