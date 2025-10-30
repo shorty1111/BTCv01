@@ -21,7 +21,7 @@ uniform float uWaveOmega[32];
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec2 aUV;
 in float aWaveMask;
-
+layout(location = 3) in vec4 aInstanceData; // (offsetX, offsetZ, scale, divFactor)
 /* === izlazi === */
 out vec3 vWorldPos;
 out vec3 vNormal;
@@ -55,8 +55,8 @@ float fbm(vec2 p){
     float amp=0.5;
     for(int i=0;i<4;i++){
         total+=noise(p)*amp;
-        p*=2.0;
-        amp*=0.5;
+        p*=1.0;
+        amp*=1.5;
     }
     return total;
 }
@@ -97,8 +97,8 @@ void main(){
     float distCam=distance(uCameraPos.xz,basePos.xz);
 
     // --- precizan fade displace-a ---
-    float fadeStart=100.0;   // do 100m puni displace
-    float fadeEnd  =300.0;   // od 100-300m opada do 0
+    float fadeStart=50.0;   // do 100m puni displace
+    float fadeEnd  =200.0;   // od 100-300m opada do 0
     float t=clamp((distCam-fadeStart)/(fadeEnd-fadeStart),0.0,0.9);
     float distanceFade=1.0-t;
 

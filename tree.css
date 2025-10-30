@@ -411,9 +411,10 @@ canvas,
    CAMERA CONTROLS - 0 STYLE
 ========================= */
 #camera-controls {
-  position: fixed;
-  top: 10%;
-  left: calc(20% + 384px / 2);
+  position: absolute;
+  top: 100px;   /* udaljenost od gornje ivice canvasa */
+  left: 650px;  /* udaljenost od leve ivice canvasa */
+  z-index: 10;
   transform: translateX(-50%);
   display: flex;
   gap: 8px;
@@ -1469,3 +1470,4 @@ html, body {
 .thumb[src*="part_placeholder"] {
   transform: scale(0.5);
 }
+

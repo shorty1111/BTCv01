@@ -12,82 +12,85 @@ function makeRNG(seed = 1234) {
   };
 }
 
+const WATER_CONFIG = {
+  centerSize: 100.0,  // fizička veličina centralnog patcha
+  centerDiv: 120,     // gustina centralnog patcha (vertexi po ivici)
+  ringCount: 12,       // koliko "prstenova" mreže oko centralnog
+  ringDivFalloff: 0.5 // koliko % opada gustina (0.5 = 50%)
+};
+
 let waterProgram = null;
 let vao = null;
 let waterNormalTex = null;
-let indexCount = 0;
 
-function createSmartAdaptiveGrid(
-  tileSize = 100.0, // fizička veličina svakog patcha
-  baseDiv = 120, // broj deljenja centralnog patcha
-  ringCount = 4, // koliko “krugova” oko centra
-  lodFalloff = 0.7 // 30% manje poligona po ringu
-) {
+let waterUniforms = {};
+
+function createWaterGrid(tileSize = 100.0, div = 200) {
   const verts = [];
   const inds = [];
-  const uvScale = 1.0 / tileSize; // world-based UV
+  const uvScale = 1.0 / tileSize;
 
-  // === pomoćna funkcija za dodavanje jednog patcha ===
-  function addPatch(x0, z0, div) {
-    const startIndex = verts.length / 6;
-    const step = tileSize / div;
+  const step = tileSize / div;
+  const half = tileSize * 0.5;
+  const row = div + 1;
 
-    for (let iz = 0; iz <= div; iz++) {
-      const z = z0 + iz * step;
-      for (let ix = 0; ix <= div; ix++) {
-        const x = x0 + ix * step;
-        const u = x * uvScale;
-        const v = z * uvScale;
-        const dist = Math.hypot(x0 + ix * step, z0 + iz * step);
-        const maxDist = tileSize * ringCount * 0.05;
-        const mask = Math.max(0.0, 1.0 - dist / maxDist);
+  // === VERTEXI ===
+  for (let iz = 0; iz <= div; iz++) {
+    const z = -half + iz * step;
+    const zv = z * uvScale;
+    for (let ix = 0; ix <= div; ix++) {
+      const x = -half + ix * step;
+      const xv = x * uvScale;
 
-        verts.push(x, 0, z, u, v, mask);
-      }
-    }
-
-    const row = div + 1;
-    for (let iz = 0; iz < div; iz++) {
-      const a = startIndex + iz * row;
-      for (let ix = 0; ix < div; ix++) {
-        const i0 = a + ix;
-        const i1 = i0 + 1;
-        const i2 = i0 + row;
-        const i3 = i2 + 1;
-        inds.push(i0, i1, i2);
-        inds.push(i1, i3, i2);
-      }
+      // waveMask = 1.0 za sve (po želji možeš kasnije ubaciti fade ka ivicama)
+      verts.push(x, 0, z, xv, zv, 1.0);
     }
   }
 
-  // === CENTRALNI PATCH (uvek pun rezolucije) ===
-  addPatch(-tileSize * 0.5, -tileSize * 0.5, baseDiv);
-
-  // === RINGOVI OKO CENTRA ===
-  let currentDiv = baseDiv;
-  for (let ring = 1; ring <= ringCount; ring++) {
-    // progresivno smanjenje, ne direktni stepen
-    currentDiv *= lodFalloff;
-    const div = Math.max(2, Math.floor(currentDiv));
-    const offset = tileSize * ring;
-
-    for (let iz = -ring; iz <= ring; iz++) {
-      for (let ix = -ring; ix <= ring; ix++) {
-        const maxR = Math.max(Math.abs(ix), Math.abs(iz));
-        if (maxR !== ring) continue; // samo spoljašnji okvir ringu
-
-        const x0 = ix * tileSize - tileSize * 0.5;
-        const z0 = iz * tileSize - tileSize * 0.5;
-        addPatch(x0, z0, div);
-      }
+  // === INDEKSI ===
+  for (let iz = 0; iz < div; iz++) {
+    const base = iz * row;
+    for (let ix = 0; ix < div; ix++) {
+      const i0 = base + ix;
+      const i1 = i0 + 1;
+      const i2 = i0 + row;
+      inds.push(i0, i1, i2, i1, i2 + 1, i2);
     }
   }
-  console.log("VERTEX COUNT:", verts.length / 3);
+
+  console.log("Water grid:", verts.length / 6, "verts");
+
   return {
     vertices: new Float32Array(verts),
     indices:
       verts.length / 3 > 65535 ? new Uint32Array(inds) : new Uint16Array(inds),
   };
+}
+
+function createWaterRings(cfg = WATER_CONFIG) {
+  const { centerSize, centerDiv, ringCount, ringDivFalloff } = cfg;
+  const rings = [];
+  const step = centerSize; // svi gridovi su iste fizičke veličine
+
+  // prolazimo kroz kvadratnu mrežu (2*ringCount + 1) × (2*ringCount + 1)
+  for (let z = -ringCount; z <= ringCount; z++) {
+    for (let x = -ringCount; x <= ringCount; x++) {
+      const dist = Math.max(Math.abs(x), Math.abs(z)); // udaljenost od centra
+      const div = Math.max(4, Math.floor(centerDiv * Math.pow(ringDivFalloff, dist)));
+
+      rings.push({
+        grid: createWaterGrid(centerSize, div),
+        offset: [x * step, z * step], // pozicioniraj mreže oko centra
+      });
+    }
+  }
+
+  console.log(
+    `[WATER] Centralni grid: ${centerDiv} deljenja (${(centerDiv + 1) ** 2} vertexa)`
+  );
+  console.log(`[WATER] Ukupno ploča: ${(2 * ringCount + 1) ** 2}`);
+
+  return rings;
 }
 
 function generateWaveSet(
@@ -106,14 +109,14 @@ function generateWaveSet(
   const rnd = makeRNG(seed);
 
   function randomDir() {
-    const a = windAngle + (rnd() - 0.5) * Math.PI * 5.1; // ograniči oko glavnog pravca
+    const a = windAngle + (rnd() - 0.5) * Math.PI * 1.1; // ograniči oko glavnog pravca
     return [Math.cos(a), Math.sin(a)];
   }
 
   function addWave(A, Lbase, Qbase) {
-    const Avar = A * (1.5 + rnd() * 0.6); // veća raznolikost
+    const Avar = A * (2.5 + rnd() * 0.6); // veća raznolikost
     const L = Lbase * (2.5 + rnd() * 1.2); // realni rasponi dužina
-    const Q = Qbase * (2.6 + rnd() * 1.8); // choppiness varijacija
+    const Q = Qbase * (2.6 + rnd() * 0.8); // choppiness varijacija
     const dir = randomDir();
     const phase = rnd() * Math.PI * 2;
     const speedJitter = 0.5 + rnd() * 2.0;
@@ -123,17 +126,17 @@ function generateWaveSet(
 
   // Spori, dugi swells
   for (let i = 0; i < largeCount; i++) {
-    addWave(largeAmp, 5 + rnd() * 10, 0.1 + rnd() * 0.5);
+    addWave(largeAmp, 0.5 + rnd() * 1.0, 0.2 + rnd() * 0.10);
   }
 
   // Glavni chop
   for (let i = 0; i < midCount; i++) {
-    addWave(midAmp, 2 + rnd() * 6, 0.5 + rnd() * 0.5);
+    addWave(midAmp, 0.5 + rnd() * 10.0, 0.2 + rnd() * 0.1);
   }
 
   // Mikro ripples
   for (let i = 0; i < smallCount; i++) {
-    addWave(smallAmp, 0.4 + rnd() * 1.2, 0.6 + rnd() * 1.2);
+    addWave(smallAmp, 1.1 + rnd() * 2.5, 0.5 + rnd() * 0.5);
   }
 
   return waves;
@@ -141,30 +144,21 @@ function generateWaveSet(
 
 const waveSetA = generateWaveSet(
   {
-    largeAmp: 0.018, // duži, jedva vidljivi valovi (spori swells)
+    largeAmp: 0.005, // duži, jedva vidljivi valovi (spori swells)
     largeCount: 3,
-    midAmp: 0.01, // glavni “chop”, realni pokret vode
-    midCount: 9,
-    smallAmp: 0.004, // fini mikrovalovi što daju svetlucanje
-    smallCount: 8,
-  },
-  12345
-);
 
-const waveSetB = generateWaveSet(
-  {
-    largeAmp: 0.012, // sekundarni swells – malo slabiji
-    largeCount: 2,
-    midAmp: 0.015, // dodatni sloj chopa za nesavršenost
+    midAmp: 0.01, // glavni “chop”, realni pokret vode
     midCount: 6,
-    smallAmp: 0.0035, // vrlo sitni ripples
-    smallCount: 8,
+
+    smallAmp: 0.015, // fini mikrovalovi što daju svetlucanje
+    smallCount: 6,
   },
-  6789
-);
+  31211122222,
+ Math.PI * 0.75);
+
 
 // SPOJI
-const waveSet = [...waveSetA.slice(0, 4), ...waveSetB.slice(0, 4)];
+const waveSet = [...waveSetA.slice(0, 8)];
 // 3. Helper za upload
 function uploadWaveSet(gl, program, waveSet) {
   const count = waveSet.length;
@@ -208,43 +202,75 @@ export async function initWater(gl) {
   const fsSource = await fetch("shaders/water.frag").then((r) => r.text());
 
   waterProgram = createShaderProgram(gl, vsSource, fsSource);
+  // --- CACHE SVIH UNIFORM LOKACIJA ---
+const uniformNames = [
+  "uProjection", "uView", "uModel", "uTime", "uBoatPos",
+  "uGlobalSpeed", "uCameraPos", "uSunDir", "uSunColor",
+  "uSunIntensity", "uOpacity", "uRoughness", "uSpecularStrength",
+  "uWaterLevel", "uBottomOffsetM", "uCubeMaxMip", "uWaterNormal",
+  "uEnvTex", "uSceneDepth", "uSceneColor", "uReflectionTex",
+  "uReflectionMatrix", "uWaterHeight", "uNear", "uFar", "uViewportSize",
+  "uShallowColor", "uDeepColor", "uShadowMap", "uLightVP",
+  "uGridOffset"
+];
 
-  // generiši adaptivni grid
-  const grid = createSmartAdaptiveGrid(100.0, 200, 12, 0.1);
-  const vertices = grid.vertices;
-  const indices = grid.indices;
-  indexCount = indices.length;
+  for (const name of uniformNames) {
+    waterUniforms[name] = gl.getUniformLocation(waterProgram, name);
+  }
 
-  vao = gl.createVertexArray();
-  gl.bindVertexArray(vao);
+const ringData = createWaterRings(WATER_CONFIG);
+// izračunaj ukupan broj verteksa
+let totalVerts = 0;
+for (const { grid } of ringData) {
+  totalVerts += grid.vertices.length / 6; // svaki vertex ima 6 float-ova
+}
+console.log(`[WATER] Ukupno verteksa: ${totalVerts.toLocaleString()}`);
+vao = []; // niz svih ploča
+
+for (const { grid, offset } of ringData) {
+  const vaoObj = gl.createVertexArray();
+  gl.bindVertexArray(vaoObj);
 
   const vbo = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
-  gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+  gl.bufferData(gl.ARRAY_BUFFER, grid.vertices, gl.STATIC_DRAW);
 
   const ebo = gl.createBuffer();
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo);
-  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, grid.indices, gl.STATIC_DRAW);
 
-  // sada svaki vertex = (x, y, z, u, v, waveMask) = 6 float-ova
-  const stride = 6 * 4; // 6 float-a * 4 bajta = 24 bajta
-
-  // aPos → lokacija 0
+  const stride = 6 * 4;
   gl.enableVertexAttribArray(0);
   gl.vertexAttribPointer(0, 3, gl.FLOAT, false, stride, 0);
-
-  // aUV → lokacija 1
   gl.enableVertexAttribArray(1);
   gl.vertexAttribPointer(1, 2, gl.FLOAT, false, stride, 3 * 4);
-
-  // aWaveMask → lokacija 2 (novi atribut)
   gl.enableVertexAttribArray(2);
   gl.vertexAttribPointer(2, 1, gl.FLOAT, false, stride, 5 * 4);
 
-  gl.bindVertexArray(null);
+vao.push({
+  vao: vaoObj,
+  count: grid.indices.length,
+  offset: offset,
+  indexType: (grid.indices instanceof Uint32Array) ? 32 : 16,
+});
+}
+
+gl.bindVertexArray(null);
+
+
+
   gl.useProgram(waterProgram);
   uploadWaveSet(gl, waterProgram, waveSet);
   waterNormalTex = loadTexture2D(gl, "assets/water_normal.png");
+    // === STATIČNI UNIFORMI (mogu preći u initWater ako želiš još više performansi) ===
+  gl.uniform1f(waterUniforms.uOpacity, 1.0);
+  gl.uniform1f(waterUniforms.uRoughness, 0.02);
+  gl.uniform1f(waterUniforms.uSpecularStrength, 1.0);
+  gl.uniform1f(waterUniforms.uWaterLevel, 0.0);
+  gl.uniform1f(waterUniforms.uBottomOffsetM, 4.0);
+  gl.uniform1f(waterUniforms.uCubeMaxMip, 8.0);
+  gl.uniform3fv(waterUniforms.uShallowColor, [0.2, 0.85, 0.7]);
+  gl.uniform3fv(waterUniforms.uDeepColor, [0.02, 0.035, 0.05]);
 }
 
 // === helper za učitavanje 2D teksture ===
@@ -274,9 +300,8 @@ function loadTexture2D(gl, url) {
 
   const img = new Image();
   img.onload = () => {
-    gl.bindTexture(gl.TEXTURE_2D, tex);
-    // učitaj teksturu kao linearnu, bez sRGB dekodiranja
     gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texImage2D(
       gl.TEXTURE_2D,
       0,
@@ -312,111 +337,78 @@ export function drawWater(
   viewportSize,
   shadowDepthTex,
   lightVP,
-  reflectionTex, // <--- DODAJ OVO!
-  reflProjView // <--- DODAJ OVO!
+  reflectionTex,
+  reflProjView
 ) {
   if (!waterProgram) return;
 
   gl.useProgram(waterProgram);
 
-  gl.bindVertexArray(vao);
 
-  gl.uniformMatrix4fv(
-    gl.getUniformLocation(waterProgram, "uProjection"),
-    false,
-    proj
-  );
-  gl.uniformMatrix4fv(
-    gl.getUniformLocation(waterProgram, "uView"),
-    false,
-    view
-  );
-  gl.uniformMatrix4fv(
-    gl.getUniformLocation(waterProgram, "uModel"),
-    false,
-    mat4Identity()
-  );
+  // === MATRICE ===
+  gl.uniformMatrix4fv(waterUniforms.uProjection, false, proj);
+  gl.uniformMatrix4fv(waterUniforms.uView, false, view);
+  gl.uniformMatrix4fv(waterUniforms.uModel, false, mat4Identity());
 
-  gl.uniform1f(gl.getUniformLocation(waterProgram, "uTime"), timeSec);
-  gl.uniform3fv(gl.getUniformLocation(waterProgram, "uBoatPos"), boatWorldPos);
-  gl.uniform1f(gl.getUniformLocation(waterProgram, "uGlobalSpeed"), 1.0); // probaj 0.5–1.0
-  gl.uniform3fv(gl.getUniformLocation(waterProgram, "uCameraPos"), camWorld);
-  gl.uniform3fv(gl.getUniformLocation(waterProgram, "uSunDir"), sunDir);
-  gl.uniform3fv(gl.getUniformLocation(waterProgram, "uSunColor"), sunColor);
-  gl.uniform1f(
-    gl.getUniformLocation(waterProgram, "uSunIntensity"),
-    sunIntensity
-  );
+  // === DINAMIČNI UNIFORMI ===
+  gl.uniform1f(waterUniforms.uTime, timeSec);
+  gl.uniform3fv(waterUniforms.uBoatPos, boatWorldPos);
+  gl.uniform1f(waterUniforms.uGlobalSpeed, 1.0);
+  gl.uniform3fv(waterUniforms.uCameraPos, camWorld);
+  gl.uniform3fv(waterUniforms.uSunDir, sunDir);
+  gl.uniform3fv(waterUniforms.uSunColor, sunColor);
+  gl.uniform1f(waterUniforms.uSunIntensity, sunIntensity);
 
-  gl.uniform1f(gl.getUniformLocation(waterProgram, "uOpacity"), 1.0);
-  gl.uniform1f(gl.getUniformLocation(waterProgram, "uRoughness"), 0.02);
-  gl.uniform1f(gl.getUniformLocation(waterProgram, "uSpecularStrength"), 1.0);
-  gl.uniform1f(gl.getUniformLocation(waterProgram, "uWaterLevel"), 0.0);
-  gl.uniform1f(gl.getUniformLocation(waterProgram, "uBottomOffsetM"), 4.0);
-  gl.uniform1f(gl.getUniformLocation(waterProgram, "uCubeMaxMip"), 8.0);
-
+  // === TEKSTURE ===
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, waterNormalTex);
-  gl.uniform1i(gl.getUniformLocation(waterProgram, "uWaterNormal"), 0);
+  gl.uniform1i(waterUniforms.uWaterNormal, 0);
 
   gl.activeTexture(gl.TEXTURE1);
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
-  gl.uniform1i(gl.getUniformLocation(waterProgram, "uEnvTex"), 1);
+  gl.uniform1i(waterUniforms.uEnvTex, 1);
+
   gl.activeTexture(gl.TEXTURE2);
   gl.bindTexture(gl.TEXTURE_2D, sceneDepthTex);
-  gl.uniform1i(gl.getUniformLocation(waterProgram, "uSceneDepth"), 2);
+  gl.uniform1i(waterUniforms.uSceneDepth, 2);
+
   gl.activeTexture(gl.TEXTURE3);
   gl.bindTexture(gl.TEXTURE_2D, finalSceneTex);
-  gl.uniform1i(gl.getUniformLocation(waterProgram, "uSceneColor"), 3);
+  gl.uniform1i(waterUniforms.uSceneColor, 3);
 
   gl.activeTexture(gl.TEXTURE4);
   gl.bindTexture(gl.TEXTURE_2D, reflectionTex);
-  gl.uniform1i(gl.getUniformLocation(waterProgram, "uReflectionTex"), 4);
-  gl.uniformMatrix4fv(
-    gl.getUniformLocation(waterProgram, "uReflectionMatrix"),
-    false,
-    reflProjView
-  );
+  gl.uniform1i(waterUniforms.uReflectionTex, 4);
+  gl.uniformMatrix4fv(waterUniforms.uReflectionMatrix, false, reflProjView);
 
-  gl.uniform1f(gl.getUniformLocation(waterProgram, "uWaterHeight"), 0.0);
-  gl.uniform1f(gl.getUniformLocation(waterProgram, "uNear"), nearPlane);
-  gl.uniform1f(gl.getUniformLocation(waterProgram, "uFar"), farPlane);
-  gl.uniform2fv(
-    gl.getUniformLocation(waterProgram, "uViewportSize"),
-    viewportSize
-  );
-  // Shallow
-  gl.uniform3fv(
-    gl.getUniformLocation(waterProgram, "uShallowColor"),
-    [0.2, 0.85, 0.7]
-  ); // #2FC8A1
+  // === OSTALO ===
+  gl.uniform1f(waterUniforms.uWaterHeight, 0.0);
+  gl.uniform1f(waterUniforms.uNear, nearPlane);
+  gl.uniform1f(waterUniforms.uFar, farPlane);
+  gl.uniform2fv(waterUniforms.uViewportSize, viewportSize);
 
-  // Deep
-  gl.uniform3fv(
-    gl.getUniformLocation(waterProgram, "uDeepColor"),
-    [0.02, 0.035, 0.05]
-  ); // #09182cff
-  // --- SHADOW MAP UNIFORME ---  // PRE drawElements!!!
+
+
+  // === SENKA ===
   gl.activeTexture(gl.TEXTURE8);
   gl.bindTexture(gl.TEXTURE_2D, shadowDepthTex);
-  gl.uniform1i(gl.getUniformLocation(waterProgram, "uShadowMap"), 8);
-  
-  gl.uniformMatrix4fv(
-    gl.getUniformLocation(waterProgram, "uLightVP"),
-    false,
-    lightVP
-  );
+  gl.uniform1i(waterUniforms.uShadowMap, 8);
+  gl.uniformMatrix4fv(waterUniforms.uLightVP, false, lightVP);
 
   // === CRTANJE VODE ===
   gl.enable(gl.CULL_FACE);
-  gl.cullFace(gl.FRONT); // ili gl.FRONT, probaj po potrebi
+  gl.cullFace(gl.FRONT); // možeš menjati na BACK po potrebi
+for (const ring of vao) {
+  gl.uniform2fv(waterUniforms.uGridOffset, ring.offset);
+  gl.bindVertexArray(ring.vao);
 
-  gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_INT, 0);
+  const indexType = (ring.indexType === 32) ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT;
+  gl.drawElements(gl.TRIANGLES, ring.count, indexType, 0);
+}
+  // === VRATI STANJE ===
   gl.disable(gl.CULL_FACE);
-  // ✅ VRATI STANJE
   gl.disable(gl.BLEND);
   gl.depthMask(true);
   gl.depthFunc(gl.LESS);
-
   gl.bindVertexArray(null);
 }

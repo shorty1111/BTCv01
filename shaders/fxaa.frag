@@ -17,7 +17,7 @@ uniform sampler2D uInput;
 uniform vec2 uTexelSize;
 
 const float fxaaQualitySubpix = 1.0;
-const float fxaaQualityEdgeThreshold = 0.1;
+const float fxaaQualityEdgeThreshold = 0.166;
 const float fxaaQualityEdgeThresholdMin = 0.0833;
 const vec3 kLumaCoefficients = vec3(0.2126, 0.7152, 0.0722);
 #define FxaaLuma(rgba) dot(rgba.rgb, kLumaCoefficients)

@@ -5,55 +5,45 @@ import { createShaderProgram } from "./shader.js";
 let skyProg = null;
 let skyVAO = null;
 let skyIdxCount = 0;
+let skyUniforms = {}; // ⚙️ NOVO
 
 // ===== Default sky params (bez SUN — njega prosleđuje main.js) =====
 export const DEFAULT_SKY = {
   exposure: 0.8,
-
-  // Nebo: čisto letnje nebo (Unreal Engine style)
-  zenith: [0.12, 0.25, 0.6], // sky blue
-  horizon: [0.8, 0.9, 1.0], // very pale blue
-  ground: [0.012, 0.01, 0.01], // neutral gray-brown
-  sunsetHorizon: [1.0, 0.35, 0.1], // jaka narandžasta
-  sunsetZenith: [0.18, 0.23, 0.55], // dublje plavo, manje crvene (više “večernje plavo”)
-
+  zenith: [0.12, 0.25, 0.6],
+  horizon: [0.8, 0.9, 1.0],
+  ground: [0.012, 0.01, 0.01],
+  sunsetHorizon: [1.0, 0.35, 0.1],
+  sunsetZenith: [0.18, 0.23, 0.55],
   worldLocked: 1,
   model: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-
-  turbidity: 0.9, // manji brojevi = čisto nebo, bez “mutnog” horizonta!
-  sunSizeDeg: 0.53, // može i 0.53
+  turbidity: 0.9,
+  sunSizeDeg: 1.53,
   sunHaloScale: 0.25,
   horizonSoft: 0.18,
   horizonLift: -0.02,
-  saturation: 1.1, // malo ispod 1.0
+  saturation: 1.1,
   horizonDesat: 0.05,
   horizonWarmth: 1.35,
-
-  // Bandovi
-  milkBandStrength: 0.0, // isključi!
+  milkBandStrength: 0.0,
   milkBandWidth: 0.12,
-  warmBandStrength: 0.1, // isključi!
+  warmBandStrength: 0.1,
   warmBandWidth: 0.15,
-
-  // Atmosfera
-  rayleighStrength: 1.0,
+  rayleighStrength: 1.8,
   mieStrength: 0.8,
   zenithDesat: 0.12,
   groundScatter: 0.85,
 };
 
 // ===== Helpers =====
-function createSphere(latBands = 8, longBands = 8, radius = 10.0) {
-  const positions = [],
-    indices = [];
+function createSphere(latBands = 4, longBands = 4, radius = 10.0) {
+  const positions = [], indices = [];
   for (let lat = 0; lat <= latBands; lat++) {
     const theta = (lat * Math.PI) / latBands;
-    const sinT = Math.sin(theta),
-      cosT = Math.cos(theta);
+    const sinT = Math.sin(theta), cosT = Math.cos(theta);
     for (let lon = 0; lon <= longBands; lon++) {
       const phi = (lon * 2.0 * Math.PI) / longBands;
-      const sinP = Math.sin(phi),
-        cosP = Math.cos(phi);
+      const sinP = Math.sin(phi), cosP = Math.cos(phi);
       positions.push(radius * cosP * sinT, radius * cosT, radius * sinP * sinT);
     }
   }
@@ -64,38 +54,17 @@ function createSphere(latBands = 8, longBands = 8, radius = 10.0) {
       indices.push(first, second, first + 1, second, second + 1, first + 1);
     }
   }
-  return {
-    positions: new Float32Array(positions),
-    indices: new Uint16Array(indices),
-  };
+  return { positions: new Float32Array(positions), indices: new Uint16Array(indices) };
 }
 
-function createCubemap(gl, size, useHDR = false) {
+function createCubemap(gl, size, useHDR = true) {
   const tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, tex);
-
-  // 👉 half-float umesto 8-bit
-const internal = useHDR ? gl.RGBA16F : gl.RGBA8;
-const type = useHDR ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
-
+  const internal = useHDR ? gl.RGBA16F : gl.RGBA8;
+  const type = useHDR ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
   for (let i = 0; i < 6; i++)
-    gl.texImage2D(
-      gl.TEXTURE_CUBE_MAP_POSITIVE_X + i,
-      0,
-      internal,
-      size,
-      size,
-      0,
-      gl.RGBA,
-      type,
-      null
-    );
-
-  gl.texParameteri(
-    gl.TEXTURE_CUBE_MAP,
-    gl.TEXTURE_MIN_FILTER,
-    gl.LINEAR_MIPMAP_LINEAR
-  );
+    gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, internal, size, size, 0, gl.RGBA, type, null);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
   gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -104,48 +73,26 @@ const type = useHDR ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
   return tex;
 }
 
-// lookAt helper — vraćen da ne puca bakeSkyToCubemap
 function lookAt(eye, center, up) {
-  const [ex, ey, ez] = eye,
-    [cx, cy, cz] = center;
+  const [ex, ey, ez] = eye, [cx, cy, cz] = center;
   let [ux, uy, uz] = up;
-  let zx = ex - cx,
-    zy = ey - cy,
-    zz = ez - cz;
+  let zx = ex - cx, zy = ey - cy, zz = ez - cz;
   let rl = 1 / Math.hypot(zx, zy, zz);
-  zx *= rl;
-  zy *= rl;
-  zz *= rl;
-  let xx = uy * zz - uz * zy,
-    xy = uz * zx - ux * zz,
-    xz = ux * zy - uy * zx;
+  zx *= rl; zy *= rl; zz *= rl;
+  let xx = uy * zz - uz * zy, xy = uz * zx - ux * zz, xz = ux * zy - uy * zx;
   rl = 1 / Math.hypot(xx, xy, xz);
-  xx *= rl;
-  xy *= rl;
-  xz *= rl;
-  let yx = zy * xz - zz * xy,
-    yy = zz * xx - zx * xz,
-    yz = zx * xy - zy * xx;
+  xx *= rl; xy *= rl; xz *= rl;
+  let yx = zy * xz - zz * xy, yy = zz * xx - zx * xz, yz = zx * xy - zy * xx;
   const o = new Float32Array(16);
-  o[0] = xx;
-  o[1] = yx;
-  o[2] = zx;
-  o[3] = 0;
-  o[4] = xy;
-  o[5] = yy;
-  o[6] = zy;
-  o[7] = 0;
-  o[8] = xz;
-  o[9] = yz;
-  o[10] = zz;
-  o[11] = 0;
+  o[0] = xx; o[1] = yx; o[2] = zx; o[3] = 0;
+  o[4] = xy; o[5] = yy; o[6] = zy; o[7] = 0;
+  o[8] = xz; o[9] = yz; o[10] = zz; o[11] = 0;
   o[12] = -(xx * ex + xy * ey + xz * ez);
   o[13] = -(yx * ex + yy * ey + yz * ez);
   o[14] = -(zx * ex + zy * ey + zz * ez);
   o[15] = 1;
   return o;
 }
-
 // ===== Init =====
 export function initSky(gl) {
   const sphere = createSphere(8, 8, 200.0);
@@ -153,38 +100,29 @@ export function initSky(gl) {
 
   skyVAO = gl.createVertexArray();
   gl.bindVertexArray(skyVAO);
-
   const posBuf = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
   gl.bufferData(gl.ARRAY_BUFFER, sphere.positions, gl.STATIC_DRAW);
   gl.enableVertexAttribArray(0);
   gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
-
   const idxBuf = gl.createBuffer();
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxBuf);
   gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, sphere.indices, gl.STATIC_DRAW);
   gl.bindVertexArray(null);
+
   const vs = `#version 300 es
 layout(location=0) in vec3 aPos;
-
 uniform mat4 uView;
 uniform mat4 uProj;
-
 out vec3 vDir;
-
 void main() {
-    // izdvoji rotaciju kamere bez translacije
-    mat4 viewNoTrans = uView;
-    viewNoTrans[3] = vec4(0.0, 0.0, 0.0, viewNoTrans[3].w);
-
-    // izračunaj world-space direction
-    vec3 dir = (transpose(mat3(viewNoTrans)) * aPos);
-    vDir = normalize(dir);
-
-    // nacrtaj sferu fiksnu oko kamere
-    vec4 pos = uProj * vec4(aPos, 1.0);
-    pos.z = pos.w;
-    gl_Position = pos;
+  mat4 viewNoTrans = uView;
+  viewNoTrans[3] = vec4(0.0, 0.0, 0.0, viewNoTrans[3].w);
+  vec3 dir = (transpose(mat3(viewNoTrans)) * aPos);
+  vDir = normalize(dir);
+  vec4 pos = uProj * vec4(aPos, 1.0);
+  pos.z = pos.w;
+  gl_Position = pos;
 }`;
 
   const fs = `#version 300 es
@@ -283,11 +221,7 @@ void main(){
 
     vec3 base = mix(curZenith, curHorizon, hS);
     
-    // --- Ground gradient (toplija baza ispod horizonta) ---
-    float gMix = smoothstep(-0.25, 0.05, dir.y);
-    vec3 groundColor = mix(vec3(0.10, 0.07, 0.05), vec3(0.16, 0.11, 0.07), 1.0 - sunAlt);
-    base = mix(groundColor, base, gMix);
-base *= mix(vec3(1.0), rayleighColor, uRayleighStrength * 0.3);
+
 
     // === 2. Procedural clouds, halo, sunset boost ===
     // (ostaje kao ranije – možeš da ga pojačaš po želji)
@@ -378,7 +312,7 @@ cloudCol = mix(cloudCol, vec3(0.9, 0.9, 0.95), 1.0 - heightMix);
     float cosToSun = dot(dir, sunV);
     float sunSize  = radians(uSunSizeDeg);
     float ang      = acos(cosToSun);
-    float disk = exp(-pow(ang/(sunSize*0.9), 2.0));
+    float disk = exp(-pow(ang/(sunSize*0.9), 8.0));
 
   float limb = exp(-pow(ang/(sunSize*2.2), 2.0)); // uže, izraženije
   vec3  sunLight = uSunColor * (disk*uSunIntensity + limb*(uSunIntensity*0.18));
@@ -394,10 +328,9 @@ cloudCol = mix(cloudCol, vec3(0.9, 0.9, 0.95), 1.0 - heightMix);
     float skyMask    = smoothstep(-0.04, 0.02, dir.y);
     float groundMask = 1.0 - skyMask;
 
-    vec3 groundBase   = vec3(0.03,0.03,0.04) * groundMask * uSunIntensity;
+    vec3 groundBase   = vec3(0.014,0.02,0.035) * groundMask * uSunIntensity;
     float below       = smoothstep(0.0, 0.25, max(0.0, -dir.y));
-    vec3 groundBounce = vec3(0.03,0.03,0.03) * (0.3 + 0.7*(1.0 - sunAlt)) *
-                        below * (uGroundScatter*1.5) * uSunIntensity;
+  
 
     // === 5. Finalna kompozicija ===
     vec3 color = (base * skyMask * uSunIntensity) +
@@ -423,87 +356,71 @@ fragColor = vec4(mapped, 1.0);
 `;
 
   skyProg = createShaderProgram(gl, vs, fs);
+
+  // ⚙️ NOVO: keš uniform lokacija
+  const names = [
+    "uView","uProj","uSunDir","uSunColor","uSunIntensity","uCameraHeight",
+    "uCloudHeight","uCloudThickness","uCloudSpeed","uExposure","uSunSizeDeg",
+    "uSunHaloScale","uHorizonSoft","uHorizonLift","uHorizonDesat","uTurbidity",
+    "uSaturation","uMilkBandStrength","uMilkBandWidth","uWarmBandStrength",
+    "uWarmBandWidth","uHorizonWarmth","uRayleighStrength","uMieStrength",
+    "uZenithDesat","uGroundScatter","uWorldLocked","uModel","uUseTonemap","uTime"
+  ];
+  for (const n of names) skyUniforms[n] = gl.getUniformLocation(skyProg, n);
+
+
+  
 }
+
 
 // ===== Uniforms =====
 function applySkyUniforms(gl, view, proj, sunDir, opts) {
-  const o = { ...DEFAULT_SKY, ...(opts || {}) };
+  // koristi referencu umesto novog objekta svaku frame-u
+  const o = opts || DEFAULT_SKY;
+
   gl.useProgram(skyProg);
 
-  gl.uniformMatrix4fv(gl.getUniformLocation(skyProg, "uView"), false, view);
-  gl.uniformMatrix4fv(gl.getUniformLocation(skyProg, "uProj"), false, proj);
-  gl.uniform3fv(gl.getUniformLocation(skyProg, "uSunDir"), sunDir || [0, 1, 0]);
-  gl.uniform3fv(gl.getUniformLocation(skyProg, "uSunColor"), opts.sunColor);
-  gl.uniform1f(
-    gl.getUniformLocation(skyProg, "uSunIntensity"),
-    opts.sunIntensity
-  );
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uCameraHeight"), 20.0); // tvoja visina u svetu
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloudHeight"), 180.0); // centar sloja u istoj skali!
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloudThickness"), 3.0); // pola debljine
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uCloudSpeed"), 0.0); // m/s ili šta god
+  // matrice
+  gl.uniformMatrix4fv(skyUniforms.uView, false, view);
+  gl.uniformMatrix4fv(skyUniforms.uProj, false, proj);
 
-  gl.uniform3fv(gl.getUniformLocation(skyProg, "uZenith"), o.zenith);
-  gl.uniform3fv(gl.getUniformLocation(skyProg, "uHorizon"), o.horizon);
-  gl.uniform3fv(gl.getUniformLocation(skyProg, "uGround"), o.ground);
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uExposure"), o.exposure);
-  gl.uniform3fv(
-    gl.getUniformLocation(skyProg, "uSunsetHorizon"),
-    o.sunsetHorizon
-  );
-  gl.uniform3fv(
-    gl.getUniformLocation(skyProg, "uSunsetZenith"),
-    o.sunsetZenith
-  );
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uSunSizeDeg"), o.sunSizeDeg);
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uSunHaloScale"), o.sunHaloScale);
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uHorizonSoft"), o.horizonSoft);
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uHorizonLift"), o.horizonLift);
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uHorizonDesat"), o.horizonDesat);
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uTurbidity"), o.turbidity);
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uSaturation"), o.saturation);
-  gl.uniform1f(
-    gl.getUniformLocation(skyProg, "uMilkBandStrength"),
-    o.milkBandStrength
-  );
-  gl.uniform1f(
-    gl.getUniformLocation(skyProg, "uMilkBandWidth"),
-    o.milkBandWidth
-  );
-  gl.uniform1f(
-    gl.getUniformLocation(skyProg, "uWarmBandStrength"),
-    o.warmBandStrength
-  );
-  gl.uniform1f(
-    gl.getUniformLocation(skyProg, "uWarmBandWidth"),
-    o.warmBandWidth
-  );
+  // sunce
+  gl.uniform3fv(skyUniforms.uSunDir, sunDir || [0, 1, 0]);
+  gl.uniform3fv(skyUniforms.uSunColor, o.sunColor || [1, 1, 1]);
+  gl.uniform1f(skyUniforms.uSunIntensity, o.sunIntensity ?? 1.0);
 
-  gl.uniform1f(
-    gl.getUniformLocation(skyProg, "uHorizonWarmth"),
-    o.horizonWarmth
-  );
-  gl.uniform1f(
-    gl.getUniformLocation(skyProg, "uRayleighStrength"),
-    o.rayleighStrength
-  );
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uTime"), 0);
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uMieStrength"), o.mieStrength);
-  gl.uniform1f(gl.getUniformLocation(skyProg, "uZenithDesat"), o.zenithDesat);
-  gl.uniform1f(
-    gl.getUniformLocation(skyProg, "uGroundScatter"),
-    o.groundScatter
-  );
+  // konstante koje se obično ne menjaju, ali ostaju tu da engine ne pukne
+  gl.uniform1f(skyUniforms.uCameraHeight, 20.0);
+  gl.uniform1f(skyUniforms.uCloudHeight, 180.0);
+  gl.uniform1f(skyUniforms.uCloudThickness, 3.0);
+  gl.uniform1f(skyUniforms.uCloudSpeed, 0.0);
 
-  gl.uniform1i(
-    gl.getUniformLocation(skyProg, "uWorldLocked"),
-    o.worldLocked ? 1 : 0
-  );
-  gl.uniformMatrix4fv(gl.getUniformLocation(skyProg, "uModel"), false, o.model);
-  gl.uniform1i(
-    gl.getUniformLocation(skyProg, "uUseTonemap"),
-    o.useTonemap ? 1 : 0
-  );
+  // parametri neba
+  gl.uniform1f(skyUniforms.uExposure, o.exposure);
+  gl.uniform1f(skyUniforms.uSunSizeDeg, o.sunSizeDeg);
+  gl.uniform1f(skyUniforms.uSunHaloScale, o.sunHaloScale);
+  gl.uniform1f(skyUniforms.uHorizonSoft, o.horizonSoft);
+  gl.uniform1f(skyUniforms.uHorizonLift, o.horizonLift);
+  gl.uniform1f(skyUniforms.uHorizonDesat, o.horizonDesat);
+  gl.uniform1f(skyUniforms.uTurbidity, o.turbidity);
+  gl.uniform1f(skyUniforms.uSaturation, o.saturation);
+  gl.uniform1f(skyUniforms.uMilkBandStrength, o.milkBandStrength);
+  gl.uniform1f(skyUniforms.uMilkBandWidth, o.milkBandWidth);
+  gl.uniform1f(skyUniforms.uWarmBandStrength, o.warmBandStrength);
+  gl.uniform1f(skyUniforms.uWarmBandWidth, o.warmBandWidth);
+  gl.uniform1f(skyUniforms.uHorizonWarmth, o.horizonWarmth);
+  gl.uniform1f(skyUniforms.uRayleighStrength, o.rayleighStrength);
+  gl.uniform1f(skyUniforms.uMieStrength, o.mieStrength);
+  gl.uniform1f(skyUniforms.uZenithDesat, o.zenithDesat);
+  gl.uniform1f(skyUniforms.uGroundScatter, o.groundScatter);
+
+  // world i model matrica
+  gl.uniform1i(skyUniforms.uWorldLocked, o.worldLocked ? 1 : 0);
+  gl.uniformMatrix4fv(skyUniforms.uModel, false, o.model);
+
+  // tonemap i vreme
+  gl.uniform1i(skyUniforms.uUseTonemap, o.useTonemap ? 1 : 0);
+  gl.uniform1f(skyUniforms.uTime, o.uTime ?? 0.0);
 }
 
 // ===== Render =====

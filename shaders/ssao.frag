@@ -16,9 +16,9 @@ uniform float uFrame;       // za frame jitter
 uniform vec2  uNoiseScale;  // postavlja se iz JS: (canvas.width / SSAO_NOISE_SIZE, canvas.height / SSAO_NOISE_SIZE)
 
 const int   KERNEL_SIZE = 64;
-const float radius      = 1.5;
+const float radius      = 1.0;
 const float bias        = 0.025;
-const float powerAO     = 1.5;
+const float powerAO     = 2.0;
 
 /* ---------- helper ---------- */
 float rand(vec2 co) {
@@ -47,18 +47,21 @@ void main() {
     float visibleSamples = 0.0;
 
     float camDepth = -fragPos.z;
-    float adapt    = mix(8.0, 15.0, clamp(camDepth / 100.0, 0.0, 1.0));
+    float depthFactor = clamp(camDepth / 50.0, 0.0, 1.0);
+    float radiusScaled = mix(0.5, 2.5, depthFactor);
+    float weightLimit = mix(0.5, 2.0, depthFactor);
+    float adapt    = mix(6.0, 8.0, clamp(camDepth / 100.0, 0.0, 1.0));
 
     // jitter po frame-u
     float frameJitter = fract(sin(dot(vUV + vec2(uFrame * 0.37, uFrame * 0.11),
                                       vec2(12.9898,78.233))) * 43758.5453);
 
-    for (int i = 0; i < KERNEL_SIZE; ++i) {
-        int idx = int(mod(float(i) + frameJitter * float(KERNEL_SIZE), float(KERNEL_SIZE)));
+for (int i = 0; i < KERNEL_SIZE; ++i) {
+    int idx = int(mod(float(i) + frameJitter * float(KERNEL_SIZE), float(KERNEL_SIZE)));
 
         // VS vektor za offset/proveru dubine
         vec3 sampleVecVS = TBN * samples[idx];
-        vec3 samplePos   = fragPos + sampleVecVS * radius;
+        vec3 samplePos   = fragPos + sampleVecVS * radiusScaled;
 
         // u projection space
         vec4 offset = uProjection * vec4(samplePos, 1.0);

@@ -37,15 +37,13 @@ uniform float       uBottomOffsetM;
 
 // === PARAMETRI ===
 const float DEPTH_SCALE     = 6.4;
-const float DEPTH_CURVE     = 0.03;
+const float DEPTH_CURVE     = 0.1;
 const float SSS_STRENGTH    = 60.0;
-const float SSS_WRAP        = 1.9;
+const float SSS_WRAP        = 1.8;
 const vec3  SSS_FALLOFF     = vec3(0.0431, 0.0667, 0.0667);
-const float CREST_INTENSITY = 0.21;
-const float CREST_BLEND     = 0.05;
-
-const float DEPTH_CONTRAST  = 1.9;
-const float HORIZON_REFL_STRENGTH = 1.0;
+const float CREST_INTENSITY = 0.01;
+const float CREST_BLEND     = 0.01;
+const float DEPTH_CONTRAST  = 2.0;
 
 
 vec2 getPlanarReflectionUV(vec3 worldPos) {
@@ -54,6 +52,7 @@ vec2 getPlanarReflectionUV(vec3 worldPos) {
     vec2 uv = rc.xy * 0.5 + 0.5;
     return clamp(uv, 0.001, 0.999);
 }
+
 float getShadowValue(vec3 worldPos)
 {
     // svetlosni prostor
@@ -67,7 +66,7 @@ float getShadowValue(vec3 worldPos)
         return 1.0;
 
     // --- Blurred shadow sample ---
-    float radius = 0.07; // širina zamućenja (0.001–0.003)
+    float radius = 0.07;
     vec2 offsets[9] = vec2[](
         vec2(-radius,  radius),
         vec2(0.0,      radius),
@@ -79,25 +78,18 @@ float getShadowValue(vec3 worldPos)
         vec2(0.0,     -radius),
         vec2( radius, -radius)
     );
-        vec2 waveDistort = (texture(waterNormalTex, vUV *5.5 + uTime * 0.02).rg - 0.5) * 0.08;
+    vec2 waveDistort = (texture(waterNormalTex, vUV *5.5 + uTime * 0.02).rg - 0.5) * 0.08;
     float s = 0.0;
     for (int i = 0; i < 9; ++i) {
         vec3 coord = shadowCoord;
         coord.xy += offsets[i];
-        coord = clamp(coord, vec3(0.001), vec3(0.999)); // spreči ponavljanje
-        // simulacija lomljenja svetla kroz talase
-
+        coord = clamp(coord, vec3(0.001), vec3(0.999));
         coord.xy += waveDistort;
-        coord.z -= 0.001; // depth bias za senke
+        coord.z -= 0.001;
         s += texture(uShadowMap, coord);
     }
-
-    // prosečno uzorkovanje za meke ivice
-    float shadow = s / 9.0;
-
-    return shadow;
+    return s / 9.0;
 }
-
 
 vec3 fresnelSchlick(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
@@ -105,21 +97,24 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0) {
 
 // === MAIN ===
 void main() {
-
     // --- Dubina ---
     float depthM      = abs((vWorldPos.y - uWaterLevel) - uBottomOffsetM);
     float depthFactor = clamp(depthM / DEPTH_SCALE, 0.0, 1.0);
 
-    // --- Normal mapa (2 animirane) ---
-    vec2 animUV1 = vUV * 2.2 + vec2(uTime * 0.02,  uTime * 0.05);
-    vec2 animUV2 = vUV * 0.8 - vec2(uTime * 0.01, -uTime * 0.005);
-    vec3 n1 = texture(waterNormalTex, animUV1).xyz * 2.0 - 1.0;
-    vec3 n2 = texture(waterNormalTex, animUV2).xyz * 2.0 - 1.0;
-    vec3 tangentNormal = normalize(mix(n1, n2, 0.5));
+    // --- Normal mapa ---
+vec2 scroll1 = vec2(0.02, 0.05) * uTime;
+vec2 scroll2 = vec2(-0.015, 0.01) * uTime;
+vec2 scroll3 = vec2(0.07, -0.03) * uTime * 0.5;
 
-    float df = clamp(depthM / (DEPTH_SCALE * 1.5), 0.0, 1.0);
-    float fade = mix(1.0, 0.4, pow(df, 0.5));
-    tangentNormal.xy *= 1.0 * mix(1.0, 0.4, pow(df, 1.2));
+vec3 n1 = texture(waterNormalTex, vUV * 2.0 + scroll1).xyz * 2.0 - 1.0;
+vec3 n2 = texture(waterNormalTex, vUV * 0.8 + scroll2).xyz * 2.0 - 1.0;
+vec3 n3 = texture(waterNormalTex, vUV * 6.5 + scroll3).xyz * 2.0 - 1.0;
+
+    vec3 tangentNormal = normalize(n1 * 0.5 + n2 * 0.6 + n3 * 0.3);
+
+    // BOLJE: Samo blagi efekat dubine na normalama
+    float depthEffect = clamp(depthM / (DEPTH_SCALE * 3.0), 0.0, 1.0);
+    tangentNormal.xy *= mix(1.0, 0.7, depthEffect); // Manje uticaja
 
     vec3 N = normalize(
         tangentNormal.x * vTBN_T +
@@ -130,17 +125,43 @@ void main() {
     // --- Kamera, svetlo, refleksija ---
     vec3 V = normalize(uCameraPos - vWorldPos);
     vec3 L = normalize(uSunDir);
-    // --- Volumetrijska senka kroz vodu ---
-
-    float shadowBelow = getShadowValue(vWorldPos - N * 0.83);
+    
+    // --- OVO PRVO: deklariši potrebne varijable ---
+    float NdotV = clamp(dot(N, V), 0.0, 1.0);
+    
+    // --- Senka ---
+    float shadowBelow = getShadowValue(vWorldPos - N *0.83);
     float shadow = shadowBelow;
 
-        // --- Mekša senka na vodi ---
-    float softShadow = smoothstep(0.1, 1.0, shadow);     // lagani fade
-    float shadowStrength = mix(0.1, 0.8, depthFactor);   // pliće = jača senka
-    float angleFade = clamp(dot(N, L) * 0.95 + 0.9, 0.0, 1.0); // senka bledi pod uglom
+    // --- Mekša senka na vodi ---
+    float softShadow = smoothstep(0.1, 1.0, shadow);
+    float shadowStrength = mix(0.1, 0.2, depthFactor);
+    float angleFade = clamp(dot(N, L) * 0.9 + 0.9, 0.0, 1.0);
     float blendedShadow = mix(1.0, softShadow, shadowStrength * angleFade);
 
+    // --- SUNCEV HAJLAJT KOJI PRATI ENVIRONMENT REFLEKSIJE ---
+    float NdotL = clamp(dot(N, L), 0.0, 1.0);
+
+    // KORISTI ISTU REFLEKSIJU KAO ENVIRONMENT!
+    vec3 R_env = normalize(reflect(-V, N) + N * 0.1);
+
+    // Gde environment refleksija "vidi" sunce?
+    float envSeesSun = clamp(dot(R_env, L), 0.0, 1.0);
+
+    // Ovo će biti PERFEKTNO SINHRONIZOVANO sa environment refleksijama!
+    float sunHighlight = pow(envSeesSun, 800.0);
+
+    // Dodaj wave mask
+    sunHighlight *= vWaveMask * 1.0;
+
+    // EKSTREMNO JAK HAJLAJT
+    vec3 sunSpecular = sunHighlight * uSunColor * uSunIntensity * NdotL * shadow;
+    // Glint za dodatni sjaj
+    float glint = pow(envSeesSun, 1200.0);
+    glint *= vWaveMask * 1.0;
+    vec3 glintColor = glint * uSunColor * uSunIntensity * shadow;
+
+    // --- Ostali delovi koda ---
     vec3 R = normalize(reflect(-V, N) + N * 0.1);
 
     // --- Horizon fade ---
@@ -148,31 +169,22 @@ void main() {
     float horizonFade = pow(clamp(1.0 - abs(dot(N, V)), 0.0, 1.0), 0.6);
     float reflectionFade = mix(0.2, 1.0, horizonFade);
 
-
     // --- Bazna boja ---
     vec3 baseColor = mix(uShallowColor, uDeepColor, pow(depthFactor, DEPTH_CURVE));
 
     // --- Fresnel ---
     vec3 F0 = vec3(0.02);
-    float NdotV = clamp(dot(N, V), 0.0, 1.0);
     float fresnel = F0.r + (1.0 - F0.r) * pow(1.0 - NdotV, 5.0);
 
     // --- Planarna refleksija ---
     vec2 reflUV = getPlanarReflectionUV(vWorldPos);
-
-    // dodaj realnu distorziju refleksije na osnovu normal map-e
-    vec2 distortion = N.xz * 0.08;   // 0.05–0.12 zavisno od talasa
+    vec2 distortion = N.xz * 0.08;
     reflUV += distortion;
-
-    // clamp da ne izbiješ iz FBO-a
     reflUV = clamp(reflUV, 0.001, 0.999);
 
     vec3 planarReflection = texture(uReflectionTex, reflUV).rgb;
-
-    // ton-map da ne pregori svetlo, ali zadrži tamno
-    planarReflection = pow(planarReflection, vec3(0.8));  // kompresuj energiju
-    planarReflection *= 0.6;  
-                     
+    planarReflection = pow(planarReflection, vec3(0.7));
+    planarReflection *= 0.7;
 
     // --- Environment refleksija ---
     vec3 envRefl = textureLod(uEnvTex, normalize(R), uRoughness).rgb;
@@ -180,53 +192,39 @@ void main() {
     // --- Kombinuj planar + env ---
     envRefl = mix(envRefl, planarReflection, reflectionFade);
 
-    // --- IBL BRDF ---
-    vec2 brdf = texture(uBRDFLUT, vec2(NdotV, uRoughness)).rg;
-    vec3 F = fresnelSchlick(NdotV, F0);
-    vec3 specIBL = envRefl * (F * brdf.r + brdf.g);
-
     // --- Fake SSS ---
     float backLit   = clamp((dot(-L, N) + SSS_WRAP) / (1.0 + SSS_WRAP), 0.0, 1.0);
-    backLit         = smoothstep(0.15, 0.98, backLit);
+    backLit         = smoothstep(0.4, 0.98, backLit);
     float sunFacing = pow(clamp(dot(V, -L), 0.0, 1.0), 4.0);
     vec3 warmTint   = vec3(1.0, 0.65, 0.3);
     vec3 sssColor   = mix(uShallowColor, warmTint, sunFacing * 0.8);
     vec3 falloff    = exp(-SSS_FALLOFF * depthM);
     vec3 sssLight   = uSunColor * sssColor * backLit * (1.0 - falloff) * sunFacing * 0.05;
-    float sssShadowBlend = mix(0.05, 1.0, shadow); 
-    sssLight *= SSS_STRENGTH * uSunIntensity * sssShadowBlend;
-
-
-    float waterDepthFade = exp(-depthFactor * 2.5); // dublje = slabija senka
-    float angleFadeSun = clamp(dot(N, -L), 0.0, 1.0);
-    float shadowFade = mix(1.0, waterDepthFade, angleFadeSun);
-    shadow *= shadowFade;
-
-    // --- Sun highlight ---
-    vec3  H          = normalize(V + L);
-    float NdotH      = max(dot(N, H), 0.0);
-    float highlight  = pow(NdotH, 1500.0) * mix(0.6, 1.0, fresnel);
-    vec3  sunHighlight = uSunColor * highlight * shadow;
+    sssLight *= SSS_STRENGTH * uSunIntensity;
 
     // --- Crest ---
     float h = clamp(vWaveHeight * 0.5 + 0.5, 0.0, 1.0);
     float crest = smoothstep(0.0, 0.9, h) * vWaveMask;
     vec3 crestTint = mix(uShallowColor, vec3(1.0), 0.7);
     vec3 crestColor = mix(baseColor, crestTint, crest * CREST_INTENSITY);
-    baseColor = mix(baseColor, crestColor, CREST_BLEND);
+    float sunHeight = clamp(dot(uSunDir, vec3(0.0, 1.0, 0.0)), 0.0, 1.0);
+baseColor = mix(baseColor, crestColor, CREST_BLEND);
+baseColor *= mix(0.3, 1.0, sunHeight);
 
     // --- Dubinski ton ---
     baseColor = mix(baseColor, baseColor * vec3(0.25, 0.3, 0.35), depthFactor * DEPTH_CONTRAST);
 
-    // === FINAL MIX ===
-    vec3 refracted = mix(baseColor, baseColor + sssLight, 0.4);
+    // === FINAL MIX - POPRAVLJENO ===
+    vec3 refracted = mix(baseColor, baseColor + sssLight, 0.6); // Više refrakcije
     vec3 reflected = envRefl * uSpecularStrength * reflectionFade;
-    vec3 color = mix(refracted , reflected, fresnel);
-    color *= blendedShadow;
-    sunHighlight *= shadow;
 
-    
-    color += sunHighlight * reflectionFade;
-    
+    // Kada si nisko, daj prednost refrakciji
+    float lowAngleMix = pow(1.0 - NdotV, 2.0);
+    vec3 color = mix(refracted, reflected, fresnel * mix(1.0, 0.5, lowAngleMix));
+
+    // UVEK dodaj sun specular bez obzira na ugao
+    color += sunSpecular + glintColor;
+    color *= blendedShadow;
+
     fragColor = vec4(vec3(color), 1.0);
 }

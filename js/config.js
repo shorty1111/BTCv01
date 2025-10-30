@@ -1,4 +1,4 @@
-export const MAX_FPS = 60; // Change this to 30, 60, or 144 depending on performance.
+export const MAX_FPS = 45; // Change this to 30, 60, or 144 depending on performance.
 export const DEFAULT_MODEL = "assets/boat.glb";
 export const BASE_PRICE = 30000; // Base boat price in euros.
 
@@ -215,16 +215,16 @@ export const SIDEBAR_INFO = {
     <button type="submit">Send Message</button>
   </form>
 `,
-help: "Quick troubleshooting and usage guide for the Lunea Engine.",
+help: "Quick troubleshooting and usage guide for the Less Engine.",
 
 about: `
-  <p><b>Lunea Engine</b> is the technology that brings every model to life. It turns complex 3D design into a smooth, realistic, and interactive experience — right inside your browser, with no downloads or apps required.</p>
+  <p><b>Less Engine</b> is the technology that brings every model to life. It turns complex 3D design into a smooth, realistic, and interactive experience — right inside your browser, with no downloads or apps required.</p>
 
   <p><b>How it works</b><br>
   Every surface, reflection, and color you see reacts naturally to light and movement. The engine was built from the ground up to capture how materials truly look and feel — from polished metal and glass to the ocean surface and sky above.</p>
 
   <p><b>Why it stands out</b><br>
-  Lunea Engine focuses on realism, speed, and immersion. It’s not just about viewing a model — it’s about feeling the product as if it were right in front of you. Each change in color, material, or detail appears instantly and seamlessly.</p>
+  Less Engine focuses on realism, speed, and immersion. It’s not just about viewing a model — it’s about feeling the product as if it were right in front of you. Each change in color, material, or detail appears instantly and seamlessly.</p>
 
   <p><b>What it enables</b><br>
   • Instantly customize and preview any configuration<br>
@@ -234,7 +234,7 @@ about: `
   • Adapt the experience to any brand or design style</p>
 
   <p><b>The idea behind it</b><br>
-  Lunea Engine was created to close the gap between imagination and reality. It allows customers to explore, interact, and connect with the product — not just see it. That’s what makes it more than software. It’s a full experience.</p>
+  Less Engine was created to close the gap between imagination and reality. It allows customers to explore, interact, and connect with the product — not just see it. That’s what makes it more than software. It’s a full experience.</p>
 `,
 
   settings: "Customize preferences, performance options, and camera sensitivity here."
