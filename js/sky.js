@@ -312,7 +312,7 @@ cloudCol = mix(cloudCol, vec3(0.9, 0.9, 0.95), 1.0 - heightMix);
     float cosToSun = dot(dir, sunV);
     float sunSize  = radians(uSunSizeDeg);
     float ang      = acos(cosToSun);
-    float disk = exp(-pow(ang/(sunSize*0.9), 8.0));
+    float disk = exp(-pow(ang/(sunSize*0.9), 2.0));
 
   float limb = exp(-pow(ang/(sunSize*2.2), 2.0)); // uže, izraženije
   vec3  sunLight = uSunColor * (disk*uSunIntensity + limb*(uSunIntensity*0.18));

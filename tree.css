@@ -412,23 +412,31 @@ canvas,
 ========================= */
 #camera-controls {
   position: absolute;
-  top: 100px;   /* udaljenost od gornje ivice canvasa */
-  left: 650px;  /* udaljenost od leve ivice canvasa */
-  z-index: 10;
-  transform: translateX(-50%);
   display: flex;
-  gap: 8px;
-  padding: 16px;
-  background: var(--glass-bg);
-  backdrop-filter: var(--blur-medium);
-  -webkit-backdrop-filter: var(--blur-medium);
+  flex-direction: column;
+  align-items: center;      /* centriraj dugmiće po širini */
+  gap: 10px;                /* razmak između dugmića */
+  padding: 10px;            /* malo unutrašnjeg prostora */
+  width: auto;              /* da ne moraš ručno da šteluješ širinu */
+  top: 80px;   /* udaljenost od gornje ivice canvasa */
+  left: 400px;  /* udaljenost od leve ivice canvasa */
+  z-index: 1;
+  background: var(--background-secondary);
+
+
   border: 1px solid var(--glass-border);
   border-radius: 12px;
   box-shadow: var(--shadow-medium);
-  z-index: 10000;
+}
+#camera-controls .separator {
+  width: 90%;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.5);
+  margin: 5px 0;
+
 }
 #camera-controls button {
-  width:50px;
+  width:60px;
   height: 50px;
   background: var(--secondary);
   border: 1px solid var(--border);

@@ -15,6 +15,11 @@ let ssaoUniforms = {};
 let blurUniforms = {};
 let lastView = new Float32Array(16);
 let lastProj = new Float32Array(16);
+let shadowDirty = true;
+let ssaoDirty = true;
+let lastViewMatrix = new Float32Array(16);
+let lastSunDir = [0, 0, 0];
+
 
 // CENTRALNO SUNCE
 const SUN = {dir: v3.norm([-0.8,0.8, 0.3]), color: [1.0, 0.92, 0.76], intensity: 0.0, 
@@ -47,6 +52,7 @@ function setWeather(presetName) {
   if (!preset) return;
 
   SUN.dir = v3.norm([-0.90, preset.y, 0.3]);
+  shadowDirty = true; // 👉 senka mora ponovo da se izračuna kad se promeni svetlo
   updateSun();
 
   envTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
@@ -386,20 +392,22 @@ function updateFPS() {
 
 const input = document.getElementById("glbInput");
 const loadingScr = document.getElementById("loading-screen");
-document.getElementById("toggleDims").addEventListener("click", () => {
+const toggleDimsBtn = document.getElementById("toggleDims");
+toggleDimsBtn.innerText = "Show Ruler"; // početni tekst
+
+toggleDimsBtn.addEventListener("click", () => {
   showDimensions = !showDimensions;
-  document.getElementById("toggleDims").innerText = showDimensions
-    ? "Show Dims"
-    : "Hide Dims";
+  toggleDimsBtn.innerText = showDimensions ? "Hide Ruler" : "Show Ruler";
 
   const lbl = document.getElementById("lengthLabel");
   if (lbl) lbl.style.display = showDimensions ? "block" : "none";
 });
-document.getElementById("toggleWater").addEventListener("click", () => {
+const toggleWaterBtn = document.getElementById("toggleWater");
+toggleWaterBtn.innerText = "Studio"; // odmah prikaži tekst jer je voda aktivna
+
+toggleWaterBtn.addEventListener("click", () => {
   showWater = !showWater;
-  document.getElementById("toggleWater").innerText = showWater
-    ? "Hide Water"
-    : "Show Water";
+  toggleWaterBtn.innerText = showWater ? "Studio" : "Env";
   render();
 });
 
@@ -559,8 +567,7 @@ function initDropdown() {
     shareBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       dropdown.classList.add("hidden");
-      console.log("Share configuration clicked");
-      // TODO: ovde ubaciš svoj share handler
+        // TODO: ovde ubaciš svoj share handler
     });
   }
   // Save konfiguracija
@@ -800,8 +807,6 @@ function initWeatherButtons() {
   });
 }
 async function exportPDF() {
-  console.log("Export PDF clicked");
-
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF("p", "mm", "a4");
   const margin = 15;
@@ -992,9 +997,6 @@ function createGBuffer() {
 
   // Poveži postojeći depth texture
   gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.TEXTURE_2D,sceneDepthTex,0);
-  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
-    console.error("G-Buffer frejmbafer nije kompletan!");
-  }
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
 function createSSAOBuffers(w, h) {
@@ -1110,13 +1112,6 @@ function initShadowMap() {
   // pošto nemamo color attachment → mora ovako
   gl.drawBuffers([gl.NONE]);
   gl.readBuffer(gl.NONE);
-
-  // proveri da li je FBO ispravan
-  const fbStatus = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
-  if (fbStatus !== gl.FRAMEBUFFER_COMPLETE) {
-    console.error("Shadow FBO not complete:", fbStatus.toString(16));
-  }
-
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
 
@@ -1139,6 +1134,7 @@ const vec4 = {
 
 let proj = persp(60, canvas.width / canvas.height, 0.1, 10000);
 let view = new Float32Array(16);
+let lightVP = new Float32Array(16);
 let camWorld = [0, 0, 0];
 const model = new Float32Array([
   1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
@@ -1181,8 +1177,8 @@ async function init() {
   initShadowMap();
   createGBuffer();
   createSSAOBuffers();
-  generateSSAOKernel();
-  generateNoiseTexture();
+
+
 
   // 2. Učitavanje i kompajliranje svih potrebnih šejder programa
   const shadowVertSrc = await fetch("../shaders/shadow.vert").then((r) =>
@@ -1262,9 +1258,18 @@ const uniformNamesPBR = [
   "uBiasBase", "uBiasSlope"
 ];
 
-for (const name of uniformNamesPBR) {
-  pbrUniforms[name] = gl.getUniformLocation(program, name);
+function getUniformLocations(gl, program, names) {
+  const result = {};
+  for (const name of names) {
+    result[name] = gl.getUniformLocation(program, name);
+  }
+  return result;
+  
 }
+
+pbrUniforms = getUniformLocations(gl, program, uniformNamesPBR);
+
+
 
 // === Jednokratno postavljanje uniforma koji se nikad ne menjaju ===
 gl.useProgram(program);
@@ -1843,6 +1848,11 @@ function render() {
   // === 1. Animacija kamere i matrica pogleda ===
   camera.animateCamera();
   ({ proj, view, camWorld } = camera.updateView());
+  
+  if (!arraysEqual(lastViewMatrix, view)) {
+    ssaoDirty = true;
+    lastViewMatrix.set(view);
+  }
 
   // === 1A. CLEAR FINALNI FBO NA POČETKU (OBAVEZNO!) ===
   gl.bindFramebuffer(gl.FRAMEBUFFER, finalFBO);
@@ -1869,64 +1879,65 @@ function render() {
     gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 20, 12);
     gl.bindVertexArray(null);
   }
+// === 3. Shadow map pass (sa cachingom) ===
 
-// === 3. Shadow map pass ===
-gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFBO);
-gl.viewport(0, 0, SHADOW_RES, SHADOW_RES);
-gl.clear(gl.DEPTH_BUFFER_BIT);
+// 1️⃣ Proveri da li se promenio SUN.dir
+if (Math.abs(SUN.dir[0] - lastSunDir[0]) > 0.0001 ||
+    Math.abs(SUN.dir[1] - lastSunDir[1]) > 0.0001 ||
+    Math.abs(SUN.dir[2] - lastSunDir[2]) > 0.0001) {
+  shadowDirty = true;
+  lastSunDir = [...SUN.dir];
+}
 
-gl.enable(gl.CULL_FACE);
-gl.cullFace(gl.BACK);             
-gl.enable(gl.POLYGON_OFFSET_FILL);
-gl.polygonOffset(6.0, 8.0);
+// 2️⃣ Ako treba — izračunaj shadow mapu, inače preskoči
+if (shadowDirty) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFBO);
+  gl.viewport(0, 0, SHADOW_RES, SHADOW_RES);
+  gl.clear(gl.DEPTH_BUFFER_BIT);
 
-// --- Sun light setup ---
-const lightPos = [
-  SUN.dir[0] * 20,
-  SUN.dir[1] * 20,
-  SUN.dir[2] * 20,
-];
-const lightView = look(lightPos, [0, 0, 0], [0, 1, 0]);
+  gl.enable(gl.CULL_FACE);
+  gl.cullFace(gl.BACK);
+  gl.enable(gl.POLYGON_OFFSET_FILL);
+  gl.polygonOffset(6.0, 8.0);
 
-// --- Base bounding box (u svetu) ---
-const BASE_EXPAND = 0.0;
-const minBB = [
-  boatMin[0] - BASE_EXPAND,
-  boatMin[1] - BASE_EXPAND,
-  boatMin[2] - BASE_EXPAND,
-];
-const maxBB = [
-  boatMax[0] + BASE_EXPAND,
-  boatMax[1] + BASE_EXPAND,
-  boatMax[2] + BASE_EXPAND,
-];
+  // Sun light setup
+  const lightPos = [
+    SUN.dir[0] * 20,
+    SUN.dir[1] * 20,
+    SUN.dir[2] * 20,
+  ];
+  const lightView = look(lightPos, [0, 0, 0], [0, 1, 0]);
 
-// --- Transformiši u light-space ---
-let { lmin, lmax } = computeLightBounds(minBB, maxBB, lightView);
+  const BASE_EXPAND = 0.0;
+  const minBB = [
+    boatMin[0] - BASE_EXPAND,
+    boatMin[1] - BASE_EXPAND,
+    boatMin[2] - BASE_EXPAND,
+  ];
+  const maxBB = [
+    boatMax[0] + BASE_EXPAND,
+    boatMax[1] + BASE_EXPAND,
+    boatMax[2] + BASE_EXPAND,
+  ];
 
-// --- Prava kontrola: širenje / skupljanje frustuma u light-space-u ---
-const FRUSTUM_SCALE = 1.0;   // >1.0 = širi, <1.0 = uži
-const cx = (lmin[0] + lmax[0]) * 0.5;
-const cy = (lmin[1] + lmax[1]) * 0.5;
-const cz = (lmin[2] + lmax[2]) * 0.5;
+  let { lmin, lmax } = computeLightBounds(minBB, maxBB, lightView);
+  const FRUSTUM_SCALE = 1.0;
+  const cx = (lmin[0] + lmax[0]) * 0.5;
+  const cy = (lmin[1] + lmax[1]) * 0.5;
+  const cz = (lmin[2] + lmax[2]) * 0.5;
+  const hx = (lmax[0] - lmin[0]) * 0.5 * FRUSTUM_SCALE;
+  const hy = (lmax[1] - lmin[1]) * 0.5 * FRUSTUM_SCALE;
+  const hz = (lmax[2] - lmin[2]) * 0.5 * FRUSTUM_SCALE;
 
-const hx = (lmax[0] - lmin[0]) * 0.5 * FRUSTUM_SCALE;
-const hy = (lmax[1] - lmin[1]) * 0.5 * FRUSTUM_SCALE;
-const hz = (lmax[2] - lmin[2]) * 0.5 * FRUSTUM_SCALE;
+  lmin = [cx - hx, cy - hy, cz - hz];
+  lmax = [cx + hx, cy + hy, cz + hz];
 
-lmin = [cx - hx, cy - hy, cz - hz];
-lmax = [cx + hx, cy + hy, cz + hz];
-
-// --- Ortho projekcija i kombinacija ---
-const lightProj = ortho(lmin[0], lmax[0], lmin[1], lmax[1], -lmax[2], -lmin[2]);
-const lightVP = mat4mul(lightProj, lightView);
+  const lightProj = ortho(lmin[0], lmax[0], lmin[1], lmax[1], -lmax[2], -lmin[2]);
+  lightVP = mat4mul(lightProj, lightView);
 
   gl.useProgram(shadowProgram);
-  gl.uniformMatrix4fv(
-    gl.getUniformLocation(shadowProgram, "uLightVP"),
-    false,
-    lightVP
-  );
+  gl.uniformMatrix4fv(gl.getUniformLocation(shadowProgram, "uLightVP"), false, lightVP);
+
   for (let i = 0; i < modelVAOs.length; ++i) {
     if (!idxCounts[i]) continue;
     gl.uniformMatrix4fv(
@@ -1938,8 +1949,11 @@ const lightVP = mat4mul(lightProj, lightView);
     gl.drawElements(gl.TRIANGLES, idxCounts[i], idxTypes[i], 0);
   }
 
-// posle shadow passa
-gl.disable(gl.POLYGON_OFFSET_FILL);
+  gl.disable(gl.POLYGON_OFFSET_FILL);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+  shadowDirty = false; // ✅ Gotovo — koristi isti depth dok se ne promeni
+}
 
 
   // === 3B. Reflection pass ===
@@ -2044,6 +2058,7 @@ gl.disable(gl.POLYGON_OFFSET_FILL);
     gl.drawElements(gl.TRIANGLES, idxCounts[i], idxTypes[i], 0);
   }
 
+  if (ssaoDirty) {
     // === SSAO PASS ===
     gl.bindFramebuffer(gl.FRAMEBUFFER, ssaoFBO);
     gl.viewport(0, 0, canvas.width, canvas.height);
@@ -2077,7 +2092,6 @@ gl.disable(gl.POLYGON_OFFSET_FILL);
     gl.bindVertexArray(quadVAO);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
-
     // === SSAO BLUR PASS ===
     gl.bindFramebuffer(gl.FRAMEBUFFER, ssaoBlurFBO);
     gl.viewport(0, 0, canvas.width, canvas.height);
@@ -2090,6 +2104,10 @@ gl.disable(gl.POLYGON_OFFSET_FILL);
 
     gl.bindVertexArray(quadVAO);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  ssaoDirty = false;
+}
+
 
     // --- Proceduralno nebo ---
     gl.bindFramebuffer(gl.FRAMEBUFFER, finalFBO);
@@ -2372,20 +2390,16 @@ gl.enable(gl.CULL_FACE);
 
 }
 
-function renderLoop() {
-  const FRAME_INTERVAL = 1000 / MAX_FPS;
-  const now = performance.now();
-  const delta = now - lastFrameTime;
-
-  if (delta >= FRAME_INTERVAL) {
-    lastFrameTime = now - (delta % FRAME_INTERVAL);   
-    render();
-    updateFPS();
-  }
-
+let last = 0;
+function renderLoop(now) {
+  const frameTime = 1000 / MAX_FPS;
+if (now - last >= frameTime) {
+  last += frameTime; // ne postavljaj ga na now!
+  render();
+  updateFPS();
+}
   requestAnimationFrame(renderLoop);
 }
-
 
 const infoPanel = document.getElementById("info-panel");
 const toggleBtn = document.getElementById("toggle-info");
@@ -2917,7 +2931,6 @@ async function replaceSelectedWithURL(url, variantName, partName) {
   delete node.cachedBounds;
 }
   if (!node) {
-    console.warn("Node not found:", partName);
     hideLoading();
     return;
   }

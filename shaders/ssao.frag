@@ -15,10 +15,9 @@ uniform vec3 samples[64];
 uniform float uFrame;       // za frame jitter
 uniform vec2  uNoiseScale;  // postavlja se iz JS: (canvas.width / SSAO_NOISE_SIZE, canvas.height / SSAO_NOISE_SIZE)
 
-const int   KERNEL_SIZE = 64;
-const float radius      = 1.0;
+#define KERNEL_SIZE 64
 const float bias        = 0.025;
-const float powerAO     = 2.0;
+const float powerAO     = 3.50;
 
 /* ---------- helper ---------- */
 float rand(vec2 co) {
@@ -28,6 +27,7 @@ float rand(vec2 co) {
 /* ---------- main ---------- */
 void main() {
     vec3 fragPos = texture(gPosition, vUV).rgb;
+    
     if (length(fragPos) < 1e-5) discard;
 
     vec3 normal = normalize(texture(gNormal, vUV).rgb);
@@ -48,8 +48,7 @@ void main() {
 
     float camDepth = -fragPos.z;
     float depthFactor = clamp(camDepth / 50.0, 0.0, 1.0);
-    float radiusScaled = mix(0.5, 2.5, depthFactor);
-    float weightLimit = mix(0.5, 2.0, depthFactor);
+    float radiusScaled = mix(0.35, 2.5, depthFactor);
     float adapt    = mix(6.0, 8.0, clamp(camDepth / 100.0, 0.0, 1.0));
 
     // jitter po frame-u
@@ -87,10 +86,10 @@ for (int i = 0; i < KERNEL_SIZE; ++i) {
         occlusion += occ;
 
         // ako je vidljivo (nije okludirano), akumuliraj bent u TS
-        if (occ < 0.5) {
+       if (occ == 0.0)  {
             vec3  sampleVecTS = samples[idx];                   // TS vektor
             float weight      = max(dot(vec3(0,0,1), normalize(sampleVecTS)), 0.0);
-            bentTS           += sampleVecTS * weight;           // TS akumulacija
+            bentTS += sampleVecTS * weight;
             visibleSamples   += weight;
         }
     }

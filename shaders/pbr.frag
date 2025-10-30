@@ -85,7 +85,7 @@ float getShadowView(vec3 Pv, vec3 Nview)
     float angle = fract(sin(dot(uvw.xy, vec2(12.9898, 78.233))) * 43758.5453) * 6.28318;
     mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
 
-    float radius = mix(1.0, 2.0, pow(1.0 - cosT, 2.0)); // Ili neku drugu vrednost
+    float radius = mix(1.0, 1.0, pow(1.0 - cosT, 2.0));
 
     float shadow = 0.0;
     for (int i = 0; i < 16; i++) {
@@ -100,7 +100,6 @@ float getShadowView(vec3 Pv, vec3 Nview)
 
 /* ========================================================= */
 void main(){
-    
     vec3 fragPosV = texture(gPosition, vUV).rgb;
     if(length(fragPosV)<1e-5) discard;
 
@@ -115,6 +114,7 @@ void main(){
     vec3 bentV = normalize(bnAO.rgb * 2.0 - 1.0);
     float ao   = bnAO.a;
 
+
     // Matrice / prostori
     mat3 V3     = mat3(uView);
     mat3 invV3  = transpose(V3);
@@ -125,12 +125,14 @@ void main(){
     vec3 H      = normalize(V + Lv);
     vec3 Rv     = reflect(-V, N);
     vec3 Rw     = invV3 * Rv;
-    vec3 bentW = normalize(invV3 * bentV);
+    vec3 bentW  = normalize(invV3 * bentV);    // bent u world
+
 
     /* --- Direct lighting --- */
     float shadow = getShadowView(fragPosV, N);
     float NdotL  = max(dot(N, Lv), 0.0);
     float NdotV  = max(dot(N, V ), 0.0);
+
 
     vec3  F0 = mix(vec3(0.04), baseColor, metal);
     float D  = distributionGGX(N, H, rough);
@@ -138,68 +140,64 @@ void main(){
     vec3  F  = fresnelSchlickRoughness(max(dot(H, V), 0.0), F0, rough);
     vec3  specBRDF = (D * G * F) / (4.0 * max(NdotV * NdotL, 0.001));
 
-// --- Clearcoat reflection layer ---
-float clearcoat = 0.3; // ili čitanje iz materijala
-float clearRough = 0.1;
-float Dcc = distributionGGX(N, H, clearRough);
-float Fcc = fresnelSchlick(max(dot(H,V),0.0), vec3(0.04)).r;
-float Gcc = geometrySmith(NdotV, NdotL, clearRough);
-float clearSpec = Dcc * Fcc * Gcc / (4.0 * NdotL * NdotV + 0.001);
-
-// dodaj sloj na osnovni BRDF
-vec3 specBRDF_total = specBRDF + vec3(clearSpec * clearcoat);
-
     vec3 kd   = (1.0 - F) * (1.0 - metal);
     vec3 diff = kd * baseColor / 3.141592;
 
     /* === Diffuse IBL — slabiji uticaj bent/AO (da senka ne bude crna rupa) === */
-    // Parametri koji "otvaraju" senku
-    const float AO_STRENGTH = 0.9;   // 0 = ignoriši AO u ambientu, 1 = pun AO. (bilo implicitno 1.0)
+    const float AO_STRENGTH = 0.8;   // 0 = ignoriši AO u ambientu, 1 = pun AO. (bilo implicitno 1.0)
     const float AO_FLOOR    = 0.0;  // minimalna ambijenta u senci (podiže dno)
-    const float BENT_MIX    =0.5;  // koliko bent skreće normalu za diffuse IBL
+    const float BENT_MIX    = 0.5;  // koliko bent skreće normalu za diffuse IBL
 
-    float mipDiff = clamp(uCubeMaxMip * 0.8, 0.0, uCubeMaxMip); // svetlije probe
+    float mipDiff = clamp(uCubeMaxMip * 0.9, 0.0, uCubeMaxMip); // svetlije probe
     vec3  NdiffW  = normalize(mix(Nw, bentW, BENT_MIX));
-    vec3  envBent = textureLod(uEnvMap, NdiffW, mipDiff).rgb;
+    vec3 envBent = textureLod(uEnvMap, NdiffW, mipDiff).rgb;
+
 
     // “Otvoreniji” AO + oslabljena težina + pod
     float aoLinRaw = clamp(ao, 0.0, 1.0);
-    float aoLin    = 1.0 - pow(1.1 - aoLinRaw, 0.35); // gamma < 1 → svetlije
+    float aoLin    = 1.0 - pow(1.2 - aoLinRaw, 0.5); // gamma < 1 → svetlije
     float aoUsed   = mix(1.0, aoLin, AO_STRENGTH);   // slabiji uticaj AO
     aoUsed         = max(aoUsed, AO_FLOOR);          // pod
 
-    vec3 ambient   = envBent * aoUsed;
+    vec3 ambient = envBent * aoUsed;
     vec3 radiance  = uSunColor * uSunIntensity;
 
     /* --- Specular IBL — spec occlusion nikad ne spusti ispod MIN --- */
     float mip    = clamp(rough * uCubeMaxMip, 0.0, uCubeMaxMip);
-    vec3  envSpec = textureLod(uEnvMap, normalize(Rw), mip).rgb;
+    vec3 envSpec = textureLod(uEnvMap, normalize(Rw), mip).rgb;
     vec2  brdf    = texture(uBRDFLUT, vec2(NdotV, rough)).rg;
-
     vec3  F_ibl   = fresnelSchlickRoughness(NdotV, F0, rough);
-    vec3 diffIBL = ambient * baseColor * kd;
+    vec3  diffIBL = ambient * baseColor * (1.0 - metal);
 
     // Mekši SO + minimalna granica (da ne uguši previše)
-    const float SO_MIN = 0.80;                       // donja granica
+    const float SO_MIN = 0.1;                       // donja granica
     float soExp    = mix(1.3, 2.2, clamp(rough, 0.0, 1.0));
-    float soDot = max(dot(N, bentV), 0.0);
-    float specOccl = mix(SO_MIN, 1.0, pow(soDot, soExp * 0.5)); // Manje agresivno
+    float soDot    = max(dot(N, bentV), 0.5);
+    float specOccl = max(pow(soDot, soExp) * (0.9 + 0.4 * aoLin), SO_MIN);
 
     vec3  specIBL    = envSpec * (F_ibl * brdf.x + brdf.y);
-    float energyComp = 2.0 - 0.5 * rough;
+    float energyComp = 1.0 - 0.5 * rough;
     specIBL *= energyComp * specOccl;
-    specIBL *= 1.0 + 0.5 * rough * rough;
+
+    // --- blok refleksije ako površina ne vidi sunce ---
+    float sunVis = clamp(dot(Nw, normalize(uSunDir)), 0.0, 1.0);
+    float bentVis = clamp(dot(bentW, normalize(uSunDir)), 0.0, 1.0);
+    float skyVis = mix(sunVis, bentVis, 0.5);  // koristi i bent normalu za realnije zatvaranje
+
+    // ovo ubija refleksiju na zidovima unutar zatvorenog prostora
+    float block = pow(1.0 - skyVis, 4.0); 
+    specIBL *= 1.0 - block;
 
     /* --- Direct lighting mix --- */
-    vec3 direct = (diff + specBRDF_total) * radiance * NdotL * shadow;
+    vec3 direct = (diff + specBRDF) *  NdotL * shadow * radiance; // radiance je bio nekad
 
     /* --- Fake GI — dodatni lift baš u senci --- */
     vec3  hemi        = normalize(vec3(0.0, 1.0, 0.0));
     float bounceFactor= max(dot(N, hemi), 0.0);
     vec3  hemiWorld   = invV3 * hemi;
-    vec3  envBounce   = textureLod(uEnvMap, hemiWorld, uCubeMaxMip * 0.6).rgb;
-    float shadowLift  =0.1 * (1.0 - NdotL); // jači lift u senci
-    vec3  fakeGI      = envBounce * baseColor * (bounceFactor * 0.1 + shadowLift)
+    vec3  envBounce   = textureLod(uEnvMap, hemiWorld, uCubeMaxMip * 0.8).rgb;
+    float shadowLift  = 0.25 * (1.0 - NdotL); // jači lift u senci
+    vec3  fakeGI      = envBounce * baseColor * (bounceFactor * 0.8 + shadowLift)
                         * (1.0 - metal) * aoUsed;
 
     /* --- Final --- */

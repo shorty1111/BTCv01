@@ -110,7 +110,7 @@ vec3 n1 = texture(waterNormalTex, vUV * 2.0 + scroll1).xyz * 2.0 - 1.0;
 vec3 n2 = texture(waterNormalTex, vUV * 0.8 + scroll2).xyz * 2.0 - 1.0;
 vec3 n3 = texture(waterNormalTex, vUV * 6.5 + scroll3).xyz * 2.0 - 1.0;
 
-    vec3 tangentNormal = normalize(n1 * 0.5 + n2 * 0.6 + n3 * 0.3);
+    vec3 tangentNormal = normalize((n1 * 0.5 + n2 * 0.6 + n3 * 0.3) / 1.4);
 
     // BOLJE: Samo blagi efekat dubine na normalama
     float depthEffect = clamp(depthM / (DEPTH_SCALE * 3.0), 0.0, 1.0);
@@ -130,14 +130,14 @@ vec3 n3 = texture(waterNormalTex, vUV * 6.5 + scroll3).xyz * 2.0 - 1.0;
     float NdotV = clamp(dot(N, V), 0.0, 1.0);
     
     // --- Senka ---
-    float shadowBelow = getShadowValue(vWorldPos - N *0.83);
-    float shadow = shadowBelow;
+    //float shadowBelow = getShadowValue(vWorldPos - N *0.83);
+    //float shadow = shadowBelow;
 
     // --- Mekša senka na vodi ---
-    float softShadow = smoothstep(0.1, 1.0, shadow);
-    float shadowStrength = mix(0.1, 0.2, depthFactor);
-    float angleFade = clamp(dot(N, L) * 0.9 + 0.9, 0.0, 1.0);
-    float blendedShadow = mix(1.0, softShadow, shadowStrength * angleFade);
+    //float softShadow = smoothstep(0.1, 1.0, shadow);
+    //float shadowStrength = mix(0.1, 0.2, depthFactor);
+    //float angleFade = clamp(dot(N, L) * 0.9 + 0.9, 0.0, 1.0);
+    //float blendedShadow = mix(1.0, softShadow, shadowStrength * angleFade);
 
     // --- SUNCEV HAJLAJT KOJI PRATI ENVIRONMENT REFLEKSIJE ---
     float NdotL = clamp(dot(N, L), 0.0, 1.0);
@@ -155,11 +155,11 @@ vec3 n3 = texture(waterNormalTex, vUV * 6.5 + scroll3).xyz * 2.0 - 1.0;
     sunHighlight *= vWaveMask * 1.0;
 
     // EKSTREMNO JAK HAJLAJT
-    vec3 sunSpecular = sunHighlight * uSunColor * uSunIntensity * NdotL * shadow;
+    vec3 sunSpecular = sunHighlight * uSunColor * uSunIntensity * NdotL;
     // Glint za dodatni sjaj
     float glint = pow(envSeesSun, 1200.0);
     glint *= vWaveMask * 1.0;
-    vec3 glintColor = glint * uSunColor * uSunIntensity * shadow;
+    vec3 glintColor = glint * uSunColor * uSunIntensity;
 
     // --- Ostali delovi koda ---
     vec3 R = normalize(reflect(-V, N) + N * 0.1);
@@ -170,10 +170,10 @@ vec3 n3 = texture(waterNormalTex, vUV * 6.5 + scroll3).xyz * 2.0 - 1.0;
     float reflectionFade = mix(0.2, 1.0, horizonFade);
 
     // --- Bazna boja ---
-    vec3 baseColor = mix(uShallowColor, uDeepColor, pow(depthFactor, DEPTH_CURVE));
+    vec3 baseColor = mix(uShallowColor, uDeepColor, pow(depthFactor, DEPTH_CURVE)) * uSunColor;
 
     // --- Fresnel ---
-    vec3 F0 = vec3(0.02);
+    vec3 F0 = vec3(0.02, 0.025, 0.03);  // ovde boostuje refleksiju na vodi kao staklo.ogledalo ..malo boje za varijaciju!
     float fresnel = F0.r + (1.0 - F0.r) * pow(1.0 - NdotV, 5.0);
 
     // --- Planarna refleksija ---
@@ -208,8 +208,8 @@ vec3 n3 = texture(waterNormalTex, vUV * 6.5 + scroll3).xyz * 2.0 - 1.0;
     vec3 crestTint = mix(uShallowColor, vec3(1.0), 0.7);
     vec3 crestColor = mix(baseColor, crestTint, crest * CREST_INTENSITY);
     float sunHeight = clamp(dot(uSunDir, vec3(0.0, 1.0, 0.0)), 0.0, 1.0);
-baseColor = mix(baseColor, crestColor, CREST_BLEND);
-baseColor *= mix(0.3, 1.0, sunHeight);
+    baseColor = mix(baseColor, crestColor, CREST_BLEND);
+    baseColor *= mix(0.3, 1.0, sunHeight);
 
     // --- Dubinski ton ---
     baseColor = mix(baseColor, baseColor * vec3(0.25, 0.3, 0.35), depthFactor * DEPTH_CONTRAST);
@@ -224,7 +224,6 @@ baseColor *= mix(0.3, 1.0, sunHeight);
 
     // UVEK dodaj sun specular bez obzira na ugao
     color += sunSpecular + glintColor;
-    color *= blendedShadow;
 
     fragColor = vec4(vec3(color), 1.0);
 }
