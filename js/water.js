@@ -58,9 +58,7 @@ function createWaterGrid(tileSize = 100.0, div = 200) {
     }
   }
 
-  console.log("Water grid:", verts.length / 6, "verts");
-
-  return {
+ return {
     vertices: new Float32Array(verts),
     indices:
       verts.length / 3 > 65535 ? new Uint32Array(inds) : new Uint16Array(inds),
@@ -84,12 +82,6 @@ function createWaterRings(cfg = WATER_CONFIG) {
       });
     }
   }
-
-  console.log(
-    `[WATER] Centralni grid: ${centerDiv} deljenja (${(centerDiv + 1) ** 2} vertexa)`
-  );
-  console.log(`[WATER] Ukupno ploča: ${(2 * ringCount + 1) ** 2}`);
-
   return rings;
 }
 
