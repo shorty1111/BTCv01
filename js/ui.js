@@ -145,21 +145,19 @@ function buildVariantSidebar() {
                   }
                 }
 
-              // zapamti varijantu i boju
               currentParts[partKey] = { ...variant, selectedColor: c.name };
-
               updatePartsTable(partKey, `${variant.name} (${c.name})`);
 
               // ažuriraj selekciju u UI
               colorsDiv.querySelectorAll(".color-swatch").forEach(el => el.classList.remove("selected"));
               colorEl.classList.add("selected");
-
+                sceneChanged = true;   // 🔹 dodaj ovde
               render();
               showPartInfo(`${variant.name} (${c.name})`);
             });
 
-  colorsDiv.appendChild(colorEl);
-});
+        colorsDiv.appendChild(colorEl);
+      });
 
         // 🔹 Nakon što su sve boje dodate, ponovo označi izabranu
         const saved = currentParts[partKey];
@@ -660,7 +658,6 @@ for (const [part, variant] of Object.entries(currentParts)) {
 }
   renderSavedConfigs();
 }
-
 function initWeatherButtons() {
   const buttons = document.querySelectorAll("#camera-controls button[data-weather]");
   buttons.forEach((btn) => {
@@ -838,6 +835,20 @@ export function initUI(ctx) {
   buildPartsTable();
   updateTotalPrice();
   renderBoatInfo(BOAT_INFO);
+// 🔹 Mobilni/touch "hover" fix: ručno upravljaj aktivnim stanjem
+document.querySelectorAll("button").forEach((btn) => {
+  btn.addEventListener("touchstart", () => {
+    btn.classList.add("active");
+  }, { passive: true });
+
+  btn.addEventListener("touchend", () => {
+    btn.classList.remove("active");
+  }, { passive: true });
+
+  btn.addEventListener("touchcancel", () => {
+    btn.classList.remove("active");
+  }, { passive: true });
+});
 }
 
 export { updateTotalPrice, showPartInfo };

@@ -48,16 +48,15 @@ void main() {
 
     float camDepth = -fragPos.z;
     float depthFactor = clamp(camDepth / 50.0, 0.0, 1.0);
-    float radiusScaled = mix(0.35, 2.5, depthFactor);
+    float radiusScaled = mix(0.2, 2.2, depthFactor);
     float adapt    = mix(6.0, 8.0, clamp(camDepth / 100.0, 0.0, 1.0));
 
     // jitter po frame-u
-    float frameJitter = fract(sin(dot(vUV + vec2(uFrame * 0.37, uFrame * 0.11),
-                                      vec2(12.9898,78.233))) * 43758.5453);
+    float frameJitter = 1.0;
 
-for (int i = 0; i < KERNEL_SIZE; ++i) {
+int sampleCount = int(mix(48.0, 64.0, depthFactor));
+for (int i = 0; i < sampleCount; ++i) {
     int idx = int(mod(float(i) + frameJitter * float(KERNEL_SIZE), float(KERNEL_SIZE)));
-
         // VS vektor za offset/proveru dubine
         vec3 sampleVecVS = TBN * samples[idx];
         vec3 samplePos   = fragPos + sampleVecVS * radiusScaled;
@@ -111,7 +110,7 @@ for (int i = 0; i < KERNEL_SIZE; ++i) {
     }
 
     // blago smirenje (po želji)
-    bentV = normalize(mix(normal, bentV, 0.5));
+    bentV = normalize(mix(normal, bentV, mix(0.2, 0.5, depthFactor)));
 
     // output: RGB = bent (view), A = AO
     fragColor = vec4(bentV * 0.5 + 0.5, occlusion);

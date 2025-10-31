@@ -422,8 +422,6 @@ canvas,
   left: 400px;  /* udaljenost od leve ivice canvasa */
   z-index: 1;
   background: var(--background-secondary);
-
-
   border: 1px solid var(--glass-border);
   border-radius: 12px;
   box-shadow: var(--shadow-medium);
@@ -452,15 +450,6 @@ canvas,
   overflow: hidden;
 }
 
-#camera-controls button::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: var(--gradient-primary);
-  opacity: 0;
-  transition: var(--transition-fast);
-}
-
 #camera-controls button:hover {
   background: var(--primary);
   color: var(--primary-foreground);
@@ -468,9 +457,16 @@ canvas,
   transform: translateY(-2px);
   box-shadow: var(--shadow-glow);
 }
-
-#camera-controls button:hover::before {
-  opacity: 0.1;
+@media (hover: none) and (pointer: coarse) {
+  #camera-controls button:hover,
+  #camera-controls button:focus,
+  #camera-controls button:active {
+    background: var(--secondary);
+    color: var(--secondary-foreground);
+    border-color: var(--border);
+    transform: none;
+    box-shadow: none;
+  }
 }
 
 #camera-controls button[data-view="top"] {
@@ -502,6 +498,8 @@ canvas,
   border-color: var(--primary);
   transform: translateY(-2px);
   box-shadow: var(--shadow-glow);}
+
+  
 
 #camera-controls .btn-weather.day {
   background-image: url("../assets/sun_up.png") !important;
@@ -1478,4 +1476,3 @@ html, body {
 .thumb[src*="part_placeholder"] {
   transform: scale(0.5);
 }
-

@@ -156,7 +156,7 @@ void main(){
     // “Otvoreniji” AO + oslabljena težina + pod
     float aoLinRaw = clamp(ao, 0.0, 1.0);
     float aoLin    = 1.0 - pow(1.2 - aoLinRaw, 0.5); // gamma < 1 → svetlije
-    float aoUsed   = mix(1.0, aoLin, AO_STRENGTH);   // slabiji uticaj AO
+    float aoUsed   = mix(0.5, aoLin, AO_STRENGTH);   // slabiji uticaj AO
     aoUsed         = max(aoUsed, AO_FLOOR);          // pod
 
     vec3 ambient = envBent * aoUsed;

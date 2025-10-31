@@ -56,7 +56,7 @@ void main() {
     dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));
     dir.y =  ((lumaNW + lumaSW) - (lumaNE + lumaSE));
 
-    float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * 0.25 * 0.05, 1.0/1024.0);
+    float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * 0.25 * 0.05, 1.0/2048.0);
     float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);
     dir = clamp(dir * rcpDirMin, -8.0, 8.0) * uTexelSize;
 

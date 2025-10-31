@@ -1,6 +1,7 @@
 import { v3, look, persp, ortho } from "./math.js";
 
 export function initCamera(canvas) {
+  
   // === TOUCH KONTROLE ===
   let touchDragging = false;
   let touchLastX = 0, touchLastY = 0;

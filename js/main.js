@@ -7,7 +7,7 @@ import { DEFAULT_SKY } from "./sky.js";
 import {MAX_FPS,DEFAULT_MODEL,BASE_PRICE,VARIANT_GROUPS,BOAT_INFO,SIDEBAR_INFO } from "./config.js";
 import {mat4mul,persp,ortho,look,composeTRS,computeBounds,mulMat4Vec4, v3,} from "./math.js";
 import { initUI, renderBoatInfo, showPartInfo, showLoading, hideLoading } from "./ui.js";
-
+let sceneChanged = true;
 let pbrUniforms = {};
 let reflectionUniforms = {};
 let acesProgram = null;
@@ -65,6 +65,7 @@ function setWeather(presetName) {
     hideSun: true,
   });
   cubeMaxMip = Math.floor(Math.log2(envSize));
+  sceneChanged = true;
   render();
 }
 
@@ -329,8 +330,6 @@ function createPreviewProgram(gl2) {
   return prog;
 }
 
-
-
 async function loadDefaultModel(url) {
   showLoading();
   const res = await fetch(url);
@@ -366,9 +365,6 @@ if (canvas.__glContext) {
   if (loseExt) loseExt.loseContext();
 }
 const gl = canvas.getContext("webgl2", { alpha: true, antialias: true });
-// sve što UI koristi
-
-
 
 canvas.__glContext = gl;
 if (!gl) alert("WebGL2 nije podržan u ovom pregledaču.");
@@ -381,13 +377,9 @@ if (!gl.getExtension("EXT_color_buffer_float")) {
     "Ovaj browser ne podržava EXT_color_buffer_float.\nGI efekti neće raditi."
   );
 }
-/* -------------------------------------------------
-   DEPTH (scene) tekstura helpers
---------------------------------------------------*/
 let sceneDepthTex = null; //  ←  NOVA globalna promenljiva
 
 function createDepthTexture(w, h) {
-  //  ←  NOVA funkcija
   const tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, tex);
   gl.texImage2D(gl.TEXTURE_2D,0,gl.DEPTH_COMPONENT24,  w,h,0,gl.DEPTH_COMPONENT,gl.UNSIGNED_INT,null);
@@ -397,8 +389,7 @@ function createDepthTexture(w, h) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   return tex;
 }
-  let ssaa = 1.4; // start (dinamički će se menjati)
-  // let targetSSAA = 1.0;
+  let ssaa = 1.5;
 
 function resizeCanvas() {
   const sidebarW = document.getElementById("sidebar").offsetWidth;
@@ -422,35 +413,43 @@ function resizeCanvas() {
   const dpr = 1.0;
   const realW = Math.round(targetW * ssaa * dpr);
   const realH = Math.round(targetH * ssaa * dpr);
-
   canvas.width = realW;
   canvas.height = realH;
-
   canvas.style.width = cssW + "px";
   canvas.style.height = cssH + "px";
   canvas.style.left = sidebarW + "px";
   canvas.style.top = headerH + "px"; 
-
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
   gl.viewport(0, 0, realW, realH);
-
   if (sceneDepthTex) gl.deleteTexture(sceneDepthTex);
   sceneDepthTex = createDepthTexture(realW, realH);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   createGBuffer(realW, realH);
   createSSAOBuffers(Math.round(realW * 1.0), Math.round(realH * 1.0));
   createFinalColorTarget(canvas.width, canvas.height);
-createToneMapTarget(canvas.width, canvas.height);
-  if (reflectionFBO) {
-    gl.deleteFramebuffer(reflectionFBO);
-    gl.deleteTexture(reflectionTex);
-  }
-
+  createToneMapTarget(canvas.width, canvas.height);
   createReflectionTarget(gl, realW, realH);
+  
   const resMeter = document.getElementById("res-meter");
   if (resMeter) {
     resMeter.textContent = `Render: ${targetW}x${targetH} → ${realW}x${realH} (SSAA ${ssaa.toFixed(
       2
     )}x)`;
   }
+
+  // 🔹 Resetuj scene color i env state
+  if (window.sceneColorTex) {
+    gl.deleteTexture(window.sceneColorTex);
+    window.sceneColorTex = null;
+  }
+
+  // 🔹 Obeleži promenu i ponovo renderuj
+  shadowDirty = true;
+ssaoDirty = true;
+sceneChanged = true;
+
 }
 
 
@@ -1443,13 +1442,14 @@ if (shadowDirty) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   }
 
-    // copy current color (sky + opaque geometry) into sceneColorTex
+  if (sceneChanged) {
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, finalFBO);
     gl.bindTexture(gl.TEXTURE_2D, window.sceneColorTex);
     gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, 0, 0, canvas.width, canvas.height, 0);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-
+    sceneChanged = false; // ✅ reset
+  }
   if (showWater) {
     // NEMOJ PONOVO bindFramebuffer(finalFBO)! (VEĆ SI U njemu)
     gl.viewport(0, 0, canvas.width, canvas.height);
@@ -2311,6 +2311,7 @@ async function replaceSelectedWithURL(url, variantName, partName) {
   focusCameraOnNode(node);
 }
   hideLoading();
+  sceneChanged = true;
   render();
   showPartInfo(variantName);
 }
@@ -2593,8 +2594,10 @@ if (import.meta.hot) {
 }
 
 init().then(async () => {
-  await loadDefaultModel(DEFAULT_MODEL);
-initUI({ render, BOAT_INFO, VARIANT_GROUPS, BASE_PRICE, SIDEBAR_INFO });
+    await loadDefaultModel(DEFAULT_MODEL);
+  sceneChanged = true;
+  render();
+  initUI({ render, BOAT_INFO, VARIANT_GROUPS, BASE_PRICE, SIDEBAR_INFO });
 Object.assign(window, {
   gl,
   camera,
