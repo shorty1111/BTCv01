@@ -144,8 +144,8 @@ void main(){
     vec3 diff = kd * baseColor / 3.141592;
 
     /* === Diffuse IBL — slabiji uticaj bent/AO (da senka ne bude crna rupa) === */
-    const float AO_STRENGTH = 0.8;   // 0 = ignoriši AO u ambientu, 1 = pun AO. (bilo implicitno 1.0)
-    const float AO_FLOOR    = 0.0;  // minimalna ambijenta u senci (podiže dno)
+    const float AO_STRENGTH = 0.63;   // 0 = ignoriši AO u ambientu, 1 = pun AO. (bilo implicitno 1.0)
+    const float AO_FLOOR    = 0.01;  // minimalna ambijenta u senci (podiže dno)
     const float BENT_MIX    = 0.5;  // koliko bent skreće normalu za diffuse IBL
 
     float mipDiff = clamp(uCubeMaxMip * 0.9, 0.0, uCubeMaxMip); // svetlije probe
@@ -155,8 +155,8 @@ void main(){
 
     // “Otvoreniji” AO + oslabljena težina + pod
     float aoLinRaw = clamp(ao, 0.0, 1.0);
-    float aoLin    = 1.0 - pow(1.2 - aoLinRaw, 0.5); // gamma < 1 → svetlije
-    float aoUsed   = mix(0.5, aoLin, AO_STRENGTH);   // slabiji uticaj AO
+    float aoLin    = 1.0 - pow(1.3 - aoLinRaw, 0.35); // gamma < 1 → svetlije
+    float aoUsed   = mix(0.3, aoLin, AO_STRENGTH);   // slabiji uticaj AO
     aoUsed         = max(aoUsed, AO_FLOOR);          // pod
 
     vec3 ambient = envBent * aoUsed;
@@ -185,8 +185,8 @@ void main(){
     float skyVis = mix(sunVis, bentVis, 0.5);  // koristi i bent normalu za realnije zatvaranje
 
     // ovo ubija refleksiju na zidovima unutar zatvorenog prostora
-    float block = pow(1.0 - skyVis, 4.0); 
-    specIBL *= 1.0 - block;
+    // float block = pow(0.5 - skyVis, 4.0); 
+    // specIBL *= 1.0 - block;
 
     /* --- Direct lighting mix --- */
     vec3 direct = (diff + specBRDF) *  NdotL * shadow * radiance; // radiance je bio nekad

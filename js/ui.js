@@ -668,6 +668,21 @@ function initWeatherButtons() {
   });
 }
 
+const cameraControls = document.getElementById("camera-controls");
+const toggleOptions = document.getElementById("toggleOptions");
+const closeOptions = document.getElementById("closeOptions");
+
+toggleOptions.addEventListener("click", () => {
+  cameraControls.classList.remove("collapsed");
+  cameraControls.classList.add("expanded");
+});
+
+closeOptions.addEventListener("click", () => {
+  cameraControls.classList.remove("expanded");
+  cameraControls.classList.add("collapsed");
+});
+
+
   document
     .querySelectorAll("#camera-controls button[data-view]")
     .forEach((btn) => {
@@ -694,7 +709,20 @@ function initWeatherButtons() {
 });
 
   });
-
+document.querySelectorAll("#camera-controls button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    // ako već jeste aktivno — poništi
+    if (btn.classList.contains("active")) {
+      btn.classList.remove("active");
+    } else {
+      // prvo isključi ostale
+      document.querySelectorAll("#camera-controls button").forEach(b => b.classList.remove("active"));
+      // pa aktiviraj samo kliknuto
+      btn.classList.add("active");
+    }
+  });
+});
+  
   const input = document.getElementById("glbInput");
   const loadingScr = document.getElementById("loading-screen");
   const toggleDimsBtn = document.getElementById("toggleDims");
@@ -835,18 +863,20 @@ export function initUI(ctx) {
   buildPartsTable();
   updateTotalPrice();
   renderBoatInfo(BOAT_INFO);
-// 🔹 Mobilni/touch "hover" fix: ručno upravljaj aktivnim stanjem
-document.querySelectorAll("button").forEach((btn) => {
+document.querySelectorAll("#camera-controls button").forEach((btn) => {
+  // simuliraj kratki pritisak na touch
   btn.addEventListener("touchstart", () => {
-    btn.classList.add("active");
+    btn.classList.add("pressed");
   }, { passive: true });
 
   btn.addEventListener("touchend", () => {
-    btn.classList.remove("active");
+    btn.classList.remove("pressed");
+    btn.blur(); // ukloni fokus odmah
   }, { passive: true });
 
   btn.addEventListener("touchcancel", () => {
-    btn.classList.remove("active");
+    btn.classList.remove("pressed");
+    btn.blur();
   }, { passive: true });
 });
 }

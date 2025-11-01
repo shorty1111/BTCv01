@@ -389,7 +389,7 @@ function createDepthTexture(w, h) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   return tex;
 }
-  let ssaa = 1.5;
+  let ssaa = 1.4;
 
 function resizeCanvas() {
   const sidebarW = document.getElementById("sidebar").offsetWidth;

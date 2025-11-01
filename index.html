@@ -82,20 +82,34 @@
     <canvas id="glCanvas"></canvas>
     <div id="lengthLabel">0.0 m</div>
     <div id="labels"></div>
-    <div id="camera-controls">
-      <button data-view="iso" class="btn-weather" >Home</button>
-      <button data-view="front" class="btn-weather" >Front</button>
-      <button data-view="left" class="btn-weather" >Left</button>
-      <button data-view="top" class="btn-weather" > Top</button>
-      <div class="separator"></div>
-      <button class="btn-weather" id="toggleDims"></button>
-       <div class="separator"></div>
-      <button class="btn-weather" id="toggleWater"></button>
-       <div class="separator"></div>
-      <button class="btn-weather day" data-weather="day"></button>
-      <button class="btn-weather sunset" data-weather="sunset"></button>
+
+    <div id="camera-controls" class="collapsed">
+      <button id="toggleOptions"><span>Options</span></button>
+        <div class="controls-content">
+        <div class="controls-inner">
+          <div class="section-label">Viewports</div>  
+          <div class="button-grid">
+            <button data-view="iso" class="btn-view">Home</button>
+            <button data-view="front" class="btn-view">Front</button>
+            <button data-view="left" class="btn-view">Left</button>
+            <button data-view="top" class="btn-view">Top</button>
+          </div>
+          <div class="section-label">Dimensions</div>  
+            <button class="btn-toggle full-width" id="toggleDims">Show Ruler</button>
+          <div class="section-label">Lighting</div>  
+            <button class="btn-toggle full-width" id="toggleWater">Studio</button>
+          <div class="section-label">Weather</div>
+              <div class="button-grid">
+                <button class="btn-weather day" data-weather="day">
+                  <img src="assets/sun_up.png" alt="Day">
+                </button>
+                <button class="btn-weather sunset" data-weather="sunset">
+                  <img src="assets/sun_down.png" alt="Sunset">
+                </button>
+              </div>
+          <button id="closeOptions" class="full-width"> Close</button></div>
+      </div>
     </div>
-  </div>
 
     <aside id="sidebar" class="tree">
       <input id="glbInput"type="file" accept=".glb,.gltf"style="display: none"/>
@@ -106,8 +120,8 @@
       </div>
     </aside>
 
-    <link rel="stylesheet" href="tree.css?v=cv4fgvvvvv8" />
-    <script type="module" src="js/main.js?vvv=vvgvvfvvvvc48"></script>
+    <link rel="stylesheet" href="tree.css?v=cvv3vv12v1v81" />
+    <script type="module" src="js/main.js?vvv3b12b81"></script>
     <div id="fps-meter">FPS: <span id="fps-value">0</span></div>
     </div>
     <div id="res-meter"></div>
