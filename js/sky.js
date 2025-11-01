@@ -458,6 +458,10 @@ export function bakeSkyToCubemap(
   sunDir = [0, 1, 0],
   opts = {}
 ) {
+    // Resetuj stare teksture iz prethodnog cube rendera
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
   // ✅ mora pre svega
   gl.getExtension("EXT_color_buffer_float");
   gl.getExtension("OES_texture_float_linear");

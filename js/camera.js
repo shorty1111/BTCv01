@@ -52,28 +52,24 @@ export function initCamera(canvas) {
     const aspect = canvas.width / canvas.height;
     const proj = persp(60, aspect, 0.1, 100000);
 
-    if (useOrtho) {
-      rx = 0;
-      ry = 0;
-      dist = 1;
+        if (useOrtho) {
+          const center = window.sceneBoundingCenter || [0, 0, 0];
+          const d = window.sceneFitDistance || 10.0; // ista udaljenost kao u iso
+          let eye, up;
 
-      const radius = window.sceneBoundingRadius || 5;
-      const size = radius * 0.8;
-      const d = radius * 1.5;
+          switch (currentView) {
+            case "front": eye = [center[0], center[1], center[2] + d]; up = [0, 1, 0]; break;
+            case "back":  eye = [center[0], center[1], center[2] - d]; up = [0, 1, 0]; break;
+            case "left":  eye = [center[0] - d, center[1], center[2]]; up = [0, 1, 0]; break;
+            case "right": eye = [center[0] + d, center[1], center[2]]; up = [0, 1, 0]; break;
+            case "top":   eye = [center[0], center[1] + d, center[2]]; up = [0, 0, -1]; break;
+            default:      eye = [center[0] + d, center[1] + d, center[2] + d]; up = [0, 1, 0]; break;
+          }
 
-      let eye, up;
-      switch (currentView) {
-        case "front": eye = [0, size * 0.3, d]; up = [0, 1, 0]; break;
-        case "back":  eye = [0, size * 0.3, -d]; up = [0, 1, 0]; break;
-        case "left":  eye = [-d, size * 0.3, 0]; up = [0, 1, 0]; break;
-        case "right": eye = [d, size * 0.3, 0]; up = [0, 1, 0]; break;
-        case "top":   eye = [0, d, 0]; up = [0, 0, -1]; break;
-        default:      eye = [d, d, d]; up = [0, 1, 0]; break;
-      }
-
-      view.set(look(eye, pan, up));
-      camWorld = eye.slice();
-    } else {
+          view.set(look(eye, center, up));
+          camWorld = eye.slice();
+        }
+        else {
       const eye = [
         dist * Math.cos(rx) * Math.sin(ry) + pan[0],
         dist * Math.sin(rx) + pan[1],
@@ -85,6 +81,36 @@ export function initCamera(canvas) {
 
     return { proj, view, camWorld };
   }
+    // === AUTO-FIT KAMERE NA SCENU ===
+    function fitToBoundingBox(bmin, bmax) {
+      // centar i veličina
+      const center = [
+        (bmin[0] + bmax[0]) * 0.5,
+        (bmin[1] + bmax[1]) * 0.5,
+        (bmin[2] + bmax[2]) * 0.5,
+      ];
+      const size = [
+        bmax[0] - bmin[0],
+        bmax[1] - bmin[1],
+        bmax[2] - bmin[2],
+      ];
+      window.sceneBoundingCenter = center;
+      window.sceneBoundingRadius = Math.max(size[0], size[1], size[2]) * 0.5;
+
+      // projekcija koja garantuje isti “zoom” za sve veličine
+      const fovY = Math.PI / 4;               // 45°
+      const aspect = canvas.width / canvas.height;
+      const fill = 1.1;                       // model zauzima 70% visine ekrana
+      // udaljenost mora da pokrije najveću od: visina, širina/aspect
+      const halfHeight = size[1] * 0.5 / fill;
+      const halfWidth  = (size[0] * 0.5 / fill) / aspect;
+      const halfDepth  = size[2] * 0.5 / fill;
+      const halfMax = Math.max(halfHeight, halfWidth, halfDepth);
+      const distFit = halfMax / Math.tan(fovY * 0.5);
+      pan = center.slice();
+      dist = distTarget = distFit;
+      window.sceneFitDistance = distFit; // zapamti distancu
+    }
 
   // === MOUSE & TOUCH ===
   canvas.addEventListener("mousemove", (e) => {
@@ -194,6 +220,7 @@ canvas.addEventListener("touchmove", (e) => {
   return {
     animateCamera,
     updateView,
+    fitToBoundingBox,
     get camWorld() { return camWorld; },
     get pan() { return pan; },
     set pan(v) { pan = v; },

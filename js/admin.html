@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Less Engine Admin Panel</title>
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <header>
+    <h1>Less Engine Admin Panel</h1>
+    <button id="saveBtn">💾 Save Config</button>
+  </header>
+
+  <main id="app"></main>
+
+  <script type="module">
+    import { BOAT_INFO, VARIANT_GROUPS, SIDEBAR_INFO, BASE_PRICE } from "./config.js";
+
+    const app = document.getElementById("app");
+
+    /* === BOAT INFO === */
+    const boatDiv = document.createElement("div");
+    boatDiv.className = "section";
+    boatDiv.innerHTML = `<h2>Boat Info</h2>`;
+    for (const [k, v] of Object.entries(BOAT_INFO)) {
+      boatDiv.innerHTML += `
+        <label>${k}</label>
+        <input type="text" data-section="boat" data-key="${k}" value="${v}">
+      `;
+    }
+    app.appendChild(boatDiv);
+
+    /* === VARIANT GROUPS === */
+    const variantsDiv = document.createElement("div");
+    variantsDiv.className = "section";
+    variantsDiv.innerHTML = `<h2>Variant Groups</h2>`;
+    for (const [groupName, group] of Object.entries(VARIANT_GROUPS)) {
+      const g = document.createElement("div");
+      g.className = "group";
+      g.innerHTML = `<h3>${groupName}</h3>`;
+
+      for (const [partName, part] of Object.entries(group)) {
+        const p = document.createElement("div");
+        p.className = "part";
+        p.innerHTML = `<h4>${partName}</h4>`;
+        part.models.forEach((m, i) => {
+          const box = document.createElement("div");
+          box.className = "model";
+          box.innerHTML = `
+            <input type="text" data-group="${groupName}" data-part="${partName}" data-idx="${i}" data-field="name" value="${m.name}" placeholder="Name">
+            <input type="text" data-group="${groupName}" data-part="${partName}" data-idx="${i}" data-field="src" value="${m.src ?? ""}" placeholder="Model src">
+            <input type="number" data-group="${groupName}" data-part="${partName}" data-idx="${i}" data-field="price" value="${m.price}" placeholder="Price">
+            <textarea data-group="${groupName}" data-part="${partName}" data-idx="${i}" data-field="description">${m.description ?? ""}</textarea>
+          `;
+          p.appendChild(box);
+        });
+        g.appendChild(p);
+      }
+      variantsDiv.appendChild(g);
+    }
+    app.appendChild(variantsDiv);
+
+    /* === SAVE === */
+    document.getElementById("saveBtn").onclick = () => {
+      const newBoat = { ...BOAT_INFO };
+      document.querySelectorAll('input[data-section="boat"]').forEach(i => {
+        newBoat[i.dataset.key] = i.value;
+      });
+
+      const newVariants = structuredClone(VARIANT_GROUPS);
+      document.querySelectorAll('[data-field]').forEach(el => {
+        const { group, part, idx, field } = el.dataset;
+        if (group && part && idx && field)
+          newVariants[group][part].models[idx][field] = el.value;
+      });
+
+      const output =
+`export const BASE_PRICE = ${BASE_PRICE};
+export const BOAT_INFO = ${JSON.stringify(newBoat, null, 2)};
+export const VARIANT_GROUPS = ${JSON.stringify(newVariants, null, 2)};
+export const SIDEBAR_INFO = ${JSON.stringify(SIDEBAR_INFO, null, 2)};`;
+
+      const blob = new Blob([output], { type: "text/javascript" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "config.js";
+      a.click();
+      URL.revokeObjectURL(url);
+      alert("New config.js exported!");
+    };
+  </script>
+</body>
+</html>

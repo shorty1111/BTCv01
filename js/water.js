@@ -23,6 +23,23 @@ let waterProgram = null;
 let vao = null;
 let waterNormalTex = null;
 
+// --- OPTIMIZOVANO BINDOVANJE TEKSTURA ---
+// pamti zadnju teksturu po slotu, da se ne radi gl.bindTexture bez potrebe
+const boundTex = Array(16).fill(null);
+
+function safeBindTex(gl, unit, target, tex) {
+  if (!gl || !tex) return; // zaštita ako se pozove prerano
+  if (boundTex[unit] !== tex) {
+    gl.activeTexture(gl.TEXTURE0 + unit);
+    gl.bindTexture(target, tex);
+    boundTex[unit] = tex;
+  }
+}
+
+// resetuje cache kada se menjaju FBO-ovi ili rezolucija
+export function resetBoundTextures() {
+  boundTex.fill(null);
+}
 let waterUniforms = {};
 
 function createWaterGrid(tileSize = 100.0, div = 200) {
@@ -154,24 +171,25 @@ const waveSet = [...waveSetA.slice(0, 8)];
 // 3. Helper za upload
 function uploadWaveSet(gl, program, waveSet) {
   const count = waveSet.length;
-  gl.uniform1i(gl.getUniformLocation(program, "uWaveCount"), count);
+  gl.uniform1i(waterUniforms.uWaveCount, count);
 
-  const omega = waveSet.map((w) => omegaFromL(w.L));
-  const A = waveSet.map((w) => w.A);
-  const L = waveSet.map((w) => w.L);
-  const Q = waveSet.map((w) => w.Q);
-  const dir = waveSet.flatMap((w) => w.dir);
-  const phase = waveSet.map((w) => w.phase);
-  const speed = waveSet.map((w) => w.speedJitter || 1.0);
+  const omega = waveSet.map(w => omegaFromL(w.L));
+  const A = waveSet.map(w => w.A);
+  const L = waveSet.map(w => w.L);
+  const Q = waveSet.map(w => w.Q);
+  const dir = waveSet.flatMap(w => w.dir);
+  const phase = waveSet.map(w => w.phase);
+  const speed = waveSet.map(w => w.speedJitter || 1.0);
 
-  gl.uniform1fv(gl.getUniformLocation(program, "uWaveOmega"), omega);
-  gl.uniform1fv(gl.getUniformLocation(program, "uWaveA"), A);
-  gl.uniform1fv(gl.getUniformLocation(program, "uWaveL"), L);
-  gl.uniform1fv(gl.getUniformLocation(program, "uWaveQ"), Q);
-  gl.uniform2fv(gl.getUniformLocation(program, "uWaveDir"), dir);
-  gl.uniform1fv(gl.getUniformLocation(program, "uWavePhase"), phase);
-  gl.uniform1fv(gl.getUniformLocation(program, "uWaveSpeedJitter"), speed);
+  gl.uniform1fv(waterUniforms.uWaveOmega, omega);
+  gl.uniform1fv(waterUniforms.uWaveA, A);
+  gl.uniform1fv(waterUniforms.uWaveL, L);
+  gl.uniform1fv(waterUniforms.uWaveQ, Q);
+  gl.uniform2fv(waterUniforms.uWaveDir, dir);
+  gl.uniform1fv(waterUniforms.uWavePhase, phase);
+  gl.uniform1fv(waterUniforms.uWaveSpeedJitter, speed);
 }
+
 
 const G = 9.81;
 function omegaFromL(L) {
@@ -210,6 +228,21 @@ const uniformNames = [
     waterUniforms[name] = gl.getUniformLocation(waterProgram, name);
   }
 
+  // --- DODAJ I UNIFORME ZA TALASE (WAVES) ---
+const waveUniforms = [
+  "uWaveCount",
+  "uWaveOmega",
+  "uWaveA",
+  "uWaveL",
+  "uWaveQ",
+  "uWaveDir",
+  "uWavePhase",
+  "uWaveSpeedJitter"
+];
+
+for (const name of waveUniforms) {
+  waterUniforms[name] = gl.getUniformLocation(waterProgram, name);
+}
 const ringData = createWaterRings(WATER_CONFIG);
 // izračunaj ukupan broj verteksa
 let totalVerts = 0;
@@ -252,6 +285,7 @@ gl.bindVertexArray(null);
 
 
   gl.useProgram(waterProgram);
+  gl.uniformMatrix4fv(waterUniforms.uModel, false, mat4Identity());
   uploadWaveSet(gl, waterProgram, waveSet);
   waterNormalTex = loadTexture2D(gl, "assets/water_normal.png");
     // === STATIČNI UNIFORMI (mogu preći u initWater ako želiš još više performansi) ===
@@ -332,6 +366,7 @@ export function drawWater(
   reflectionTex,
   reflProjView
 ) {
+  
   if (!waterProgram) return;
 
   gl.useProgram(waterProgram);
@@ -340,7 +375,6 @@ export function drawWater(
   // === MATRICE ===
   gl.uniformMatrix4fv(waterUniforms.uProjection, false, proj);
   gl.uniformMatrix4fv(waterUniforms.uView, false, view);
-  gl.uniformMatrix4fv(waterUniforms.uModel, false, mat4Identity());
 
   // === DINAMIČNI UNIFORMI ===
   gl.uniform1f(waterUniforms.uTime, timeSec);
@@ -351,25 +385,21 @@ export function drawWater(
   gl.uniform3fv(waterUniforms.uSunColor, sunColor);
   gl.uniform1f(waterUniforms.uSunIntensity, sunIntensity);
 
-  // === TEKSTURE ===
-  gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, waterNormalTex);
+  // === TEKSTURE (optimizovano) ===
+  boundTex.fill(null); // resetuj cache da ne preskoči novi reflectionTex
+  safeBindTex(gl, 0, gl.TEXTURE_2D, waterNormalTex);
   gl.uniform1i(waterUniforms.uWaterNormal, 0);
 
-  gl.activeTexture(gl.TEXTURE1);
-  gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
+  safeBindTex(gl, 1, gl.TEXTURE_CUBE_MAP, envTex);
   gl.uniform1i(waterUniforms.uEnvTex, 1);
 
-  gl.activeTexture(gl.TEXTURE2);
-  gl.bindTexture(gl.TEXTURE_2D, sceneDepthTex);
+  safeBindTex(gl, 2, gl.TEXTURE_2D, sceneDepthTex);
   gl.uniform1i(waterUniforms.uSceneDepth, 2);
 
-  gl.activeTexture(gl.TEXTURE3);
-  gl.bindTexture(gl.TEXTURE_2D, finalSceneTex);
+  safeBindTex(gl, 3, gl.TEXTURE_2D, finalSceneTex);
   gl.uniform1i(waterUniforms.uSceneColor, 3);
 
-  gl.activeTexture(gl.TEXTURE4);
-  gl.bindTexture(gl.TEXTURE_2D, reflectionTex);
+  safeBindTex(gl, 4, gl.TEXTURE_2D, reflectionTex);
   gl.uniform1i(waterUniforms.uReflectionTex, 4);
   gl.uniformMatrix4fv(waterUniforms.uReflectionMatrix, false, reflProjView);
 
@@ -379,13 +409,11 @@ export function drawWater(
   gl.uniform1f(waterUniforms.uFar, farPlane);
   gl.uniform2fv(waterUniforms.uViewportSize, viewportSize);
 
-
-
-  // === SENKA ===
-  gl.activeTexture(gl.TEXTURE8);
-  gl.bindTexture(gl.TEXTURE_2D, shadowDepthTex);
+  // === SENKA (optimizovano) ===
+  safeBindTex(gl, 8, gl.TEXTURE_2D, shadowDepthTex);
   gl.uniform1i(waterUniforms.uShadowMap, 8);
   gl.uniformMatrix4fv(waterUniforms.uLightVP, false, lightVP);
+
 
   // === CRTANJE VODE ===
   gl.enable(gl.CULL_FACE);

@@ -17,7 +17,7 @@ out vec4 fragColor;
 // === UNIFORMI ===
 uniform samplerCube uEnvTex;
 uniform sampler2D   uReflectionTex;
-uniform sampler2DShadow uShadowMap;
+// uniform sampler2DShadow uShadowMap;
 uniform sampler2D   uBRDFLUT;
 uniform sampler2D   waterNormalTex;
 uniform float       uTime;
@@ -29,7 +29,7 @@ uniform float       uRoughness;
 uniform float       uSpecularStrength;
 uniform vec3        uDeepColor;
 uniform vec3        uShallowColor;
-uniform mat4        uLightVP;
+// uniform mat4        uLightVP;
 uniform mat4        uReflectionMatrix;
 uniform float       uWaterLevel;
 uniform float       uBottomOffsetM;
@@ -53,43 +53,43 @@ vec2 getPlanarReflectionUV(vec3 worldPos) {
     return clamp(uv, 0.001, 0.999);
 }
 
-float getShadowValue(vec3 worldPos)
-{
-    // svetlosni prostor
-    vec4 lightPos = uLightVP * vec4(worldPos, 1.0);
-    lightPos.xyz /= lightPos.w;
-    vec3 shadowCoord = lightPos.xyz * 0.5 + 0.5;
+// float getShadowValue(vec3 worldPos)
+// {
+//     // svetlosni prostor
+//     vec4 lightPos = uLightVP * vec4(worldPos, 1.0);
+//     lightPos.xyz /= lightPos.w;
+//     vec3 shadowCoord = lightPos.xyz * 0.5 + 0.5;
 
-    // ako je van granica, nema senke
-    if (shadowCoord.x < 0.0 || shadowCoord.x > 1.0 ||
-        shadowCoord.y < 0.0 || shadowCoord.y > 1.0)
-        return 1.0;
+//     // ako je van granica, nema senke
+//     if (shadowCoord.x < 0.0 || shadowCoord.x > 1.0 ||
+//         shadowCoord.y < 0.0 || shadowCoord.y > 1.0)
+//         return 1.0;
 
-    // --- Blurred shadow sample ---
-    float radius = 0.07;
-    vec2 offsets[9] = vec2[](
-        vec2(-radius,  radius),
-        vec2(0.0,      radius),
-        vec2( radius,  radius),
-        vec2(-radius,  0.0),
-        vec2(0.0,      0.0),
-        vec2( radius,  0.0),
-        vec2(-radius, -radius),
-        vec2(0.0,     -radius),
-        vec2( radius, -radius)
-    );
-    vec2 waveDistort = (texture(waterNormalTex, vUV *5.5 + uTime * 0.02).rg - 0.5) * 0.08;
-    float s = 0.0;
-    for (int i = 0; i < 9; ++i) {
-        vec3 coord = shadowCoord;
-        coord.xy += offsets[i];
-        coord = clamp(coord, vec3(0.001), vec3(0.999));
-        coord.xy += waveDistort;
-        coord.z -= 0.001;
-        s += texture(uShadowMap, coord);
-    }
-    return s / 9.0;
-}
+//     // --- Blurred shadow sample ---
+//     float radius = 0.07;
+//     vec2 offsets[9] = vec2[](
+//         vec2(-radius,  radius),
+//         vec2(0.0,      radius),
+//         vec2( radius,  radius),
+//         vec2(-radius,  0.0),
+//         vec2(0.0,      0.0),
+//         vec2( radius,  0.0),
+//         vec2(-radius, -radius),
+//         vec2(0.0,     -radius),
+//         vec2( radius, -radius)
+//     );
+//     vec2 waveDistort = (texture(waterNormalTex, vUV *5.5 + uTime * 0.02).rg - 0.5) * 0.08;
+//     float s = 0.0;
+//     for (int i = 0; i < 9; ++i) {
+//         vec3 coord = shadowCoord;
+//         coord.xy += offsets[i];
+//         coord = clamp(coord, vec3(0.001), vec3(0.999));
+//         coord.xy += waveDistort;
+//         coord.z -= 0.001;
+//         s += texture(uShadowMap, coord);
+//     }
+//     return s / 9.0;
+// }
 
 vec3 fresnelSchlick(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);

@@ -1,6 +1,6 @@
 import { createShaderProgram } from "./shader.js";
 import { initWater, drawWater } from "./water.js";
-
+import { resetBoundTextures } from "./water.js";
 import { initCamera } from "./camera.js";
 import { initSky, drawSky, bakeSkyToCubemap } from "./sky.js";
 import { DEFAULT_SKY } from "./sky.js";
@@ -392,6 +392,7 @@ function createDepthTexture(w, h) {
   let ssaa = 1.4;
 
 function resizeCanvas() {
+   gl.flush(); 
   const sidebarW = document.getElementById("sidebar").offsetWidth;
   const headerH = document.querySelector(".global-header").offsetHeight || 0;
 
@@ -431,6 +432,7 @@ function resizeCanvas() {
   createFinalColorTarget(canvas.width, canvas.height);
   createToneMapTarget(canvas.width, canvas.height);
   createReflectionTarget(gl, realW, realH);
+  resetBoundTextures();
   
   const resMeter = document.getElementById("res-meter");
   if (resMeter) {
@@ -447,8 +449,9 @@ function resizeCanvas() {
 
   // 🔹 Obeleži promenu i ponovo renderuj
   shadowDirty = true;
-ssaoDirty = true;
-sceneChanged = true;
+  ssaoDirty = true;
+  sceneChanged = true;
+  cleanupGLGarbage();
 }
 export async function exportPDF() {
   const { jsPDF } = window.jspdf;
@@ -888,6 +891,41 @@ async function initShaders() {
       reflectionUniforms[n] = gl.getUniformLocation(reflectionColorProgram, n);
 
     lineProgram = createShaderProgram(gl, lineVertSrc, lineFragSrc);
+    // === 4. Keš uniform lokacija za ostale programe ===
+    window.gBufferUniforms = {
+      uProjection: gl.getUniformLocation(gBufferProgram, "uProjection"),
+      uView: gl.getUniformLocation(gBufferProgram, "uView"),
+      uModel: gl.getUniformLocation(gBufferProgram, "uModel"),
+      uBaseColor: gl.getUniformLocation(gBufferProgram, "uBaseColor"),
+      uMetallic: gl.getUniformLocation(gBufferProgram, "uMetallic"),
+      uRoughness: gl.getUniformLocation(gBufferProgram, "uRoughness"),
+      uBaseColorTex: gl.getUniformLocation(gBufferProgram, "uBaseColorTex"),
+      uUseBaseColorTex: gl.getUniformLocation(gBufferProgram, "uUseBaseColorTex"),
+    };
+
+    window.glassUniforms = {
+      uView: gl.getUniformLocation(programGlass, "uView"),
+      uProjection: gl.getUniformLocation(programGlass, "uProjection"),
+      uModel: gl.getUniformLocation(programGlass, "uModel"),
+      uBaseColor: gl.getUniformLocation(programGlass, "uBaseColor"),
+      uRoughness: gl.getUniformLocation(programGlass, "uRoughness"),
+      uMetallic: gl.getUniformLocation(programGlass, "uMetallic"),
+      uOpacity: gl.getUniformLocation(programGlass, "uOpacity"),
+      uCameraPos: gl.getUniformLocation(programGlass, "uCameraPos"),
+      uEnvMap: gl.getUniformLocation(programGlass, "uEnvMap"),
+    };
+
+    window.shadowUniforms = {
+      uLightVP: gl.getUniformLocation(shadowProgram, "uLightVP"),
+      uModel: gl.getUniformLocation(shadowProgram, "uModel"),
+    };
+
+    window.lineUniforms = {
+      uProjection: gl.getUniformLocation(lineProgram, "uProjection"),
+      uView: gl.getUniformLocation(lineProgram, "uView"),
+      uModel: gl.getUniformLocation(lineProgram, "uModel"),
+      uColor: gl.getUniformLocation(lineProgram, "uColor"),
+    };
 
     // === 3. Init PBR konstantnih uniforma ===
     gl.useProgram(program);
@@ -1057,6 +1095,58 @@ gl.deleteProgram(prog);
   }
 }
 
+// 🔹 Povremeno očisti GL resurse koji više nisu u upotrebi
+function cleanupGLGarbage() {
+  // Očisti nepotrebne teksture (sceneColorTex, reflectionDepthTex itd. ako nisu vezane)
+  if (window.sceneColorTex && !sceneChanged) {
+    gl.deleteTexture(window.sceneColorTex);
+    window.sceneColorTex = null;
+  }
+
+  // Ako su FBO-ovi resetovani ili izgubljeni
+  if (reflectionFBO && !gl.isFramebuffer(reflectionFBO)) {
+    gl.deleteFramebuffer(reflectionFBO);
+    reflectionFBO = null;
+  }
+  if (finalFBO && !gl.isFramebuffer(finalFBO)) {
+    gl.deleteFramebuffer(finalFBO);
+    finalFBO = null;
+  }
+
+  // Ako su teksture “zaboravljene” posle reinit-a
+  const texList = [
+    reflectionTex,
+    window.reflectionDepthTex,
+    finalColorTex,
+    window.finalDepthTex,
+    toneMapTex,
+    gPosition,
+    gNormal,
+    gAlbedo,
+    gMaterial,
+    ssaoColorBuffer,
+    ssaoBlurBuffer,
+  ];
+  for (const tex of texList) {
+    if (tex && !gl.isTexture(tex)) {
+      gl.deleteTexture(tex);
+    }
+  }
+}
+async function waitForPendingTextures(timeoutMs = 8000) {
+  const start = performance.now();
+
+  while (window.pendingTextures > 0) {
+    await new Promise(r => setTimeout(r, 100));
+
+    // ⏱️ prekid posle timeouta
+    if (performance.now() - start > timeoutMs) {
+      console.warn("⚠️ Texture loading timeout — continuing without all textures.");
+      window.pendingTextures = 0; // fallback, reset counter
+      break;
+    }
+  }
+}
 // ✅ Glavna sekvenca
 async function initializeApp() {
   showLoading();
@@ -1066,21 +1156,29 @@ async function initializeApp() {
   const shadersOk = await initShaders();
   if (!shadersOk) return;
 
-  const sceneOk = await initScene();
+  const sceneOk = await initScene(); // ⏳ čeka sky + water
   if (!sceneOk) return;
 
   try {
+    // Sačekaj i model
     await loadDefaultModel(DEFAULT_MODEL);
 
-    // ⚠️ Sačekaj da se shaderi validno linkuju pre prvog rendera
+    // ⚠️ Validacija programa
     if (!program || !(program instanceof WebGLProgram)) {
       console.error("❌ Main PBR program nije ispravno učitan.");
       alert("Shader link error — proveri log u konzoli (verovatno pbr.frag).");
       return;
     }
 
+    // ✅ Tek sada — svi shaderi, voda i nebo spremni
     sceneChanged = true;
+    await waitForPendingTextures(8000);
+
+    // Pokreni prvi render
     render();
+    renderBoatInfo(BOAT_INFO);
+
+    // Pokreni UI i loop tek sada
     initUI({ render, BOAT_INFO, VARIANT_GROUPS, BASE_PRICE, SIDEBAR_INFO });
     Object.assign(window, {
       gl, camera, nodesMeta, modelBaseColors, modelBaseTextures,
@@ -1089,8 +1187,10 @@ async function initializeApp() {
       render, replaceSelectedWithURL, focusCameraOnNode, setWeather,
       proj, view, camWorld, exportPDF
     });
-    renderLoop();
-    renderBoatInfo(BOAT_INFO);
+
+    // 🔹 start loop tek kad je sve učitano
+  renderLoop();
+
     generateAllThumbnails().then(refreshThumbnailsInUI).catch(console.warn);
     setTimeout(() => preloadAllVariants().catch(console.warn), 2000);
   } catch (err) {
@@ -1132,6 +1232,7 @@ function computeLightBounds(min, max, lightView) {
 }
 
 function render() {
+  const timeNow = performance.now() * 0.001; // koristi u SSAO i vodi
   let reflView = null;
   // === 1. Animacija kamere i matrica pogleda ===
     showWater = window.showWater;
@@ -1226,15 +1327,11 @@ if (shadowDirty) {
   lightVP = mat4mul(lightProj, lightView);
 
   gl.useProgram(shadowProgram);
-  gl.uniformMatrix4fv(gl.getUniformLocation(shadowProgram, "uLightVP"), false, lightVP);
+  gl.uniformMatrix4fv(shadowUniforms.uLightVP, false, lightVP);
 
   for (let i = 0; i < modelVAOs.length; ++i) {
     if (!idxCounts[i]) continue;
-    gl.uniformMatrix4fv(
-      gl.getUniformLocation(shadowProgram, "uModel"),
-      false,
-      modelMatrices[i]
-    );
+    gl.uniformMatrix4fv(shadowUniforms.uModel, false, modelMatrices[i]);
     gl.bindVertexArray(modelVAOs[i]);
     gl.drawElements(gl.TRIANGLES, idxCounts[i], idxTypes[i], 0);
   }
@@ -1328,21 +1425,21 @@ if (shadowDirty) {
   gl.enable(gl.DEPTH_TEST);
   gl.depthMask(true);
   gl.useProgram(gBufferProgram);
-  gl.uniformMatrix4fv(gl.getUniformLocation(gBufferProgram, "uProjection"),false,proj);
-  gl.uniformMatrix4fv( gl.getUniformLocation(gBufferProgram, "uView"),false,view);
+  gl.uniformMatrix4fv(gBufferUniforms.uProjection, false, proj);
+  gl.uniformMatrix4fv(gBufferUniforms.uView, false, view);
   for (let i = 0; i < modelVAOs.length; ++i) {
     if (!idxCounts[i]) continue;
-    gl.uniformMatrix4fv(gl.getUniformLocation(gBufferProgram, "uModel"),false, modelMatrices[i]);
-    gl.uniform3fv( gl.getUniformLocation(gBufferProgram, "uBaseColor"),modelBaseColors[i] || [1, 1, 1]);
-    gl.uniform1f(gl.getUniformLocation(gBufferProgram, "uMetallic"),modelMetallics[i] ?? 1.0);
-    gl.uniform1f(gl.getUniformLocation(gBufferProgram, "uRoughness"), modelRoughnesses[i] ?? 1.0);
+        gl.uniformMatrix4fv(gBufferUniforms.uModel, false, modelMatrices[i]);
+        gl.uniform3fv(gBufferUniforms.uBaseColor, modelBaseColors[i] || [1,1,1]);
+        gl.uniform1f(gBufferUniforms.uMetallic, modelMetallics[i] ?? 1.0);
+        gl.uniform1f(gBufferUniforms.uRoughness, modelRoughnesses[i] ?? 1.0);
     if (modelBaseTextures[i]) {
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, modelBaseTextures[i]);
-      gl.uniform1i(gl.getUniformLocation(gBufferProgram, "uBaseColorTex"), 0);
-      gl.uniform1i(gl.getUniformLocation(gBufferProgram, "uUseBaseColorTex"),1);
+      gl.uniform1i(gBufferUniforms.uBaseColorTex, 0);
+      gl.uniform1i(gBufferUniforms.uUseBaseColorTex, 1);
     } else {
-      gl.uniform1i(gl.getUniformLocation(gBufferProgram, "uUseBaseColorTex"),0 );
+      gl.uniform1i(gBufferUniforms.uUseBaseColorTex, 0);
     }
     gl.bindVertexArray(modelVAOs[i]);
     gl.drawElements(gl.TRIANGLES, idxCounts[i], idxTypes[i], 0);
@@ -1376,7 +1473,7 @@ if (shadowDirty) {
     gl.uniform2f(ssaoUniforms.uNoiseScale, canvas.width / SSAO_NOISE_SIZE, canvas.height / SSAO_NOISE_SIZE);
     gl.uniform3fv(ssaoUniforms.samples, ssaoKernel);
     gl.uniformMatrix4fv(ssaoUniforms.uProjection, false, proj);
-    gl.uniform1f(ssaoUniforms.uFrame, performance.now() * 0.05);
+    gl.uniform1f(ssaoUniforms.uFrame, timeNow * 50.0);
 
     // --- Draw ---
     gl.bindVertexArray(quadVAO);
@@ -1571,47 +1668,50 @@ if (shadowDirty) {
 
 // (bolje sortiranje: po „najdaljem z“ duž pravca pogleda)
 const V = v3.norm(v3.sub(camera.pan, camWorld)); // view dir: target - eye
-transparentMeshes.forEach(m => {
-  if (!m._bbComputed) {
-    const b = computeBounds(m.pos);
-    m._centerLocal = [
-      (b.min[0]+b.max[0]) * 0.5,
-      (b.min[1]+b.max[1]) * 0.5,
-      (b.min[2]+b.max[2]) * 0.5
-    ];
-    // gruba sfera: poluprečnik kao max odstupanje od centra
-    m._radiusLocal = Math.hypot(
-      b.max[0]-m._centerLocal[0],
-      b.max[1]-m._centerLocal[1],
-      b.max[2]-m._centerLocal[2]
-    );
-    m._bbComputed = true;
-  }
-  const cw = mulMat4Vec4([], m.modelMat, [m._centerLocal[0], m._centerLocal[1], m._centerLocal[2], 1]);
-  // projekcija na pravac pogleda + radius → „najdalja tačka“
-  m._farDepth = (cw[0]-camWorld[0])*V[0] + (cw[1]-camWorld[1])*V[1] + (cw[2]-camWorld[2])*V[2] + m._radiusLocal;
-});
-// sort: od najdaljeg ka najbližem (Painter)
-transparentMeshes.sort((a,b) => b._farDepth - a._farDepth);
+let cameraMoved = !arraysEqual(lastViewMatrix, view);
+if (cameraMoved) {
+  transparentMeshes.forEach(m => {
+    if (!m._bbComputed) {
+      const b = computeBounds(m.pos);
+      m._centerLocal = [
+        (b.min[0]+b.max[0]) * 0.5,
+        (b.min[1]+b.max[1]) * 0.5,
+        (b.min[2]+b.max[2]) * 0.5
+      ];
+      m._radiusLocal = Math.hypot(
+        b.max[0]-m._centerLocal[0],
+        b.max[1]-m._centerLocal[1],
+        b.max[2]-m._centerLocal[2]
+      );
+      m._bbComputed = true;
+    }
+    const cw = mulMat4Vec4([], m.modelMat, [m._centerLocal[0], m._centerLocal[1], m._centerLocal[2], 1]);
+    m._farDepth = (cw[0]-camWorld[0])*V[0] + (cw[1]-camWorld[1])*V[1] + (cw[2]-camWorld[2])*V[2] + m._radiusLocal;
+  });
+  transparentMeshes.sort((a,b) => b._farDepth - a._farDepth);
+}
+
 
 // bind program + zajednički uniformi
 gl.useProgram(programGlass);
-gl.uniformMatrix4fv(gl.getUniformLocation(programGlass, "uView"), false, view);
-gl.uniformMatrix4fv(gl.getUniformLocation(programGlass, "uProjection"), false, proj);
+gl.uniformMatrix4fv(glassUniforms.uView, false, view);
+gl.uniformMatrix4fv(glassUniforms.uProjection, false, proj);
 gl.activeTexture(gl.TEXTURE0);
 gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
-gl.uniform1i(gl.getUniformLocation(programGlass, "uEnvMap"), 0);
-gl.uniform3fv(gl.getUniformLocation(programGlass, "uCameraPos"), camWorld);
+gl.uniform1i(glassUniforms.uEnvMap, 0);
+gl.uniform3fv(glassUniforms.uCameraPos, camWorld);
 
 // PASS 1: BACK-FACES PRVI
 gl.cullFace(gl.FRONT);
+
 for (const m of transparentMeshes) {
+  if (m.opacity > 0.95) continue;
   if (!m.count) continue;
-  gl.uniformMatrix4fv(gl.getUniformLocation(programGlass, "uModel"), false, m.modelMat);
-  gl.uniform3fv(gl.getUniformLocation(programGlass, "uBaseColor"), m.baseColor || [1,1,1]);
-  gl.uniform1f(gl.getUniformLocation(programGlass, "uRoughness"), m.roughness ?? 1.0);
-  gl.uniform1f(gl.getUniformLocation(programGlass, "uMetallic"),  m.metallic  ?? 0.0);
-  gl.uniform1f(gl.getUniformLocation(programGlass, "uOpacity"),   m.opacity   ?? 1.0);
+  gl.uniformMatrix4fv(glassUniforms.uModel, false, m.modelMat);
+  gl.uniform3fv(glassUniforms.uBaseColor, m.baseColor || [1,1,1]);
+  gl.uniform1f(glassUniforms.uRoughness, m.roughness ?? 1.0);
+  gl.uniform1f(glassUniforms.uMetallic, m.metallic ?? 0.0);
+  gl.uniform1f(glassUniforms.uOpacity, m.opacity ?? 1.0);
   gl.bindVertexArray(m.vao);
   gl.drawElements(gl.TRIANGLES, m.count, m.type, 0);
 }
@@ -1619,6 +1719,7 @@ for (const m of transparentMeshes) {
 // PASS 2: FRONT-FACES POSLE
 gl.cullFace(gl.BACK);
 for (const m of transparentMeshes) {
+  if (m.opacity > 0.95) continue;
   if (!m.count) continue;
   gl.uniformMatrix4fv(gl.getUniformLocation(programGlass, "uModel"), false, m.modelMat);
   gl.uniform3fv(gl.getUniformLocation(programGlass, "uBaseColor"), m.baseColor || [1,1,1]);
@@ -1682,15 +1783,25 @@ gl.enable(gl.CULL_FACE);
 }
 
 let last = 0;
+let lastCleanup = performance.now();
+
 function renderLoop(now) {
   const frameTime = 1000 / MAX_FPS;
-if (now - last >= frameTime) {
-  last += frameTime; // ne postavljaj ga na now!
-  render();
-  updateFPS();
-}
+  if (now - last >= frameTime) {
+    last += frameTime;
+    render();
+    updateFPS();
+  }
+
+  // 🔹 čišćenje na svakih 10 sekundi
+  if (now - lastCleanup > 10000) {
+    cleanupGLGarbage();
+    lastCleanup = now;
+  }
+
   requestAnimationFrame(renderLoop);
 }
+
 const infoPanel = document.getElementById("info-panel");
 const toggleBtn = document.getElementById("toggle-info");
 toggleBtn.addEventListener("click", () => {
@@ -1955,25 +2066,18 @@ async function loadGLB(buf) {
 };
 
 
+camera.fitToBoundingBox(min, max);
+camera.rx = camera.rxTarget = Math.PI / 10;
+camera.ry = camera.ryTarget = Math.PI / 20;
+camera.updateView();
 
-  const fovY = Math.PI / 4;
-  const radius = window.sceneBoundingRadius || 1;
-  const neededDist = radius / Math.sin(fovY / 2);
 
-  camera.dist = neededDist * 0.6;     // početna distanca (dalje od modela)
-  camera.distTarget = neededDist * 0.6;
-  camera.rx = Math.PI / 10;
-  camera.ry = Math.PI / 20;
-  camera.pan = window.sceneBoundingCenter.slice();
-  camera.updateView();
 
   ({ proj, view, camWorld } = camera.updateView());
   // Sačekaj da se sve teksture spuste u GPU
-  while (window.pendingTextures > 0) {
-    await new Promise(r => setTimeout(r, 50)); // proverava na svakih 50ms
-  }
+  await waitForPendingTextures(8000);
   await new Promise(requestAnimationFrame);
-}
+  }
 
 function loadTextureFromImage(gltf, bin, texIndex) {
   window.pendingTextures++;

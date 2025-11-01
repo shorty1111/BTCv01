@@ -684,28 +684,24 @@ closeOptions.addEventListener("click", () => {
 
 
   document
-    .querySelectorAll("#camera-controls button[data-view]")
-    .forEach((btn) => {
-  btn.addEventListener("click", () => {
-  const viewName = btn.getAttribute("data-view");
-  camera.currentView = viewName;
-
+      .querySelectorAll("#camera-controls button[data-view]")
+      .forEach((btn) => {
+    btn.addEventListener("click", () => {
+    const viewName = btn.getAttribute("data-view");
+    camera.currentView = viewName;
   if (viewName === "iso") {
     camera.useOrtho = false;
-    const targetRx = Math.PI / 10;
-    const targetRy = Math.PI / 20;
-    camera.rx = camera.rxTarget = targetRx;
-    camera.ry = camera.ryTarget = targetRy;
-    camera.pan = window.sceneBoundingCenter.slice();
-    camera.dist = camera.distTarget = (window.sceneBoundingRadius || 1) * 1.5;
+    camera.fitToBoundingBox(window.boatMin, window.boatMax);
+    camera.rx = camera.rxTarget = Math.PI / 10;
+    camera.ry = camera.ryTarget = Math.PI / 20;
   } else {
     camera.useOrtho = true;
-    camera.rx = 0;
-    camera.ry = 0;
-    camera.dist = 1;
+    camera.currentView = viewName;
+    camera.fitToBoundingBox(window.boatMin, window.boatMax);
   }
   ({ proj, view, camWorld } = camera.updateView());
   render();
+
 });
 
   });
