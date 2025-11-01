@@ -449,10 +449,7 @@ function resizeCanvas() {
   shadowDirty = true;
 ssaoDirty = true;
 sceneChanged = true;
-
 }
-
-
 export async function exportPDF() {
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF("p", "mm", "a4");
@@ -806,211 +803,226 @@ function makeLengthLine(min, max) {
   return { vao, count: 2 };
 }
 
-async function init() {
-  initShadowMap();
-  createGBuffer();
-  createSSAOBuffers();
-  // 2. Učitavanje i kompajliranje svih potrebnih šejder programa
-  const shadowVertSrc = await fetch("../shaders/shadow.vert").then((r) =>
-    r.text()
-  );
-  const shadowFragSrc = await fetch("../shaders/shadow.frag").then((r) =>
-    r.text()
-  );
-  shadowProgram = createShaderProgram(gl, shadowVertSrc, shadowFragSrc);
-
-  const gBufferVertSrc = await fetch("../shaders/g_buffer.vert").then((r) =>
-    r.text()
-  );
-  const gBufferFragSrc = await fetch("../shaders/g_buffer.frag").then((r) =>
-    r.text()
-  );
-  gBufferProgram = createShaderProgram(gl, gBufferVertSrc, gBufferFragSrc);
-
-  const quadVertSrc = await fetch("../shaders/quad.vert").then((r) => r.text());
-
-  const ssaoFragSrc = await fetch("../shaders/ssao.frag").then((r) => r.text());
-  ssaoProgram = createShaderProgram(gl, quadVertSrc, ssaoFragSrc);
-
-  const blurFragSrc = await fetch("../shaders/blur.frag").then((r) => r.text());
-  blurProgram = createShaderProgram(gl, quadVertSrc, blurFragSrc);
-
-  // --- Keš uniform lokacija za SSAO shader ---
-  const ssaoNames = [
-    "gPosition", "gNormal", "tNoise", "gAlbedo",
-    "samples", "uProjection", "uNoiseScale", "uFrame"
-  ];
-  for (const name of ssaoNames) {
-    ssaoUniforms[name] = gl.getUniformLocation(ssaoProgram, name);
+// ✅ Faza 1 — osnovni GL setup
+async function initGL() {
+  try {
+    initShadowMap();
+    createGBuffer();
+    createSSAOBuffers();
+    return true;
+  } catch (err) {
+    console.error("[initGL] Failed:", err);
+    alert("GL initialization failed — see console for details.");
+    return false;
   }
-
-  // --- Keš uniform lokacija za BLUR shader ---
-  blurUniforms.ssaoInput = gl.getUniformLocation(blurProgram, "ssaoInput");
-
-  lineProgram = createShaderProgram(gl, lineVertSrc, lineFragSrc);
-  const glassVS = await fetch("shaders/glass.vert").then((r) => r.text());
-
-  const glassFS = await fetch("shaders/glass.frag").then((r) => r.text());
-  programGlass = createShaderProgram(gl, glassVS, glassFS);
-  const reflectionVertSrc = await fetch("shaders/reflection.vert").then((r) =>r.text());
-  const reflectionFragSrc = await fetch("shaders/reflection.frag").then((r) =>r.text());
-  reflectionColorProgram = createShaderProgram(gl,reflectionVertSrc,reflectionFragSrc);
-
-  // --- Keš uniform lokacija za reflectionColorProgram ---
-  const reflectionNames = [
-    "uProjection", "uView", "uModel", "uSunDir", "uSunColor",
-    "uSunIntensity", "uCameraPos", "uRoughness", "uSpecularStrength",
-    "uEnvMap", "uBaseColor", "uBaseColorTex", "uUseBaseColorTex"
-  ];
-
-  for (const name of reflectionNames) {
-    reflectionUniforms[name] = gl.getUniformLocation(reflectionColorProgram, name);
-  }
-
-  const acesFragSrc = await fetch("shaders/aces.frag").then((r) => r.text());
-  acesProgram = createShaderProgram(gl, quadVertSrc, acesFragSrc);
-
-
-  const fxaaFrag = await fetch("shaders/fxaa.frag").then(r=>r.text());
-  const fxaaVert = await fetch("shaders/fxaa.vert").then(r=>r.text());
-  fxaaProgram = createShaderProgram(gl, fxaaVert, fxaaFrag);
-
-  const pbrFragSrc = await fetch("../shaders/pbr.frag").then((r) => r.text());
-  program = createShaderProgram(gl, quadVertSrc, pbrFragSrc);
-// --- Keš uniform lokacija za PBR program ---
-const uniformNamesPBR = [
-  "uView", "uProjection", "uLightVP", "uCameraPos",
-  "uSunDir", "uSunColor", "uSunIntensity",
-  "uCubeMaxMip", "uEnvMap", "uBRDFLUT", "uShadowMap",
-  "uResolution", "gPosition", "gNormal", "gAlbedo",
-  "gMaterial", "ssao", "tBentNormalAO", "uSceneColor",
-  "uLightSize", "uShadowMapSize", "uNormalBias",
-  "uBiasBase", "uBiasSlope"
-];
-
-function getUniformLocations(gl, program, names) {
-  const result = {};
-  for (const name of names) {
-    result[name] = gl.getUniformLocation(program, name);
-  }
-  return result;
-  
 }
 
-pbrUniforms = getUniformLocations(gl, program, uniformNamesPBR);
+// ✅ Faza 2 — učitavanje i kompajliranje šejdera
+async function initShaders() {
+  try {
+    const loadShader = async (path) => (await fetch(path)).text();
+    const quadVertSrc = await loadShader("../shaders/quad.vert");
 
-// === Jednokratno postavljanje uniforma koji se nikad ne menjaju ===
-gl.useProgram(program);
-// konstante koje se ne menjaju
-gl.uniform1f(pbrUniforms.uLightSize, 0.00025);
-gl.uniform2f(pbrUniforms.uShadowMapSize, SHADOW_RES, SHADOW_RES);
-gl.uniform1f(pbrUniforms.uNormalBias, 0.005);
-gl.uniform1f(pbrUniforms.uBiasBase, 0.0005);
-gl.uniform1f(pbrUniforms.uBiasSlope, 0.0015);
-// bind slotovi tekstura (uvek isti redosled)
-gl.uniform1i(pbrUniforms.gPosition, 0);
-gl.uniform1i(pbrUniforms.gNormal, 1);
-gl.uniform1i(pbrUniforms.gAlbedo, 2);
-gl.uniform1i(pbrUniforms.gMaterial, 3);
-gl.uniform1i(pbrUniforms.ssao, 4);
-gl.uniform1i(pbrUniforms.uEnvMap, 5);
-gl.uniform1i(pbrUniforms.uBRDFLUT, 6);
-gl.uniform1i(pbrUniforms.uShadowMap, 7);
-gl.uniform1i(pbrUniforms.tBentNormalAO, 8);
-gl.uniform1i(pbrUniforms.uSceneColor, 9);
+    // === 1. Klasični programi ===
+    const shadowVertSrc = await loadShader("../shaders/shadow.vert");
+    const shadowFragSrc = await loadShader("../shaders/shadow.frag");
+    shadowProgram = createShaderProgram(gl, shadowVertSrc, shadowFragSrc);
+
+    const gBufferVertSrc = await loadShader("../shaders/g_buffer.vert");
+    const gBufferFragSrc = await loadShader("../shaders/g_buffer.frag");
+    gBufferProgram = createShaderProgram(gl, gBufferVertSrc, gBufferFragSrc);
+
+    const ssaoFragSrc = await loadShader("../shaders/ssao.frag");
+    ssaoProgram = createShaderProgram(gl, quadVertSrc, ssaoFragSrc);
+
+    const blurFragSrc = await loadShader("../shaders/blur.frag");
+    blurProgram = createShaderProgram(gl, quadVertSrc, blurFragSrc);
+
+    const glassVS = await loadShader("shaders/glass.vert");
+    const glassFS = await loadShader("shaders/glass.frag");
+    programGlass = createShaderProgram(gl, glassVS, glassFS);
+
+    const reflectionVS = await loadShader("shaders/reflection.vert");
+    const reflectionFS = await loadShader("shaders/reflection.frag");
+    reflectionColorProgram = createShaderProgram(gl, reflectionVS, reflectionFS);
+
+    const acesFragSrc = await loadShader("shaders/aces.frag");
+    acesProgram = createShaderProgram(gl, quadVertSrc, acesFragSrc);
+
+    const fxaaVS = await loadShader("shaders/fxaa.vert");
+    const fxaaFS = await loadShader("shaders/fxaa.frag");
+    fxaaProgram = createShaderProgram(gl, fxaaVS, fxaaFS);
+
+    const pbrFragSrc = await loadShader("../shaders/pbr.frag");
+    program = createShaderProgram(gl, quadVertSrc, pbrFragSrc);
+
+    // === 2. Keš uniform lokacija ===
+    const uniformNamesPBR = [
+      "uView", "uProjection", "uLightVP", "uCameraPos",
+      "uSunDir", "uSunColor", "uSunIntensity",
+      "uCubeMaxMip", "uEnvMap", "uBRDFLUT", "uShadowMap",
+      "uResolution", "gPosition", "gNormal", "gAlbedo",
+      "gMaterial", "ssao", "tBentNormalAO", "uSceneColor",
+      "uLightSize", "uShadowMapSize", "uNormalBias",
+      "uBiasBase", "uBiasSlope"
+    ];
+    const getLocs = (prog, names) => {
+      const out = {};
+      for (const n of names) out[n] = gl.getUniformLocation(prog, n);
+      return out;
+    };
+    pbrUniforms = getLocs(program, uniformNamesPBR);
+
+    const ssaoNames = ["gPosition","gNormal","tNoise","gAlbedo","samples","uProjection","uNoiseScale","uFrame"];
+    for (const n of ssaoNames)
+      ssaoUniforms[n] = gl.getUniformLocation(ssaoProgram, n);
+
+    blurUniforms.ssaoInput = gl.getUniformLocation(blurProgram, "ssaoInput");
+
+    const reflectionNames = [
+      "uProjection", "uView", "uModel", "uSunDir", "uSunColor",
+      "uSunIntensity", "uCameraPos", "uRoughness", "uSpecularStrength",
+      "uEnvMap", "uBaseColor", "uBaseColorTex", "uUseBaseColorTex"
+    ];
+    for (const n of reflectionNames)
+      reflectionUniforms[n] = gl.getUniformLocation(reflectionColorProgram, n);
+
+    lineProgram = createShaderProgram(gl, lineVertSrc, lineFragSrc);
+
+    // === 3. Init PBR konstantnih uniforma ===
+    gl.useProgram(program);
+    gl.uniform1f(pbrUniforms.uLightSize, 0.00025);
+    gl.uniform2f(pbrUniforms.uShadowMapSize, SHADOW_RES, SHADOW_RES);
+    gl.uniform1f(pbrUniforms.uNormalBias, 0.005);
+    gl.uniform1f(pbrUniforms.uBiasBase, 0.0005);
+    gl.uniform1f(pbrUniforms.uBiasSlope, 0.0015);
+
+    gl.uniform1i(pbrUniforms.gPosition, 0);
+    gl.uniform1i(pbrUniforms.gNormal, 1);
+    gl.uniform1i(pbrUniforms.gAlbedo, 2);
+    gl.uniform1i(pbrUniforms.gMaterial, 3);
+    gl.uniform1i(pbrUniforms.ssao, 4);
+    gl.uniform1i(pbrUniforms.uEnvMap, 5);
+    gl.uniform1i(pbrUniforms.uBRDFLUT, 6);
+    gl.uniform1i(pbrUniforms.uShadowMap, 7);
+    gl.uniform1i(pbrUniforms.tBentNormalAO, 8);
+    gl.uniform1i(pbrUniforms.uSceneColor, 9);
+
+    return true;
+  } catch (err) {
+    console.error("[initShaders] Failed:", err);
+    alert("Shader initialization failed — check console logs.");
+    return false;
+  }
+}
+
+// ✅ Faza 3 — resursi i scena (voda, nebo, BRDF LUT, env map)
+async function initScene() {
+  try {
+    await initWater(gl);
+    await initSky(gl);
+
+    envTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
+      ...DEFAULT_SKY,
+      sunColor: SUN.color,
+      sunIntensity: SUN.intensity,
+      useTonemap: false,
+      hideSun: true,
+    });
+    cubeMaxMip = Math.floor(Math.log2(envSize));
+
+    generateSSAOKernel();
+    generateNoiseTexture();
+    createSSAOBuffers(canvas.width, canvas.height);
+
+    // === BRDF LUT precompute ===
 const LUT_SIZE = 256;
-// 1️⃣ FBO + tekstura
 const brdfFBO = gl.createFramebuffer();
 gl.bindFramebuffer(gl.FRAMEBUFFER, brdfFBO);
-
 brdfTex = gl.createTexture();
 gl.bindTexture(gl.TEXTURE_2D, brdfTex);
 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG16F, LUT_SIZE, LUT_SIZE, 0, gl.RG, gl.FLOAT, null);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, brdfTex, 0);
 
-// 2️⃣ Shader koji računa LUT
+// Realistic GGX BRDF integration (original)
 const vsSrc = `#version 300 es
 layout(location=0) in vec2 aPos;
 out vec2 vUV;
 void main(){
-    vUV = aPos * 0.5 + 0.5;
-    gl_Position = vec4(aPos, 0.0, 1.0);
+  vUV = aPos * 0.5 + 0.5;
+  gl_Position = vec4(aPos, 0.0, 1.0);
 }`;
 const fsSrc = `#version 300 es
 precision highp float;
 in vec2 vUV;
 out vec2 fragColor;
 
-// Integracija BRDF-a (Unreal-style)
 float RadicalInverse_VdC(uint bits) {
-    bits = (bits << 16u) | (bits >> 16u);
-    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
-    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
-    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
-    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
-    return float(bits) * 2.3283064365386963e-10;
+  bits = (bits << 16u) | (bits >> 16u);
+  bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+  bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+  bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+  bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+  return float(bits) * 2.3283064365386963e-10;
 }
 vec2 Hammersley(uint i, uint N) {
-    return vec2(float(i)/float(N), RadicalInverse_VdC(i));
+  return vec2(float(i)/float(N), RadicalInverse_VdC(i));
 }
 vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness) {
-    float a = roughness*roughness;
-    float phi = 6.2831853 * Xi.x;
-    float cosTheta = sqrt((1.0 - Xi.y)/(1.0 + (a*a - 1.0)*Xi.y));
-    float sinTheta = sqrt(1.0 - cosTheta*cosTheta);
-    vec3 H = vec3(cos(phi)*sinTheta, sin(phi)*sinTheta, cosTheta);
-    vec3 up = abs(N.z) < 0.999 ? vec3(0.0,0.0,1.0) : vec3(1.0,0.0,0.0);
-    vec3 tangentX = normalize(cross(up, N));
-    vec3 tangentY = cross(N, tangentX);
-    return normalize(tangentX*H.x + tangentY*H.y + N*H.z);
+  float a = roughness*roughness;
+  float phi = 6.2831853 * Xi.x;
+  float cosTheta = sqrt((1.0 - Xi.y)/(1.0 + (a*a - 1.0)*Xi.y));
+  float sinTheta = sqrt(1.0 - cosTheta*cosTheta);
+  vec3 H = vec3(cos(phi)*sinTheta, sin(phi)*sinTheta, cosTheta);
+  vec3 up = abs(N.z) < 0.999 ? vec3(0.0,0.0,1.0) : vec3(1.0,0.0,0.0);
+  vec3 tangentX = normalize(cross(up, N));
+  vec3 tangentY = cross(N, tangentX);
+  return normalize(tangentX*H.x + tangentY*H.y + N*H.z);
 }
 float GeometrySchlickGGX(float NdotV, float roughness) {
-    float r = roughness + 1.0;
-    float k = (r*r)/8.0;
-    return NdotV / (NdotV*(1.0 - k) + k);
+  float r = roughness + 1.0;
+  float k = (r*r)/8.0;
+  return NdotV / (NdotV*(1.0 - k) + k);
 }
 float GeometrySmith(float NdotV, float NdotL, float roughness) {
-    return GeometrySchlickGGX(NdotV, roughness) * GeometrySchlickGGX(NdotL, roughness);
+  return GeometrySchlickGGX(NdotV, roughness) * GeometrySchlickGGX(NdotL, roughness);
 }
 vec2 IntegrateBRDF(float NdotV, float roughness) {
-    vec3 V;
-    V.x = sqrt(1.0 - NdotV*NdotV);
-    V.y = 0.0;
-    V.z = NdotV;
+  vec3 V;
+  V.x = sqrt(1.0 - NdotV*NdotV);
+  V.y = 0.0;
+  V.z = NdotV;
 
-    float A = 0.0;
-    float B = 0.0;
-    vec3 N = vec3(0.0,0.0,1.0);
+  float A = 0.0;
+  float B = 0.0;
+  vec3 N = vec3(0.0,0.0,1.0);
 
-    const uint SAMPLE_COUNT = 256u;
-    for(uint i = 0u; i < SAMPLE_COUNT; ++i) {
-        vec2 Xi = Hammersley(i, SAMPLE_COUNT);
-        vec3 H = ImportanceSampleGGX(Xi, N, roughness);
-        vec3 L = normalize(2.0 * dot(V,H) * H - V);
-        float NdotL = max(L.z, 0.0);
-        float NdotH = max(H.z, 0.0);
-        float VdotH = max(dot(V,H), 0.0);
-        if(NdotL > 0.0) {
-            float G = GeometrySmith(NdotV, NdotL, roughness);
-            float G_Vis = (G * VdotH) / (NdotH * NdotV);
-            float Fc = pow(1.0 - VdotH, 5.0);
-            A += (1.0 - Fc) * G_Vis;
-            B += Fc * G_Vis;
-        }
+  const uint SAMPLE_COUNT = 256u;
+  for(uint i = 0u; i < SAMPLE_COUNT; ++i) {
+    vec2 Xi = Hammersley(i, SAMPLE_COUNT);
+    vec3 H = ImportanceSampleGGX(Xi, N, roughness);
+    vec3 L = normalize(2.0 * dot(V,H) * H - V);
+    float NdotL = max(L.z, 0.0);
+    float NdotH = max(H.z, 0.0);
+    float VdotH = max(dot(V,H), 0.0);
+    if(NdotL > 0.0) {
+      float G = GeometrySmith(NdotV, NdotL, roughness);
+      float G_Vis = (G * VdotH) / (NdotH * NdotV);
+      float Fc = pow(1.0 - VdotH, 5.0);
+      A += (1.0 - Fc) * G_Vis;
+      B += Fc * G_Vis;
     }
-    A /= float(SAMPLE_COUNT);
-    B /= float(SAMPLE_COUNT);
-    return vec2(A,B);
+  }
+  A /= float(SAMPLE_COUNT);
+  B /= float(SAMPLE_COUNT);
+  return vec2(A,B);
 }
 void main(){
-    fragColor = IntegrateBRDF(vUV.x, vUV.y);
+  fragColor = IntegrateBRDF(vUV.x, vUV.y);
 }`;
 
-// 3️⃣ Kompajliraj i renderuj
 const vs = gl.createShader(gl.VERTEX_SHADER);
 gl.shaderSource(vs, vsSrc);
 gl.compileShader(vs);
@@ -1021,58 +1033,76 @@ const prog = gl.createProgram();
 gl.attachShader(prog, vs);
 gl.attachShader(prog, fs);
 gl.linkProgram(prog);
+gl.useProgram(prog);
 
 const quad = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, quad);
-gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
-
-gl.viewport(0,0,LUT_SIZE,LUT_SIZE);
-gl.useProgram(prog);
-gl.bindFramebuffer(gl.FRAMEBUFFER, brdfFBO);
-gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,3,-1,-1,3]), gl.STATIC_DRAW);
 gl.enableVertexAttribArray(0);
 gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+gl.viewport(0,0,LUT_SIZE,LUT_SIZE);
+gl.bindFramebuffer(gl.FRAMEBUFFER, brdfFBO);
 gl.drawArrays(gl.TRIANGLES, 0, 3);
-
-// očisti
-gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+gl.bindFramebuffer(gl.FRAMEBUFFER,null);
 gl.deleteFramebuffer(brdfFBO);
 gl.deleteBuffer(quad);
 gl.deleteProgram(prog);
 
 
-  await initWater(gl);
-  await initSky(gl);
-
-  // ✅ Proceduralni env iz neba
-
-  envTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
-    ...DEFAULT_SKY,
-    sunColor: SUN.color,
-    sunIntensity: SUN.intensity,
-    useTonemap: false,
-    hideSun: true, // 👈 NOVO
-  });
-
-  cubeMaxMip = Math.floor(Math.log2(envSize));
-
-  ({ proj, view, camWorld } = camera.updateView());
-    // === PREWARM SSAO ===
-  generateSSAOKernel();
-  generateNoiseTexture();
-  createSSAOBuffers(Math.round(canvas.width * 1.0), Math.round(canvas.height * 1.0));
-
-  // Nacrtaj SSAO jednom pre loop-a da popuni teksture
-  gl.bindFramebuffer(gl.FRAMEBUFFER, ssaoFBO);
-  gl.clearColor(1, 1, 1, 1);
-  gl.clear(gl.COLOR_BUFFER_BIT);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-  gl.bindFramebuffer(gl.FRAMEBUFFER, ssaoBlurFBO);
-  gl.clearColor(1, 1, 1, 1);
-  gl.clear(gl.COLOR_BUFFER_BIT);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return true;
+  } catch (err) {
+    console.error("[initScene] Failed:", err);
+    alert("Scene initialization failed — check console.");
+    return false;
+  }
 }
+
+// ✅ Glavna sekvenca
+async function initializeApp() {
+  showLoading();
+  const glOk = await initGL();
+  if (!glOk) return;
+
+  const shadersOk = await initShaders();
+  if (!shadersOk) return;
+
+  const sceneOk = await initScene();
+  if (!sceneOk) return;
+
+  try {
+    await loadDefaultModel(DEFAULT_MODEL);
+
+    // ⚠️ Sačekaj da se shaderi validno linkuju pre prvog rendera
+    if (!program || !(program instanceof WebGLProgram)) {
+      console.error("❌ Main PBR program nije ispravno učitan.");
+      alert("Shader link error — proveri log u konzoli (verovatno pbr.frag).");
+      return;
+    }
+
+    sceneChanged = true;
+    render();
+    initUI({ render, BOAT_INFO, VARIANT_GROUPS, BASE_PRICE, SIDEBAR_INFO });
+    Object.assign(window, {
+      gl, camera, nodesMeta, modelBaseColors, modelBaseTextures,
+      savedColorsByPart, showDimensions, showWater, SIDEBAR_INFO,
+      VARIANT_GROUPS, BASE_PRICE, BOAT_INFO, thumbnails, currentParts,
+      render, replaceSelectedWithURL, focusCameraOnNode, setWeather,
+      proj, view, camWorld, exportPDF
+    });
+    renderLoop();
+    renderBoatInfo(BOAT_INFO);
+    generateAllThumbnails().then(refreshThumbnailsInUI).catch(console.warn);
+    setTimeout(() => preloadAllVariants().catch(console.warn), 2000);
+  } catch (err) {
+    console.error("[initializeApp] Failed:", err);
+    alert("App initialization failed — check console.");
+  } finally {
+    hideLoading();
+  }
+}
+
+// 🚀 Pokretanje
+initializeApp();
 
 function computeLightBounds(min, max, lightView) {
   const corners = [
@@ -2592,48 +2622,4 @@ if (import.meta.hot) {
     lose?.loseContext();
   });
 }
-
-init().then(async () => {
-    await loadDefaultModel(DEFAULT_MODEL);
-  sceneChanged = true;
-  render();
-  initUI({ render, BOAT_INFO, VARIANT_GROUPS, BASE_PRICE, SIDEBAR_INFO });
-Object.assign(window, {
-  gl,
-  camera,
-  nodesMeta,
-  modelBaseColors,
-  modelBaseTextures,
-  savedColorsByPart,
-  showDimensions,
-  showWater,
-  SIDEBAR_INFO,
-  VARIANT_GROUPS,
-  BASE_PRICE,
-  BOAT_INFO,
-  thumbnails,
-  currentParts,
-  render,
-  replaceSelectedWithURL,
-  focusCameraOnNode,
-  setWeather,
-  proj,
-  view,
-  camWorld,
-  exportPDF 
-});
-  renderLoop();
-  renderBoatInfo(BOAT_INFO);
-  generateAllThumbnails()
-    .then(() => {
-      refreshThumbnailsInUI();
-      hideLoading();
-    })
-    .catch(() => {
-      hideLoading();
-    });
-  setTimeout(() => {
-    preloadAllVariants().then(() => {});
-  }, 2000);
-});
 
