@@ -17,6 +17,7 @@ uniform samplerCube uEnvMap;
 uniform float uRoughness;
 uniform float uSpecularStrength;
 uniform vec3 uCameraPos;
+uniform float uGlobalExposure;
 
 out vec4 fragColor;
 
@@ -64,7 +65,7 @@ void main() {
     vec3 sunColor = mix(uSunColor, vec3(1.0), 0.25); // 25% manje saturacije
 
     // *** Smanji uticaj direktnog sunca (reflection pass) ***
-    vec3 direct = (kd * albedo * nl + specBRDF * uSpecularStrength) * sunColor * uSunIntensity * 0.35;
+    vec3 direct = (kd * albedo * nl + specBRDF * uSpecularStrength) * sunColor * uSunIntensity * uGlobalExposure;
 
     // Environment (refleksija i difuzno)
     float envMip = 7.0;
@@ -72,7 +73,7 @@ void main() {
     vec3 envSpecular = textureLod(uEnvMap, R, roughness * envMip).rgb;
 
     // Pojačaj ambient refleksiju
-    vec3 color = direct + envDiffuse * kd * albedo * 0.50 + envSpecular * F * 1.05;
+    vec3 color = direct + envDiffuse * kd * albedo + envSpecular * F * 1.05;
 
     fragColor = vec4(color, 1.0);
 }

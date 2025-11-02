@@ -9,7 +9,6 @@ let skyUniforms = {}; // ⚙️ NOVO
 
 // ===== Default sky params (bez SUN — njega prosleđuje main.js) =====
 export const DEFAULT_SKY = {
-  exposure: 0.8,
   zenith: [0.12, 0.25, 0.6],
   horizon: [0.8, 0.9, 1.0],
   ground: [0.012, 0.01, 0.01],
@@ -139,8 +138,8 @@ uniform int   uUseTonemap;
 uniform vec3  uSunDir;
 uniform vec3  uSunColor;
 uniform float uSunIntensity;
-
-uniform float uExposure;
+uniform int uHideSun;
+uniform float uGlobalExposure;
 uniform float uSunSizeDeg, uSunHaloScale;
 uniform float uHorizonSoft, uHorizonLift;
 uniform float uRayleighStrength, uMieStrength;
@@ -313,10 +312,13 @@ cloudCol = mix(cloudCol, vec3(0.9, 0.9, 0.95), 1.0 - heightMix);
     float sunSize  = radians(uSunSizeDeg);
     float ang      = acos(cosToSun);
     float disk = exp(-pow(ang/(sunSize*0.9), 2.0));
+    float limb = exp(-pow(ang/(sunSize*2.2), 2.0)); // uže, izraženije
+    vec3  sunLight = uSunColor * (disk*uSunIntensity + limb*(uSunIntensity*0.18));
 
-  float limb = exp(-pow(ang/(sunSize*2.2), 2.0)); // uže, izraženije
-  vec3  sunLight = uSunColor * (disk*uSunIntensity + limb*(uSunIntensity*0.18));
-
+// ako je uHideSun == 1, izbaci disk i halo
+if (bool(uHideSun)) {
+    sunLight = vec3(0.0);
+}
 
     float g = 0.8;
     float mie = (1.0 - g*g) / pow(1.0 + g*g - 2.0*g*cosToSun, 1.5);
@@ -333,24 +335,17 @@ cloudCol = mix(cloudCol, vec3(0.9, 0.9, 0.95), 1.0 - heightMix);
   
 
     // === 5. Finalna kompozicija ===
-    vec3 color = (base * skyMask * uSunIntensity) +
-                 (sunLight * skyMask) +
-                 groundBase;
+// više HDR energije za sun disk i scatter
+vec3 color = (base * skyMask * uSunIntensity) +
+             (sunLight * skyMask * 10.0) +   // 15x jače sunce
+             groundBase;
 
     // Fade celo nebo kad je noć (noć je nightAmt)
     color = mix(color, nightZenith, nightAmt*0.95);
 
-vec3 mapped = color * uExposure;
-
-if (uUseTonemap == 1) {
-    mapped = ACESFilm(mapped);
-    mapped = pow(mapped, vec3(1.0/2.2));
-} else {
-    mapped = clamp(mapped, 0.0, 1.0);
-}
-
-fragColor = vec4(mapped, 1.0);
-
+// linear HDR output (ACES tonemap ide kasnije u glavnom passu)
+vec3 hdrColor = color * uGlobalExposure;
+fragColor = vec4(hdrColor, 1.0);
 }
 
 `;
@@ -359,17 +354,15 @@ fragColor = vec4(mapped, 1.0);
 
   // ⚙️ NOVO: keš uniform lokacija
   const names = [
-    "uView","uProj","uSunDir","uSunColor","uSunIntensity","uCameraHeight",
-    "uCloudHeight","uCloudThickness","uCloudSpeed","uExposure","uSunSizeDeg",
+    "uView","uProj","uSunDir","uSunColor","uSunIntensity","uHideSun","uCameraHeight",
+    "uCloudHeight","uCloudThickness","uCloudSpeed","uGlobalExposure","uSunSizeDeg",
     "uSunHaloScale","uHorizonSoft","uHorizonLift","uHorizonDesat","uTurbidity",
     "uSaturation","uMilkBandStrength","uMilkBandWidth","uWarmBandStrength",
     "uWarmBandWidth","uHorizonWarmth","uRayleighStrength","uMieStrength",
     "uZenithDesat","uGroundScatter","uWorldLocked","uModel","uUseTonemap","uTime"
   ];
   for (const n of names) skyUniforms[n] = gl.getUniformLocation(skyProg, n);
-
-
-  
+ 
 }
 
 
@@ -388,7 +381,7 @@ function applySkyUniforms(gl, view, proj, sunDir, opts) {
   gl.uniform3fv(skyUniforms.uSunDir, sunDir || [0, 1, 0]);
   gl.uniform3fv(skyUniforms.uSunColor, o.sunColor || [1, 1, 1]);
   gl.uniform1f(skyUniforms.uSunIntensity, o.sunIntensity ?? 1.0);
-
+  gl.uniform1i(skyUniforms.uHideSun, o.hideSun ? 1 : 0);
   // konstante koje se obično ne menjaju, ali ostaju tu da engine ne pukne
   gl.uniform1f(skyUniforms.uCameraHeight, 20.0);
   gl.uniform1f(skyUniforms.uCloudHeight, 180.0);
@@ -396,7 +389,7 @@ function applySkyUniforms(gl, view, proj, sunDir, opts) {
   gl.uniform1f(skyUniforms.uCloudSpeed, 0.0);
 
   // parametri neba
-  gl.uniform1f(skyUniforms.uExposure, o.exposure);
+  gl.uniform1f(skyUniforms.uGlobalExposure, window.globalExposure * SUN.intensity);
   gl.uniform1f(skyUniforms.uSunSizeDeg, o.sunSizeDeg);
   gl.uniform1f(skyUniforms.uSunHaloScale, o.sunHaloScale);
   gl.uniform1f(skyUniforms.uHorizonSoft, o.horizonSoft);

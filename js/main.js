@@ -7,6 +7,7 @@ import { DEFAULT_SKY } from "./sky.js";
 import {MAX_FPS,DEFAULT_MODEL,BASE_PRICE,VARIANT_GROUPS,BOAT_INFO,SIDEBAR_INFO } from "./config.js";
 import {mat4mul,persp,ortho,look,composeTRS,computeBounds,mulMat4Vec4, v3,} from "./math.js";
 import { initUI, renderBoatInfo, showPartInfo, showLoading, hideLoading } from "./ui.js";
+
 let sceneChanged = true;
 let pbrUniforms = {};
 let reflectionUniforms = {};
@@ -874,18 +875,20 @@ async function initShaders() {
     const blurFragSrc = await loadShader("../shaders/blur.frag");
     blurProgram = createShaderProgram(gl, quadVertSrc, blurFragSrc);
 
-const ssrFragSrc = await loadShader("../shaders/ssr_viewspace.frag");
-const ssrProgram = createShaderProgram(gl, quadVertSrc, ssrFragSrc);
-window.ssrProgram = ssrProgram;
-window.ssrUniforms = {
-  gPosition: gl.getUniformLocation(ssrProgram, "gPosition"),
-  gNormal: gl.getUniformLocation(ssrProgram, "gNormal"),
-  gMaterial: gl.getUniformLocation(ssrProgram, "gMaterial"), // ← dodaj ovo
-  uSceneColor: gl.getUniformLocation(ssrProgram, "uSceneColor"),
-  uView: gl.getUniformLocation(ssrProgram, "uView"),
-  uProjection: gl.getUniformLocation(ssrProgram, "uProjection"),
-  uResolution: gl.getUniformLocation(ssrProgram, "uResolution"),
-};
+    const ssrFragSrc = await loadShader("../shaders/ssr_viewspace.frag");
+    const ssrProgram = createShaderProgram(gl, quadVertSrc, ssrFragSrc);
+
+    window.ssrProgram = ssrProgram;
+    window.ssrUniforms = {
+      gPosition: gl.getUniformLocation(ssrProgram, "gPosition"),
+      gNormal: gl.getUniformLocation(ssrProgram, "gNormal"),
+      gMaterial: gl.getUniformLocation(ssrProgram, "gMaterial"), // ← dodaj ovo
+      uSceneColor: gl.getUniformLocation(ssrProgram, "uSceneColor"),
+      uView: gl.getUniformLocation(ssrProgram, "uView"),
+      uProjection: gl.getUniformLocation(ssrProgram, "uProjection"),
+      uResolution: gl.getUniformLocation(ssrProgram, "uResolution"),
+    };
+    
     const glassVS = await loadShader("shaders/glass.vert");
     const glassFS = await loadShader("shaders/glass.frag");
     programGlass = createShaderProgram(gl, glassVS, glassFS);
@@ -905,15 +908,16 @@ window.ssrUniforms = {
     program = createShaderProgram(gl, quadVertSrc, pbrFragSrc);
 
     // === 2. Keš uniform lokacija ===
-    const uniformNamesPBR = [
-      "uView", "uProjection", "uLightVP", "uCameraPos",
-      "uSunDir", "uSunColor", "uSunIntensity",
-      "uCubeMaxMip", "uEnvMap", "uBRDFLUT", "uShadowMap",
-      "uResolution", "gPosition", "gNormal", "gAlbedo",
-      "gMaterial", "ssao", "tBentNormalAO", "uSceneColor",
-      "uLightSize", "uShadowMapSize", "uNormalBias",
-      "uBiasBase", "uBiasSlope"
-    ];
+  const uniformNamesPBR = [
+    "uView","uProjection","uLightVP","uCameraPos",
+    "uSunDir","uSunColor","uSunIntensity",
+    "uCubeMaxMip","uEnvMap","uBRDFLUT","uShadowMap",
+    "uResolution","gPosition","gNormal","gAlbedo",
+    "gMaterial","ssao","tBentNormalAO","uSceneColor",
+    "uLightSize","uShadowMapSize","uNormalBias",
+    "uBiasBase","uBiasSlope",
+    "uGlobalExposure" // 👈 dodaj ovo
+  ];
     const getLocs = (prog, names) => {
       const out = {};
       for (const n of names) out[n] = gl.getUniformLocation(prog, n);
@@ -981,11 +985,12 @@ window.ssrUniforms = {
     // === 3. Init PBR konstantnih uniforma ===
     gl.useProgram(program);
     gl.uniform1f(pbrUniforms.uLightSize, 0.00025);
+    window.globalExposure = 0.8; // globalni exposure za sve svetlo
+    gl.uniform1f(pbrUniforms.uGlobalExposure, window.globalExposure);
     gl.uniform2f(pbrUniforms.uShadowMapSize, SHADOW_RES, SHADOW_RES);
     gl.uniform1f(pbrUniforms.uNormalBias, 0.005);
     gl.uniform1f(pbrUniforms.uBiasBase, 0.0005);
     gl.uniform1f(pbrUniforms.uBiasSlope, 0.0015);
-
     gl.uniform1i(pbrUniforms.gPosition, 0);
     gl.uniform1i(pbrUniforms.gNormal, 1);
     gl.uniform1i(pbrUniforms.gAlbedo, 2);
@@ -1420,6 +1425,7 @@ if (shadowDirty) {
       worldLocked: 1,
       sunColor: SUN.color,
       sunIntensity: SUN.intensity,
+      hideSun: true, // ✅ ključna linija
       useTonemap: false,
     });
 
@@ -1637,6 +1643,7 @@ if (originalParts[i]?.roughnessTex) {
     gl.uniform3fv(pbrUniforms.uSunDir, SUN.dir);
     gl.uniform3fv(pbrUniforms.uSunColor, SUN.color);
     gl.uniform1f(pbrUniforms.uSunIntensity, SUN.intensity);
+    gl.uniform1f(pbrUniforms.uGlobalExposure, window.globalExposure);
     gl.uniform1f(pbrUniforms.uCubeMaxMip, cubeMaxMip);
     gl.bindVertexArray(quadVAO);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -1688,7 +1695,8 @@ if (originalParts[i]?.roughnessTex) {
       shadowDepthTex,
       lightVP,
       reflectionTex,
-      mat4mul(proj, reflView)
+      mat4mul(proj, reflView),
+      window.globalExposure // 👈 ovo dodaj
     );
   }
 

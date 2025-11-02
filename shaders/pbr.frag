@@ -21,6 +21,7 @@ uniform float uSunIntensity;
 uniform float uBiasBase, uBiasSlope;
 uniform vec2  uShadowMapSize;
 uniform float uCubeMaxMip;
+uniform float uGlobalExposure;
 
 /* ---------- helpers ---------- */
 vec3 fresnelSchlick(float c, vec3 F0){ return F0 + (1.0-F0)*pow(1.0-c,5.0); }
@@ -159,8 +160,12 @@ void main(){
     float aoUsed   = mix(0.3, aoLin, AO_STRENGTH);   // slabiji uticaj AO
     aoUsed         = max(aoUsed, AO_FLOOR);          // pod
 
-    vec3 ambient = envBent * aoUsed;
-    vec3 radiance  = uSunColor * uSunIntensity;
+        // procena koliko je sunce nisko
+    float skyBoost = smoothstep(0.0, 0.2, clamp(normalize(uSunDir).y, 0.0, 1.0));
+    // kada je sunce nisko (zalazak/noć) — pojačaj nebo
+    float envIntensity = mix(0.5, 2.0, skyBoost);
+    vec3 ambient = envBent * aoUsed * envIntensity;
+    vec3 radiance = uSunColor * uSunIntensity * uGlobalExposure;
 
     /* --- Specular IBL — spec occlusion nikad ne spusti ispod MIN --- */
     float mip    = clamp(rough * uCubeMaxMip, 0.0, uCubeMaxMip);

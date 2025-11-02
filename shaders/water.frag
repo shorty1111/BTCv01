@@ -29,10 +29,11 @@ uniform float       uRoughness;
 uniform float       uSpecularStrength;
 uniform vec3        uDeepColor;
 uniform vec3        uShallowColor;
-// uniform mat4        uLightVP;
+// uniform mat4     uLightVP;
 uniform mat4        uReflectionMatrix;
 uniform float       uWaterLevel;
 uniform float       uBottomOffsetM;
+uniform float       uGlobalExposure;
 
 
 // === PARAMETRI ===
@@ -152,7 +153,7 @@ vec3 n3 = texture(waterNormalTex, vUV * 6.5 + scroll3).xyz * 2.0 - 1.0;
     float sunHighlight = pow(envSeesSun, 800.0);
 
     // Dodaj wave mask
-    sunHighlight *= vWaveMask * 1.0;
+    sunHighlight *= vWaveMask;
 
     // EKSTREMNO JAK HAJLAJT
     vec3 sunSpecular = sunHighlight * uSunColor * uSunIntensity * NdotL;
@@ -170,7 +171,8 @@ vec3 n3 = texture(waterNormalTex, vUV * 6.5 + scroll3).xyz * 2.0 - 1.0;
     float reflectionFade = mix(0.2, 1.0, horizonFade);
 
     // --- Bazna boja ---
-    vec3 baseColor = mix(uShallowColor, uDeepColor, pow(depthFactor, DEPTH_CURVE)) * uSunColor;
+    vec3 baseColor = mix(uShallowColor, uDeepColor, pow(depthFactor, DEPTH_CURVE))
+               * uSunColor * uSunIntensity * uGlobalExposure;
 
     // --- Fresnel ---
     vec3 F0 = vec3(0.02, 0.025, 0.03);  // ovde boostuje refleksiju na vodi kao staklo.ogledalo ..malo boje za varijaciju!
@@ -200,7 +202,7 @@ vec3 n3 = texture(waterNormalTex, vUV * 6.5 + scroll3).xyz * 2.0 - 1.0;
     vec3 sssColor   = mix(uShallowColor, warmTint, sunFacing * 0.8);
     vec3 falloff    = exp(-SSS_FALLOFF * depthM);
     vec3 sssLight   = uSunColor * sssColor * backLit * (1.0 - falloff) * sunFacing * 0.05;
-    sssLight *= SSS_STRENGTH * uSunIntensity;
+    sssLight *= SSS_STRENGTH * uSunIntensity * uGlobalExposure;
 
     // --- Crest ---
     float h = clamp(vWaveHeight * 0.5 + 0.5, 0.0, 1.0);

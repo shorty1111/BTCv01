@@ -16,7 +16,7 @@ uniform vec3  uBaseColor;
 uniform float uRoughness;
 uniform float uOpacity;
 uniform float uIOR;
-uniform float uExposure;
+
 
 vec3 fresnelSchlick(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);

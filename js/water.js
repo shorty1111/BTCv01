@@ -213,16 +213,17 @@ export async function initWater(gl) {
 
   waterProgram = createShaderProgram(gl, vsSource, fsSource);
   // --- CACHE SVIH UNIFORM LOKACIJA ---
-const uniformNames = [
-  "uProjection", "uView", "uModel", "uTime", "uBoatPos",
-  "uGlobalSpeed", "uCameraPos", "uSunDir", "uSunColor",
-  "uSunIntensity", "uOpacity", "uRoughness", "uSpecularStrength",
-  "uWaterLevel", "uBottomOffsetM", "uCubeMaxMip", "uWaterNormal",
-  "uEnvTex", "uSceneDepth", "uSceneColor", "uReflectionTex",
-  "uReflectionMatrix", "uWaterHeight", "uNear", "uFar", "uViewportSize",
-  "uShallowColor", "uDeepColor", "uShadowMap", "uLightVP",
-  "uGridOffset"
-];
+  const uniformNames = [
+    "uProjection", "uView", "uModel", "uTime", "uBoatPos",
+    "uGlobalSpeed", "uCameraPos", "uSunDir", "uSunColor",
+    "uSunIntensity", "uOpacity", "uRoughness", "uSpecularStrength",
+    "uWaterLevel", "uBottomOffsetM", "uCubeMaxMip", "uWaterNormal",
+    "uEnvTex", "uSceneDepth", "uSceneColor", "uReflectionTex",
+    "uReflectionMatrix", "uWaterHeight", "uNear", "uFar", "uViewportSize",
+    "uShallowColor", "uDeepColor", "uShadowMap", "uLightVP",
+    "uGridOffset", 
+    "uGlobalExposure" // 👈 DODAJ OVDE
+  ];
 
   for (const name of uniformNames) {
     waterUniforms[name] = gl.getUniformLocation(waterProgram, name);
@@ -384,6 +385,8 @@ export function drawWater(
   gl.uniform3fv(waterUniforms.uSunDir, sunDir);
   gl.uniform3fv(waterUniforms.uSunColor, sunColor);
   gl.uniform1f(waterUniforms.uSunIntensity, sunIntensity);
+  gl.uniform1f(waterUniforms.uGlobalExposure, window.globalExposure);
+
 
   // === TEKSTURE (optimizovano) ===
   boundTex.fill(null); // resetuj cache da ne preskoči novi reflectionTex
