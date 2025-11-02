@@ -903,6 +903,12 @@ async function initShaders() {
       uUseBaseColorTex: gl.getUniformLocation(gBufferProgram, "uUseBaseColorTex"),
     };
 
+      window.gBufferUniforms.uNormalTex = gl.getUniformLocation(gBufferProgram, "uNormalTex");
+      window.gBufferUniforms.uUseNormalTex = gl.getUniformLocation(gBufferProgram, "uUseNormalTex");
+      window.gBufferUniforms.uRoughnessTex = gl.getUniformLocation(gBufferProgram, "uRoughnessTex");
+      window.gBufferUniforms.uUseRoughnessTex = gl.getUniformLocation(gBufferProgram, "uUseRoughnessTex");
+
+
     window.glassUniforms = {
       uView: gl.getUniformLocation(programGlass, "uView"),
       uProjection: gl.getUniformLocation(programGlass, "uProjection"),
@@ -956,6 +962,12 @@ async function initShaders() {
 
 // ✅ Faza 3 — resursi i scena (voda, nebo, BRDF LUT, env map)
 async function initScene() {
+  const whitePixel = new Uint8Array([255, 255, 255, 255]);
+  window.whiteTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, window.whiteTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, whitePixel);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   try {
     await initWater(gl);
     await initSky(gl);
@@ -1422,6 +1434,7 @@ if (shadowDirty) {
   gl.viewport(0, 0, canvas.width, canvas.height);
   gl.bindFramebuffer(gl.FRAMEBUFFER, gBuffer);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  
   gl.enable(gl.DEPTH_TEST);
   gl.depthMask(true);
   gl.useProgram(gBufferProgram);
@@ -1441,10 +1454,34 @@ if (shadowDirty) {
     } else {
       gl.uniform1i(gBufferUniforms.uUseBaseColorTex, 0);
     }
+
+      // 🔹 Normal mapa
+    if (originalParts[i]?.normalTex) {
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, originalParts[i].normalTex);
+      gl.uniform1i(gBufferUniforms.uNormalTex, 1);
+      gl.uniform1i(gBufferUniforms.uUseNormalTex, 1);
+    } else {
+      gl.uniform1i(gBufferUniforms.uUseNormalTex, 0);
+    }
+
+    // 🔹 Roughness mapa
+if (originalParts[i]?.roughnessTex) {
+  gl.activeTexture(gl.TEXTURE2);
+  gl.bindTexture(gl.TEXTURE_2D, originalParts[i].roughnessTex);
+  gl.uniform1i(gBufferUniforms.uRoughnessTex, 2);
+  gl.uniform1i(gBufferUniforms.uUseRoughnessTex, 1);
+} else {
+  gl.activeTexture(gl.TEXTURE2);
+  gl.bindTexture(gl.TEXTURE_2D, window.whiteTex); // ✅ fallback
+  gl.uniform1i(gBufferUniforms.uRoughnessTex, 2);
+  gl.uniform1i(gBufferUniforms.uUseRoughnessTex, 0);
+}
+
     gl.bindVertexArray(modelVAOs[i]);
     gl.drawElements(gl.TRIANGLES, idxCounts[i], idxTypes[i], 0);
   }
-
+  
   if (ssaoDirty) {
     // === SSAO PASS ===
     gl.bindFramebuffer(gl.FRAMEBUFFER, ssaoFBO);
@@ -1853,6 +1890,8 @@ async function loadGLB(buf) {
       const baseColorFactor = pbr.baseColorFactor || [1, 1, 1, 1];
       const baseColor = new Float32Array(baseColorFactor.slice(0, 3));
       let baseColorTex = null;
+      let normalTex = null;
+      let roughnessTex = null;
 
       const metallic =
         typeof pbr.metallicFactor === "number" ? pbr.metallicFactor : 1.0;
@@ -1867,7 +1906,15 @@ async function loadGLB(buf) {
       if (typeof baseColorTexIndex === "number") {
         baseColorTex = loadTextureFromImage(gltf, bin, baseColorTexIndex);
       }
+      // 🔹 Ako postoji normal mapa — učitaj je
+      if (mat.normalTexture && typeof mat.normalTexture.index === "number") {
+        normalTex = loadTextureFromImage(gltf, bin, mat.normalTexture.index);
+      }
 
+      // 🔹 Ako postoji metallic+roughness mapa — učitaj je
+      if (pbr.metallicRoughnessTexture && typeof pbr.metallicRoughnessTexture.index === "number") {
+        roughnessTex = loadTextureFromImage(gltf, bin, pbr.metallicRoughnessTexture.index);
+      }
       /* ----- Geometrija ----- */
       const pa = ac[pr.attributes.POSITION];
       const pv = bv[pa.bufferView];
@@ -1876,7 +1923,13 @@ async function loadGLB(buf) {
       const na = ac[pr.attributes.NORMAL];
       const nv = bv[na.bufferView];
       const nor = new Float32Array(bin, nv.byteOffset, na.count * 3);
-
+      // ✅ NOVO: Tangenti (ako ih ima u glb fajlu)
+      let tangents = null;
+      if (pr.attributes.TANGENT !== undefined) {
+        const ta = ac[pr.attributes.TANGENT];
+        const tv = bv[ta.bufferView];
+        tangents = new Float32Array(bin, tv.byteOffset, ta.count * 4); // x,y,z,w
+      }
       const ia = ac[pr.indices];
       const iv = bv[ia.bufferView];
       const ind =
@@ -1900,10 +1953,14 @@ async function loadGLB(buf) {
       const vao = gl.createVertexArray();
       gl.bindVertexArray(vao);
 
-      const stride = (uvArray ? 8 : 6) * 4;
+      const hasTangent = !!tangents;
+      const stride = (hasTangent ? 12 : (uvArray ? 8 : 6)) * 4;
       const interleaved = new Float32Array(
-        pos.length + nor.length + (uvArray ? uvArray.length : 0)
+        pos.length + nor.length +
+        (uvArray ? uvArray.length : 0) +
+        (hasTangent ? tangents.length : 0)
       );
+
       for (let i = 0, j = 0; i < pos.length / 3; ++i) {
         interleaved[j++] = pos[i * 3];
         interleaved[j++] = pos[i * 3 + 1];
@@ -1914,6 +1971,12 @@ async function loadGLB(buf) {
         if (uvArray) {
           interleaved[j++] = uvArray[i * 2];
           interleaved[j++] = uvArray[i * 2 + 1];
+        }
+        if (hasTangent) {
+          interleaved[j++] = tangents[i * 4];
+          interleaved[j++] = tangents[i * 4 + 1];
+          interleaved[j++] = tangents[i * 4 + 2];
+          interleaved[j++] = tangents[i * 4 + 3]; // handedness (sign)
         }
       }
 
@@ -1928,7 +1991,11 @@ async function loadGLB(buf) {
         gl.enableVertexAttribArray(2);
         gl.vertexAttribPointer(2, 2, gl.FLOAT, false, stride, 24);
       }
-
+      if (hasTangent) {
+        const offset = uvArray ? 32 : 24;
+        gl.enableVertexAttribArray(3);
+        gl.vertexAttribPointer(3, 4, gl.FLOAT, false, stride, offset);
+      }
       const eb = gl.createBuffer();
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, eb);
       gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, ind, gl.STATIC_DRAW);
@@ -1994,6 +2061,8 @@ async function loadGLB(buf) {
           ind: ind.slice(),
           opacity, // 👈 dodato
           alphaMode: alphaMode, // 👈 dodato
+          normalTex,
+          roughnessTex,
         };
         if (!realOriginalParts[renderIdx]) {
           realOriginalParts[renderIdx] = {
@@ -2306,7 +2375,9 @@ async function parseGLBToPrepared(buf, url) {
 
 async function replaceSelectedWithURL(url, variantName, partName) {
   showLoading();
+  
   const node = nodesMeta.find((n) => n.name === partName);
+  
   if (node && currentParts[partName]?.name !== variantName) {
   delete node.cachedBounds;
 }
