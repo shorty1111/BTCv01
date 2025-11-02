@@ -7,10 +7,10 @@ uniform sampler2D uBloom;
 out vec4 fragColor;
 
 vec3 ACESFilm(vec3 x) {
-float a = 2.5;
+float a = 3.05;
 float b = 0.05;
 float c = 2.0;
-float d = 0.4;
+float d = 0.5;
 float e = 0.1;
     return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
 }
@@ -28,7 +28,7 @@ col = pow(col, vec3(1.0));
 col *= vec3(1.15, 1.1, 1.1);
 float lift = 0.09;
 col = mix(vec3(lift), col, 0.88);
-col = mix(col, ACESFilm(col * 1.1), 0.5);
+col = mix(col, ACESFilm(col * 1.1), .5);
 float luma = dot(col, vec3(0.299,0.587,0.114));
 col = mix(vec3(luma), col, 0.9);
 col = pow(col, vec3(1.0 / 2.2));

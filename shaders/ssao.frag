@@ -48,7 +48,7 @@ void main() {
 
     float camDepth = -fragPos.z;
     float depthFactor = clamp(camDepth / 50.0, 0.0, 1.0);
-    float radiusScaled = mix(0.2, 8.2, depthFactor);
+    float radiusScaled = mix(0.2, 2.2, depthFactor);
     float adapt    = mix(6.0, 8.0, clamp(camDepth / 100.0, 0.0, 1.0));
 
     // jitter po frame-u

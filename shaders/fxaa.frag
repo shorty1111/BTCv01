@@ -16,8 +16,8 @@ out vec4 fragColor;
 uniform sampler2D uInput;
 uniform vec2 uTexelSize;
 
-const float fxaaQualityEdgeThreshold    = 0.125;
-const float fxaaQualityEdgeThresholdMin = 0.0625;
+const float fxaaQualityEdgeThreshold    = 0.025;
+const float fxaaQualityEdgeThresholdMin = 0.0325;
 const vec3  LUMA = vec3(0.299, 0.587, 0.114);
 
 float luminance(vec3 c) { return dot(c, LUMA); }

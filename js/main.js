@@ -91,7 +91,22 @@ function createToneMapTarget(w, h) {
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, toneMapTex, 0);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
+let ssrOutputFBO = null;
+let ssrOutputTex = null;
 
+function createSSROutputTarget(w, h) {
+  ssrOutputTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, ssrOutputTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+  ssrOutputFBO = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, ssrOutputFBO);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, ssrOutputTex, 0);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
 window.pendingTextures = 0;
 let savedColorsByPart = {};
 let reflectionFBO = null;
@@ -433,7 +448,8 @@ function resizeCanvas() {
   createToneMapTarget(canvas.width, canvas.height);
   createReflectionTarget(gl, realW, realH);
   resetBoundTextures();
-  
+  createSSRBuffer(canvas.width, canvas.height);
+  createSSROutputTarget(canvas.width, canvas.height);
   const resMeter = document.getElementById("res-meter");
   if (resMeter) {
     resMeter.textContent = `Render: ${targetW}x${targetH} → ${realW}x${realH} (SSAA ${ssaa.toFixed(
@@ -675,6 +691,23 @@ function createSSAOBuffers(w, h) {
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
+
+let ssrFBO = null;
+let ssrTex = null;
+
+function createSSRBuffer(w, h) {
+  ssrFBO = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, ssrFBO);
+
+  ssrTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, ssrTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.FLOAT, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, ssrTex, 0);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
 function generateSSAOKernel() {
   const lerp = (a, b, f) => a + f * (b - a);
   let kernel = [];
@@ -841,6 +874,18 @@ async function initShaders() {
     const blurFragSrc = await loadShader("../shaders/blur.frag");
     blurProgram = createShaderProgram(gl, quadVertSrc, blurFragSrc);
 
+const ssrFragSrc = await loadShader("../shaders/ssr_viewspace.frag");
+const ssrProgram = createShaderProgram(gl, quadVertSrc, ssrFragSrc);
+window.ssrProgram = ssrProgram;
+window.ssrUniforms = {
+  gPosition: gl.getUniformLocation(ssrProgram, "gPosition"),
+  gNormal: gl.getUniformLocation(ssrProgram, "gNormal"),
+  gMaterial: gl.getUniformLocation(ssrProgram, "gMaterial"), // ← dodaj ovo
+  uSceneColor: gl.getUniformLocation(ssrProgram, "uSceneColor"),
+  uView: gl.getUniformLocation(ssrProgram, "uView"),
+  uProjection: gl.getUniformLocation(ssrProgram, "uProjection"),
+  uResolution: gl.getUniformLocation(ssrProgram, "uResolution"),
+};
     const glassVS = await loadShader("shaders/glass.vert");
     const glassFS = await loadShader("shaders/glass.frag");
     programGlass = createShaderProgram(gl, glassVS, glassFS);
@@ -1798,18 +1843,57 @@ gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
 gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
+// === SSR OVERLAY ===
+gl.bindFramebuffer(gl.FRAMEBUFFER, ssrOutputFBO);
+gl.viewport(0, 0, canvas.width, canvas.height);
+gl.clearColor(0, 0, 0, 1);
+gl.clear(gl.COLOR_BUFFER_BIT);
+gl.disable(gl.DEPTH_TEST);
+gl.enable(gl.BLEND);
+gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+gl.useProgram(window.ssrProgram);
+
+gl.activeTexture(gl.TEXTURE0);
+gl.bindTexture(gl.TEXTURE_2D, gPosition);
+gl.uniform1i(window.ssrUniforms.gPosition, 0);
+
+gl.activeTexture(gl.TEXTURE1);
+gl.bindTexture(gl.TEXTURE_2D, gNormal);
+gl.uniform1i(window.ssrUniforms.gNormal, 1);
+
+gl.activeTexture(gl.TEXTURE2);
+gl.bindTexture(gl.TEXTURE_2D, toneMapTex);
+gl.uniform1i(window.ssrUniforms.uSceneColor, 2);
+
+gl.activeTexture(gl.TEXTURE3);
+gl.bindTexture(gl.TEXTURE_2D, gMaterial);
+gl.uniform1i(window.ssrUniforms.gMaterial, 3);
+
+gl.uniformMatrix4fv(window.ssrUniforms.uView, false, view);
+gl.uniformMatrix4fv(window.ssrUniforms.uProjection, false, proj);
+gl.uniform2f(window.ssrUniforms.uResolution, canvas.width, canvas.height);
+
+gl.bindVertexArray(quadVAO);
+gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+gl.disable(gl.BLEND);
+gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+
 // --- FXAA ---
+gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 gl.viewport(0, 0, canvas.width, canvas.height);
 gl.useProgram(fxaaProgram);
+
 gl.activeTexture(gl.TEXTURE0);
-gl.bindTexture(gl.TEXTURE_2D, toneMapTex);
+gl.bindTexture(gl.TEXTURE_2D, ssrOutputTex); // ✅ sad FXAA vidi SSR rezultat
 gl.uniform1i(gl.getUniformLocation(fxaaProgram, "uInput"), 0);
 gl.uniform2f(gl.getUniformLocation(fxaaProgram, "uResolution"), canvas.width, canvas.height);
+
 gl.bindVertexArray(quadVAO);
 const texelSize = [1.0 / canvas.width, 1.0 / canvas.height];
 gl.uniform2f(gl.getUniformLocation(fxaaProgram, "uTexelSize"), texelSize[0], texelSize[1]);
 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-
 
 // ✅ tek sada resetuj GL stanje
 gl.disable(gl.BLEND);
