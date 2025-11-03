@@ -8,6 +8,7 @@ import {MAX_FPS,DEFAULT_MODEL,BASE_PRICE,VARIANT_GROUPS,BOAT_INFO,SIDEBAR_INFO }
 import {mat4mul,persp,ortho,look,composeTRS,computeBounds,mulMat4Vec4, v3,} from "./math.js";
 import { initUI, renderBoatInfo, showPartInfo, showLoading, hideLoading } from "./ui.js";
 
+
 let sceneChanged = true;
 let pbrUniforms = {};
 let reflectionUniforms = {};
@@ -18,11 +19,13 @@ let ssaoUniforms = {};
 let lastView = new Float32Array(16);
 let lastProj = new Float32Array(16);
 let shadowDirty = true;
-let lastRect = { umin: [0, 0], umax: [1, 1] };
 let ssaoDirty = true;
 let lastViewMatrix = new Float32Array(16);
 let lastSunDir = [0, 0, 0];
 const textureCache = {}; // key = url, value = WebGLTexture
+
+let shadowFBO, shadowDepthTex;
+const SHADOW_RES = 4096;
 
 
 async function preloadAllConfigTextures() {
@@ -92,6 +95,7 @@ function updateSun() {
     SUN.color = [ SUN.color[0] * (0.4 + 0.6 * glow), SUN.color[1] * (0.4 + 0.6 * glow), SUN.color[2] * (0.6 + 0.4 * glow),];
     SUN.intensity *= 0.3 * glow;
   }
+  
 }
 
 function setWeather(presetName) {
@@ -200,7 +204,7 @@ let modelRoughnesses = [];
 let lastFrameTime = 0;
 
 const KERNEL_SIZE = 64;
-const SSAO_NOISE_SIZE = 256;
+const SSAO_NOISE_SIZE = 3;
 const thumbnails = {};
 const cachedVariants = {}; // url -> ArrayBuffer
 const preparedVariants = {}; // url -> [ { vao, count, type, baseColor, metallic, roughness, trisWorld }... ]
@@ -235,7 +239,7 @@ function createReflectionTarget(gl, width, height) {
   
   reflectionTex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, reflectionTex);
-  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,width,height,0,gl.RGBA, gl.UNSIGNED_BYTE,null);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,width,height,0,gl.RGBA, gl.HALF_FLOAT,null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
@@ -465,30 +469,34 @@ function resizeCanvas() {
   let maxRenderW;
   const isMobile = /Mobi|Android|iPhone|iPad|Tablet/i.test(navigator.userAgent);
   if (isMobile) {
-    maxRenderW = Math.min(cssW * 1.0, 1080); // pusti više rezolucije
+    maxRenderW = Math.min(cssW * 1.0, 1080);
   } else {
     maxRenderW = cssW;
   }
-
 
   let targetW = Math.min(cssW, maxRenderW);
   let targetH = Math.round(targetW / aspect);
   const dpr = 1.0;
   const realW = Math.round(targetW * ssaa * dpr);
   const realH = Math.round(targetH * ssaa * dpr);
+
   canvas.width = realW;
   canvas.height = realH;
   canvas.style.width = cssW + "px";
   canvas.style.height = cssH + "px";
   canvas.style.left = sidebarW + "px";
   canvas.style.top = headerH + "px"; 
+
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.bindTexture(gl.TEXTURE_2D, null);
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
   gl.viewport(0, 0, realW, realH);
+
   if (sceneDepthTex) gl.deleteTexture(sceneDepthTex);
   sceneDepthTex = createDepthTexture(realW, realH);
+
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
   createGBuffer(realW, realH);
   createSSAOBuffers(Math.round(realW * 1.0), Math.round(realH * 1.0));
   createFinalColorTarget(canvas.width, canvas.height);
@@ -497,25 +505,25 @@ function resizeCanvas() {
   resetBoundTextures();
   createSSRBuffer(canvas.width, canvas.height);
   createSSROutputTarget(canvas.width, canvas.height);
+
   const resMeter = document.getElementById("res-meter");
   if (resMeter) {
-    resMeter.textContent = `Render: ${targetW}x${targetH} → ${realW}x${realH} (SSAA ${ssaa.toFixed(
-      2
-    )}x)`;
+    resMeter.textContent = `Render: ${targetW}x${targetH} → ${realW}x${realH} (SSAA ${ssaa.toFixed(2)}x)`;
   }
 
-  // 🔹 Resetuj scene color i env state
   if (window.sceneColorTex) {
     gl.deleteTexture(window.sceneColorTex);
     window.sceneColorTex = null;
   }
-
-  // 🔹 Obeleži promenu i ponovo renderuj
-  shadowDirty = true;
-  ssaoDirty = true;
+    ssaoDirty = true;
   sceneChanged = true;
+   camera.moved = true; 
   cleanupGLGarbage();
+  gl.useProgram(program);
+gl.uniform1i(pbrUniforms.uShadowMap, 7); // 🔁 rebinding novog shadowDepthTex
 }
+
+
 export async function exportPDF() {
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF("p", "mm", "a4");
@@ -720,10 +728,21 @@ function createSSAOBuffers(w, h) {
 
   ssaoColorBuffer = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, ssaoColorBuffer);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+ gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, ssaoColorBuffer, 0);
+
+window.ssaoBlurFBO = gl.createFramebuffer();
+gl.bindFramebuffer(gl.FRAMEBUFFER, window.ssaoBlurFBO);
+
+window.ssaoBlurColor = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, window.ssaoBlurColor);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, window.ssaoBlurColor, 0);
+gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
 }
 
@@ -803,9 +822,6 @@ window.addEventListener("resize", () => {
 
 resizeCanvas();
 
-let shadowFBO, shadowDepthTex;
-const SHADOW_RES = 4096;
-
 function initShadowMap() {
   shadowFBO = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFBO);
@@ -822,6 +838,12 @@ function initShadowMap() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   // zakači depth teksturu na FBO
   gl.framebufferTexture2D( gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.TEXTURE_2D,shadowDepthTex,0);
+  const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+if (status !== gl.FRAMEBUFFER_COMPLETE) {
+  console.error("❌ Shadow framebuffer incomplete:", status.toString(16));
+} else {
+  console.log("✅ Shadow framebuffer OK");
+}
   // pošto nemamo color attachment → mora ovako
   gl.drawBuffers([gl.NONE]);
   gl.readBuffer(gl.NONE);
@@ -906,6 +928,13 @@ async function initShaders() {
     const ssaoFragSrc = await loadShader("../shaders/ssao.frag");
     ssaoProgram = createShaderProgram(gl, quadVertSrc, ssaoFragSrc);
 
+    const ssaoBlurFragSrc = await loadShader("../shaders/ssao_blur.frag");
+const ssaoBlurProgram = createShaderProgram(gl, quadVertSrc, ssaoBlurFragSrc);
+window.ssaoBlurProgram = ssaoBlurProgram;
+window.ssaoBlurUniforms = {
+  tSSAO: gl.getUniformLocation(ssaoBlurProgram, "tSSAO"),
+  uTexelSize: gl.getUniformLocation(ssaoBlurProgram, "uTexelSize"),
+};
 
     const ssrFragSrc = await loadShader("../shaders/ssr_viewspace.frag");
     const ssrProgram = createShaderProgram(gl, quadVertSrc, ssrFragSrc);
@@ -948,7 +977,7 @@ async function initShaders() {
     "gMaterial","ssao","tBentNormalAO","uSceneColor",
     "uLightSize","uShadowMapSize","uNormalBias",
     "uBiasBase","uBiasSlope",
-    "uGlobalExposure" // 👈 dodaj ovo
+    "uGlobalExposure", "uTexelSize" // 👈 dodaj ovo
   ];
     const getLocs = (prog, names) => {
       const out = {};
@@ -1022,6 +1051,7 @@ async function initShaders() {
     gl.uniform1f(pbrUniforms.uNormalBias, 0.005);
     gl.uniform1f(pbrUniforms.uBiasBase, 0.0005);
     gl.uniform1f(pbrUniforms.uBiasSlope, 0.0015);
+    gl.uniform2f(pbrUniforms.uTexelSize, 1.0 / canvas.width, 1.0 / canvas.height);
     gl.uniform1i(pbrUniforms.gPosition, 0);
     gl.uniform1i(pbrUniforms.gNormal, 1);
     gl.uniform1i(pbrUniforms.gAlbedo, 2);
@@ -1333,42 +1363,6 @@ function computeLightBounds(min, max, lightView) {
   }
   return { lmin, lmax };
 }
-// === Pomocna funkcija: bounding box modela u ekranske UV koordinate ===
-function getModelScreenRect(proj, view, canvas, min, max) {
-  const corners = [
-    [min[0], min[1], min[2], 1],
-    [max[0], min[1], min[2], 1],
-    [min[0], max[1], min[2], 1],
-    [max[0], max[1], min[2], 1],
-    [min[0], min[1], max[2], 1],
-    [max[0], min[1], max[2], 1],
-    [min[0], max[1], max[2], 1],
-    [max[0], max[1], max[2], 1],
-  ];
-
-  const vp = mat4mul(proj, view);
-  let umin = [1, 1];
-  let umax = [0, 0];
-
-  for (const c of corners) {
-    const v = new Float32Array(4);
-    mulMat4Vec4(v, vp, c);
-    if (v[3] <= 0.0001) continue;
-    const x = (v[0] / v[3]) * 0.5 + 0.5;
-    const y = (v[1] / v[3]) * 0.5 + 0.5;
-    umin[0] = Math.min(umin[0], x);
-    umin[1] = Math.min(umin[1], y);
-    umax[0] = Math.max(umax[0], x);
-    umax[1] = Math.max(umax[1], y);
-  }
-
-  umin[0] = Math.max(0, Math.min(1, umin[0]));
-  umin[1] = Math.max(0, Math.min(1, umin[1]));
-  umax[0] = Math.max(0, Math.min(1, umax[0]));
-  umax[1] = Math.max(0, Math.min(1, umax[1]));
-
-  return { umin, umax };
-}
 
 function render() {
   const timeNow = performance.now() * 0.001; // koristi u SSAO i vodi
@@ -1557,8 +1551,7 @@ if (shadowDirty) {
   gl.enable(gl.DEPTH_TEST);
   gl.depthMask(true);
   gl.useProgram(gBufferProgram);
-  gl.enable(gl.CULL_FACE);
-gl.cullFace(gl.BACK);
+
   gl.uniformMatrix4fv(gBufferUniforms.uProjection, false, proj);
   gl.uniformMatrix4fv(gBufferUniforms.uView, false, view);
   for (let i = 0; i < modelVAOs.length; ++i) {
@@ -1607,88 +1600,6 @@ if (ssaoDirty) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, ssaoFBO);
   gl.useProgram(ssaoProgram);
 
-  // 🔸 izračunaj gde se model projektuje na ekran
-// ✅ osveži kameru pre SSAO, da ne koristi stari view iz prethodnog frame-a
-camera.updateView();
-({ proj, view, camWorld } = camera.updateView());
-
-// ✅ izračunaj raw bounding box
-// Koristi bounding sferu umesto boxa
-const center = window.sceneBoundingCenter;
-const radius = window.sceneBoundingRadius;
-
-// Projiciraj centar
-// --- precizan SSAO rect, stabilan i na zoom i na rotaciju ---
-const vp = mat4mul(proj, view);
-
-// centar u view-space
-const vc = mulMat4Vec4([], view, [center[0], center[1], center[2], 1]);
-// udaljenost od kamere
-const dist = Math.abs(vc[2]);
-const fovY = 60.0 * Math.PI / 180.0; // isti kao u persp()
-const aspect = canvas.width / canvas.height;
-
-// veličina projekcije sfere u ekranskim koordinatama
-const projRadiusY = Math.tan(fovY * 0.5) * radius / dist;
-const projRadiusX = projRadiusY * aspect;
-
-// centar u clip-space
-const c4 = mulMat4Vec4([], vp, [center[0], center[1], center[2], 1]);
-const ndcX = c4[0] / c4[3];
-const ndcY = c4[1] / c4[3];
-
-// ekranski poluprečnici
-const rX = projRadiusX;
-const rY = projRadiusY;
-
-// malo proširi da ne seče ivice
-const expand = 1.25;
-const umin = [
-  Math.max(0, 0.5 + ndcX * 0.5 - rX * expand),
-  Math.max(0, 0.5 + ndcY * 0.5 - rY * expand),
-];
-const umax = [
-  Math.min(1, 0.5 + ndcX * 0.5 + rX * expand),
-  Math.min(1, 0.5 + ndcY * 0.5 + rY * expand),
-];
-
-const rawRect = { umin, umax };
-
-
-// ✅ lagano ujednači kretanje rect-a da ne “pliva”
-const lerp = (a, b, t) => a + (b - a) * t;
-const rect = {
-  umin: [
-    lerp(lastRect.umin[0], rawRect.umin[0], 0.45),
-    lerp(lastRect.umin[1], rawRect.umin[1], 0.45)
-  ],
-  umax: [
-    lerp(lastRect.umax[0], rawRect.umax[0], 0.45),
-    lerp(lastRect.umax[1], rawRect.umax[1], 0.45)
-  ]
-};
-lastRect = { umin: [...rect.umin], umax: [...rect.umax] };
-  
-
-  const uminX = Math.max(0.0, rect.umin[0] - expand);
-  const uminY = Math.max(0.0, rect.umin[1] - expand);
-  const umaxX = Math.min(1.0, rect.umax[0] + expand);
-  const umaxY = Math.min(1.0, rect.umax[1] + expand);
-
-  const vpX = Math.floor(uminX * canvas.width);
-  const vpY = Math.floor(uminY * canvas.height);
-  const vpW = Math.ceil((umaxX - uminX) * canvas.width);
-  const vpH = Math.ceil((umaxY - uminY) * canvas.height);
-
-  // 🔸 ograniči SSAO render samo na region oko modela
-  gl.viewport(vpX, vpY, vpW, vpH);
-  gl.enable(gl.SCISSOR_TEST);
-  gl.scissor(vpX, vpY, vpW, vpH);
-
-  // 🔸 očisti samo unutar scissor regiona
-  gl.clearColor(1, 1, 1, 1);
-  gl.clear(gl.COLOR_BUFFER_BIT);
-
   // --- Textures ---
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, gPosition);
@@ -1719,8 +1630,22 @@ lastRect = { umin: [...rect.umin], umax: [...rect.umax] };
   // ✅ resetuj stanje posle SSAO pasa
   gl.disable(gl.SCISSOR_TEST);
   gl.viewport(0, 0, canvas.width, canvas.height);
+
+// === BLUR SSAO ===
+gl.bindFramebuffer(gl.FRAMEBUFFER, window.ssaoBlurFBO);
+gl.useProgram(window.ssaoBlurProgram);
+gl.activeTexture(gl.TEXTURE0);
+gl.bindTexture(gl.TEXTURE_2D, ssaoColorBuffer);
+gl.uniform1i(window.ssaoBlurUniforms.tSSAO, 0);
+gl.uniform2f(window.ssaoBlurUniforms.uTexelSize, 1.0 / canvas.width, 1.0 / canvas.height);
+gl.bindVertexArray(quadVAO);
+gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+
   ssaoDirty = false;
 }
+
 
     // --- Proceduralno nebo ---
     gl.bindFramebuffer(gl.FRAMEBUFFER, finalFBO);
@@ -1749,7 +1674,7 @@ lastRect = { umin: [...rect.umin], umax: [...rect.umax] };
     gl.bindTexture(gl.TEXTURE_2D, gMaterial);
 
     gl.activeTexture(gl.TEXTURE4);
-    gl.bindTexture(gl.TEXTURE_2D, ssaoColorBuffer);
+   gl.bindTexture(gl.TEXTURE_2D, window.ssaoBlurColor);
 
     gl.activeTexture(gl.TEXTURE5);
     gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
@@ -1761,7 +1686,7 @@ lastRect = { umin: [...rect.umin], umax: [...rect.umax] };
     gl.bindTexture(gl.TEXTURE_2D, shadowDepthTex);
 
     gl.activeTexture(gl.TEXTURE8);
-    gl.bindTexture(gl.TEXTURE_2D, ssaoColorBuffer);
+    gl.bindTexture(gl.TEXTURE_2D, window.ssaoBlurColor);
 
     gl.activeTexture(gl.TEXTURE9);
     gl.bindTexture(gl.TEXTURE_2D, window.sceneColorTex);
@@ -1964,16 +1889,6 @@ gl.depthMask(true);
 gl.depthFunc(gl.LESS);
 gl.cullFace(gl.BACK);
 
-// Ako bloomTex ne postoji, napravi praznu teksturu da se ne ruši
-if (!window.bloomTex) {
-  window.bloomTex = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, window.bloomTex);
-  const black = new Uint8Array([0, 0, 0, 0]);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, black);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-}
-
 // --- tonemap ---
 gl.bindFramebuffer(gl.FRAMEBUFFER, toneMapFBO);
 gl.viewport(0, 0, canvas.width, canvas.height);
@@ -2047,6 +1962,7 @@ gl.depthFunc(gl.LESS);
 gl.enable(gl.CULL_FACE);
 camera.moved = false;
 }
+
 
 let lastTime = performance.now();
 let frameCount = 0;
@@ -2781,7 +2697,6 @@ for (const r of node.renderIdxs) {
   render();
   showPartInfo(variantName);
 }
-
 
 function refreshThumbnailsInUI() {
   document.querySelectorAll(".variant-item").forEach((itemEl) => {

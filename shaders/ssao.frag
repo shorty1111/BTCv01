@@ -17,21 +17,18 @@ uniform vec2  uNoiseScale;
 
 #define KERNEL_SIZE 64
 const float bias     = 0.025;
-const float powerAO  = 1.5;
+const float powerAO  = 2.65;
 
 /* ---------- main ---------- */
 void main() {
+
     vec2 uv = vUV;
-    // prilagodi UV regionu koji se renderuje
     uv = uViewportRect.xy + uv * uViewportRect.zw;
 
     vec3 fragPos = texture(gPosition, vUV).rgb;
-    if (length(fragPos) < 1e-5) discard;
-
-    vec3 normal = normalize(texture(gNormal, vUV).rgb);
-
-    // --- Noise: rotacija uzoraka po pixelu ---
+    vec3 normal  = normalize(texture(gNormal, vUV).rgb);
     vec3 randomVec = normalize(texture(tNoise, vUV * uNoiseScale).xyz * 2.0 - 1.0);
+
     vec3 tangent   = normalize(randomVec - normal * dot(randomVec, normal));
     vec3 bitangent = cross(normal, tangent);
     mat3 TBN       = mat3(tangent, bitangent, normal);
@@ -75,9 +72,6 @@ void main() {
     occlusion = 1.0 - (occlusion / float(sampleCount));
     occlusion = clamp(pow(occlusion, powerAO), 0.0, 1.0);
 
-    // --- Dither noise ---
-    float finalNoise = fract(sin(dot(vUV * vec2(91.7, 37.3) + uFrame, vec2(12.9898,78.233))) * 43758.5453);
-    occlusion = clamp(occlusion + (finalNoise - 0.5) * 0.015, 0.0, 1.0);
 
     // izlaz samo AO u crno-beloj formi
     fragColor = vec4(vec3(1.0), occlusion);

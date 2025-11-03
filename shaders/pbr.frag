@@ -10,6 +10,7 @@ uniform sampler2D gPosition;
 uniform sampler2D gNormal;
 uniform sampler2D gAlbedo;
 uniform sampler2D gMaterial;
+uniform vec2 uTexelSize;
 uniform sampler2D tBentNormalAO;
 uniform samplerCube uEnvMap;
 uniform sampler2D uBRDFLUT;
@@ -140,19 +141,15 @@ void main(){
     vec3  specBRDF = (D * G * F) / (4.0 * max(NdotV * NdotL, 0.001));
 
     vec3 kd   = (1.0 - F) * (1.0 - metal);
-    vec3 diff = kd * baseColor / 3.141592;
+    vec3 diff = kd * ( baseColor / 3.141592 ) * ao;
 
-
-    float mipDiff = clamp(uCubeMaxMip * 1.0, 0.0, uCubeMaxMip); // svetlije gi env
-    vec3  NdiffW  = normalize(mix(Nw, normalV, 0.5));
-    vec3 envBent = textureLod(uEnvMap, NdiffW, mipDiff).rgb;
-
-  
+    float mipDiff = uCubeMaxMip ; // svetlije gi env
+    vec3 NdiffW = normalize(Rw);
+    vec3 envBent = textureLod(uEnvMap, NdiffW, mipDiff).rgb * uSunIntensity;
     vec3 ambient = envBent * ao;
     vec3 radiance = uSunColor * uSunIntensity;
 
     /* --- Specular IBL — spec occlusion nikad ne spusti ispod MIN --- */
-
     float mip = clamp(uCubeMaxMip * rough * rough, 0.0, uCubeMaxMip);
     vec3 envSpec = textureLod(uEnvMap, normalize(Rw), mip).rgb;
     envSpec = mix(envSpec, vec3(dot(envSpec, vec3(0.333))), rough * 0.3);
@@ -164,10 +161,30 @@ void main(){
     vec3 specIBL = envSpec * (F_ibl * (brdf.x + brdf.y)) ;
 
     /* --- Direct lighting mix --- */
-    vec3 direct = (diff + specBRDF) *  NdotL * radiance * shadow;
+    vec3 direct = (diff + specBRDF) *  NdotL * radiance * shadow ;
     /* --- Final --- */
-    
+
+
     vec3 color = direct + diffIBL + specIBL ;
     color *= uGlobalExposure;
+
+// --- prošireni AO uzorak za fake GI ---
+float aoWide = 0.0;
+const float giRadius = 2.50; // povećaj na 60-100 ako hoćeš još šire
+aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( giRadius,  0.0)).a;
+aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2(-giRadius,  0.0)).a;
+aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( 0.0,  giRadius)).a;
+aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( 0.0, -giRadius)).a;
+aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( giRadius,  giRadius)).a;
+aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2(-giRadius,  giRadius)).a;
+aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( giRadius, -giRadius)).a;
+aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2(-giRadius, -giRadius)).a;
+aoWide *= 0.135;
+
+// koristi prošireni AO za fake GI, uski za senčenje
+float giBoost = mix(0.0, 1.0, pow(1.0 - aoWide, 2.0)) * uSunIntensity;
+vec3 fakeGI = baseColor * giBoost *0.05 ;
+color += fakeGI * ao * uSunIntensity;
+
     fragColor = vec4(vec3(color), 1.0);
 }
