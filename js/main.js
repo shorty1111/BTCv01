@@ -15,16 +15,61 @@ let acesProgram = null;
 let finalFBO = null;
 let finalColorTex = null;
 let ssaoUniforms = {};
-let blurUniforms = {};
 let lastView = new Float32Array(16);
 let lastProj = new Float32Array(16);
 let shadowDirty = true;
+let lastRect = { umin: [0, 0], umax: [1, 1] };
 let ssaoDirty = true;
 let lastViewMatrix = new Float32Array(16);
 let lastSunDir = [0, 0, 0];
+const textureCache = {}; // key = url, value = WebGLTexture
+
+
+async function preloadAllConfigTextures() {
+  const loadTex = async (src) => {
+    if (!src || textureCache[src]) return;
+    try {
+      const res = await fetch(src);
+      const blob = await res.blob();
+      const bmp = await createImageBitmap(blob);
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+      textureCache[src] = tex;
+    } catch (err) {
+      console.warn("⚠️ Nije moglo da učita teksturu:", src, err);
+    }
+  };
+
+  const allPaths = [];
+  for (const group of Object.values(VARIANT_GROUPS)) {
+    for (const part of Object.values(group)) {
+      for (const model of part.models) {
+        if (model.colors) {
+          for (const c of model.colors) {
+            if (c.type === "texture") {
+              allPaths.push(c.texture, c.normal, c.rough);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  const uniquePaths = [...new Set(allPaths.filter(Boolean))];
+  console.log(`⏳ Učitavam ${uniquePaths.length} tekstura iz configa...`);
+  await Promise.all(uniquePaths.map(loadTex));
+  console.log("✅ Sve teksture iz configa su keširane!");
+}
+
 
 // CENTRALNO SUNCE
-const SUN = {dir: v3.norm([-0.8,0.8, 0.3]), color: [1.0, 0.92, 0.76], intensity: 0.0, 
+const SUN = {dir: v3.norm([-0.9,0.8, 0.3]), color: [1.0, 0.92, 0.76], intensity: 0.0, 
 };
 window.SUN = SUN;
 updateSun();
@@ -84,7 +129,7 @@ function createToneMapTarget(w, h) {
   if (toneMapFBO) gl.deleteFramebuffer(toneMapFBO);
   toneMapTex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, toneMapTex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   toneMapFBO = gl.createFramebuffer();
@@ -98,7 +143,7 @@ let ssrOutputTex = null;
 function createSSROutputTarget(w, h) {
   ssrOutputTex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, ssrOutputTex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
@@ -132,12 +177,12 @@ let modelVAOs = [];
 let idxCounts = [];
 let idxTypes = [];
 let gBuffer, gPosition, gNormal, gAlbedo, gMaterial;
-let ssaoFBO, ssaoBlurFBO, ssaoColorBuffer, ssaoBlurBuffer;
+let ssaoFBO, ssaoColorBuffer;
 let ssaoKernel = [];
 let ssaoNoiseTexture;
 let lineProgram; // globalna promenljiva
 let boatLengthLine = null;
-let gBufferProgram, ssaoProgram, blurProgram; // Za nove šejder programe
+let gBufferProgram, ssaoProgram; // Za nove šejder programe
 let quadVAO = null; // Za iscrtavanje preko celog ekrana
 let modelMatrices = [];
 let nodesMeta = []; // {id, name, renderIdx}
@@ -155,7 +200,7 @@ let modelRoughnesses = [];
 let lastFrameTime = 0;
 
 const KERNEL_SIZE = 64;
-const SSAO_NOISE_SIZE = 6.0;
+const SSAO_NOISE_SIZE = 256;
 const thumbnails = {};
 const cachedVariants = {}; // url -> ArrayBuffer
 const preparedVariants = {}; // url -> [ { vao, count, type, baseColor, metallic, roughness, trisWorld }... ]
@@ -190,7 +235,7 @@ function createReflectionTarget(gl, width, height) {
   
   reflectionTex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, reflectionTex);
-  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,canvas.width, canvas.height,0,gl.RGBA, gl.HALF_FLOAT,null);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,width,height,0,gl.RGBA, gl.UNSIGNED_BYTE,null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
@@ -374,6 +419,7 @@ function updateFPS() {
   }
 }
 
+
 const canvas = document.getElementById("glCanvas");
 const camera = initCamera(canvas);
 if (canvas.__glContext) {
@@ -405,10 +451,10 @@ function createDepthTexture(w, h) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   return tex;
 }
-  let ssaa = 1.4;
+  let ssaa = 1.3;
 
 function resizeCanvas() {
-   gl.flush(); 
+
   const sidebarW = document.getElementById("sidebar").offsetWidth;
   const headerH = document.querySelector(".global-header").offsetHeight || 0;
 
@@ -674,23 +720,11 @@ function createSSAOBuffers(w, h) {
 
   ssaoColorBuffer = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, ssaoColorBuffer);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, width, height, 0, gl.RGBA, gl.FLOAT, null);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, ssaoColorBuffer, 0);
+ gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, ssaoColorBuffer, 0);
 
-  // === FBO za SSAO Blur ===
-  ssaoBlurFBO = gl.createFramebuffer();
-  gl.bindFramebuffer(gl.FRAMEBUFFER, ssaoBlurFBO);
-
-  ssaoBlurBuffer = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, ssaoBlurBuffer);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, width, height, 0, gl.RGBA, gl.FLOAT, null);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, ssaoBlurBuffer, 0);
-
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
 
 let ssrFBO = null;
@@ -702,7 +736,7 @@ function createSSRBuffer(w, h) {
 
   ssrTex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, ssrTex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.FLOAT, null);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, ssrTex, 0);
@@ -872,8 +906,6 @@ async function initShaders() {
     const ssaoFragSrc = await loadShader("../shaders/ssao.frag");
     ssaoProgram = createShaderProgram(gl, quadVertSrc, ssaoFragSrc);
 
-    const blurFragSrc = await loadShader("../shaders/blur.frag");
-    blurProgram = createShaderProgram(gl, quadVertSrc, blurFragSrc);
 
     const ssrFragSrc = await loadShader("../shaders/ssr_viewspace.frag");
     const ssrProgram = createShaderProgram(gl, quadVertSrc, ssrFragSrc);
@@ -929,7 +961,6 @@ async function initShaders() {
     for (const n of ssaoNames)
       ssaoUniforms[n] = gl.getUniformLocation(ssaoProgram, n);
 
-    blurUniforms.ssaoInput = gl.getUniformLocation(blurProgram, "ssaoInput");
 
     const reflectionNames = [
       "uProjection", "uView", "uModel", "uSunDir", "uSunColor",
@@ -985,7 +1016,7 @@ async function initShaders() {
     // === 3. Init PBR konstantnih uniforma ===
     gl.useProgram(program);
     gl.uniform1f(pbrUniforms.uLightSize, 0.00025);
-    window.globalExposure = 0.8; // globalni exposure za sve svetlo
+    window.globalExposure = 1.0; // globalni exposure za sve svetlo
     gl.uniform1f(pbrUniforms.uGlobalExposure, window.globalExposure);
     gl.uniform2f(pbrUniforms.uShadowMapSize, SHADOW_RES, SHADOW_RES);
     gl.uniform1f(pbrUniforms.uNormalBias, 0.005);
@@ -1018,6 +1049,15 @@ async function initScene() {
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, whitePixel);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+// ✅ default normal mapa (neutralna)
+const defaultNormalPixel = new Uint8Array([128, 128, 255, 255]);
+window.defaultNormalTex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, window.defaultNormalTex);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, defaultNormalPixel);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
   try {
     await initWater(gl);
     await initSky(gl);
@@ -1041,7 +1081,7 @@ const brdfFBO = gl.createFramebuffer();
 gl.bindFramebuffer(gl.FRAMEBUFFER, brdfFBO);
 brdfTex = gl.createTexture();
 gl.bindTexture(gl.TEXTURE_2D, brdfTex);
-gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG16F, LUT_SIZE, LUT_SIZE, 0, gl.RG, gl.FLOAT, null);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG16F, LUT_SIZE, LUT_SIZE, 0, gl.RG, gl.HALF_FLOAT, null);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, brdfTex, 0);
@@ -1120,7 +1160,7 @@ vec2 IntegrateBRDF(float NdotV, float roughness) {
   return vec2(A,B);
 }
 void main(){
-  fragColor = IntegrateBRDF(vUV.x, vUV.y);
+  fragColor = IntegrateBRDF(vUV.x, vUV.y) ;
 }`;
 
 const vs = gl.createShader(gl.VERTEX_SHADER);
@@ -1187,7 +1227,6 @@ function cleanupGLGarbage() {
     gAlbedo,
     gMaterial,
     ssaoColorBuffer,
-    ssaoBlurBuffer,
   ];
   for (const tex of texList) {
     if (tex && !gl.isTexture(tex)) {
@@ -1220,6 +1259,7 @@ async function initializeApp() {
 
   const sceneOk = await initScene(); // ⏳ čeka sky + water
   if (!sceneOk) return;
+  await preloadAllConfigTextures();
 
   try {
     // Sačekaj i model
@@ -1247,7 +1287,8 @@ async function initializeApp() {
       savedColorsByPart, showDimensions, showWater, SIDEBAR_INFO,
       VARIANT_GROUPS, BASE_PRICE, BOAT_INFO, thumbnails, currentParts,
       render, replaceSelectedWithURL, focusCameraOnNode, setWeather,
-      proj, view, camWorld, exportPDF
+      proj, view, camWorld, exportPDF, sceneChanged,
+      originalParts   // 👈 dodaj ovu liniju
     });
 
     // 🔹 start loop tek kad je sve učitano
@@ -1292,6 +1333,42 @@ function computeLightBounds(min, max, lightView) {
   }
   return { lmin, lmax };
 }
+// === Pomocna funkcija: bounding box modela u ekranske UV koordinate ===
+function getModelScreenRect(proj, view, canvas, min, max) {
+  const corners = [
+    [min[0], min[1], min[2], 1],
+    [max[0], min[1], min[2], 1],
+    [min[0], max[1], min[2], 1],
+    [max[0], max[1], min[2], 1],
+    [min[0], min[1], max[2], 1],
+    [max[0], min[1], max[2], 1],
+    [min[0], max[1], max[2], 1],
+    [max[0], max[1], max[2], 1],
+  ];
+
+  const vp = mat4mul(proj, view);
+  let umin = [1, 1];
+  let umax = [0, 0];
+
+  for (const c of corners) {
+    const v = new Float32Array(4);
+    mulMat4Vec4(v, vp, c);
+    if (v[3] <= 0.0001) continue;
+    const x = (v[0] / v[3]) * 0.5 + 0.5;
+    const y = (v[1] / v[3]) * 0.5 + 0.5;
+    umin[0] = Math.min(umin[0], x);
+    umin[1] = Math.min(umin[1], y);
+    umax[0] = Math.max(umax[0], x);
+    umax[1] = Math.max(umax[1], y);
+  }
+
+  umin[0] = Math.max(0, Math.min(1, umin[0]));
+  umin[1] = Math.max(0, Math.min(1, umin[1]));
+  umax[0] = Math.max(0, Math.min(1, umax[0]));
+  umax[1] = Math.max(0, Math.min(1, umax[1]));
+
+  return { umin, umax };
+}
 
 function render() {
   const timeNow = performance.now() * 0.001; // koristi u SSAO i vodi
@@ -1302,10 +1379,7 @@ function render() {
   camera.animateCamera();
   ({ proj, view, camWorld } = camera.updateView());
   
-  if (!arraysEqual(lastViewMatrix, view)) {
-    ssaoDirty = true;
-    lastViewMatrix.set(view);
-  }
+  if (camera.moved) ssaoDirty = true;
 
   // === 1A. CLEAR FINALNI FBO NA POČETKU (OBAVEZNO!) ===
   gl.bindFramebuffer(gl.FRAMEBUFFER, finalFBO);
@@ -1474,12 +1548,6 @@ if (shadowDirty) {
     gl.bindTexture(gl.TEXTURE_2D, null);
   }
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-  // gl.activeTexture(gl.TEXTURE0);
-  // gl.bindTexture(gl.TEXTURE_2D, null);
-  // gl.activeTexture(gl.TEXTURE1);
-  // gl.bindTexture(gl.TEXTURE_2D, null);
-  // gl.activeTexture(gl.TEXTURE2);
-  // gl.bindTexture(gl.TEXTURE_2D, null);
 
   // === 4. Geometry pass (g-buffer) za opaque objekte ===
   gl.viewport(0, 0, canvas.width, canvas.height);
@@ -1489,6 +1557,8 @@ if (shadowDirty) {
   gl.enable(gl.DEPTH_TEST);
   gl.depthMask(true);
   gl.useProgram(gBufferProgram);
+  gl.enable(gl.CULL_FACE);
+gl.cullFace(gl.BACK);
   gl.uniformMatrix4fv(gBufferUniforms.uProjection, false, proj);
   gl.uniformMatrix4fv(gBufferUniforms.uView, false, view);
   for (let i = 0; i < modelVAOs.length; ++i) {
@@ -1533,56 +1603,124 @@ if (originalParts[i]?.roughnessTex) {
     gl.drawElements(gl.TRIANGLES, idxCounts[i], idxTypes[i], 0);
   }
   
-  if (ssaoDirty) {
-    // === SSAO PASS ===
-    gl.bindFramebuffer(gl.FRAMEBUFFER, ssaoFBO);
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.useProgram(ssaoProgram);
+if (ssaoDirty) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, ssaoFBO);
+  gl.useProgram(ssaoProgram);
 
-    // --- Textures ---
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, gPosition);
-    gl.uniform1i(ssaoUniforms.gPosition, 0);
+  // 🔸 izračunaj gde se model projektuje na ekran
+// ✅ osveži kameru pre SSAO, da ne koristi stari view iz prethodnog frame-a
+camera.updateView();
+({ proj, view, camWorld } = camera.updateView());
 
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, gNormal);
-    gl.uniform1i(ssaoUniforms.gNormal, 1);
+// ✅ izračunaj raw bounding box
+// Koristi bounding sferu umesto boxa
+const center = window.sceneBoundingCenter;
+const radius = window.sceneBoundingRadius;
 
-    gl.activeTexture(gl.TEXTURE2);
-    gl.bindTexture(gl.TEXTURE_2D, ssaoNoiseTexture);
-    gl.uniform1i(ssaoUniforms.tNoise, 2);
+// Projiciraj centar
+// --- precizan SSAO rect, stabilan i na zoom i na rotaciju ---
+const vp = mat4mul(proj, view);
 
-    gl.activeTexture(gl.TEXTURE3);
-    gl.bindTexture(gl.TEXTURE_2D, gAlbedo);
-    gl.uniform1i(ssaoUniforms.gAlbedo, 3);
+// centar u view-space
+const vc = mulMat4Vec4([], view, [center[0], center[1], center[2], 1]);
+// udaljenost od kamere
+const dist = Math.abs(vc[2]);
+const fovY = 60.0 * Math.PI / 180.0; // isti kao u persp()
+const aspect = canvas.width / canvas.height;
 
-    // --- Uniforms ---
-    gl.uniform2f(ssaoUniforms.uNoiseScale, canvas.width / SSAO_NOISE_SIZE, canvas.height / SSAO_NOISE_SIZE);
-    gl.uniform3fv(ssaoUniforms.samples, ssaoKernel);
-    gl.uniformMatrix4fv(ssaoUniforms.uProjection, false, proj);
-    gl.uniform1f(ssaoUniforms.uFrame, timeNow * 50.0);
+// veličina projekcije sfere u ekranskim koordinatama
+const projRadiusY = Math.tan(fovY * 0.5) * radius / dist;
+const projRadiusX = projRadiusY * aspect;
 
-    // --- Draw ---
-    gl.bindVertexArray(quadVAO);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+// centar u clip-space
+const c4 = mulMat4Vec4([], vp, [center[0], center[1], center[2], 1]);
+const ndcX = c4[0] / c4[3];
+const ndcY = c4[1] / c4[3];
 
-    // === SSAO BLUR PASS ===
-    gl.bindFramebuffer(gl.FRAMEBUFFER, ssaoBlurFBO);
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.useProgram(blurProgram);
+// ekranski poluprečnici
+const rX = projRadiusX;
+const rY = projRadiusY;
 
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, ssaoColorBuffer);
-    gl.uniform1i(blurUniforms.ssaoInput, 0);
+// malo proširi da ne seče ivice
+const expand = 1.25;
+const umin = [
+  Math.max(0, 0.5 + ndcX * 0.5 - rX * expand),
+  Math.max(0, 0.5 + ndcY * 0.5 - rY * expand),
+];
+const umax = [
+  Math.min(1, 0.5 + ndcX * 0.5 + rX * expand),
+  Math.min(1, 0.5 + ndcY * 0.5 + rY * expand),
+];
 
-    gl.bindVertexArray(quadVAO);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+const rawRect = { umin, umax };
 
+
+// ✅ lagano ujednači kretanje rect-a da ne “pliva”
+const lerp = (a, b, t) => a + (b - a) * t;
+const rect = {
+  umin: [
+    lerp(lastRect.umin[0], rawRect.umin[0], 0.45),
+    lerp(lastRect.umin[1], rawRect.umin[1], 0.45)
+  ],
+  umax: [
+    lerp(lastRect.umax[0], rawRect.umax[0], 0.45),
+    lerp(lastRect.umax[1], rawRect.umax[1], 0.45)
+  ]
+};
+lastRect = { umin: [...rect.umin], umax: [...rect.umax] };
+  
+
+  const uminX = Math.max(0.0, rect.umin[0] - expand);
+  const uminY = Math.max(0.0, rect.umin[1] - expand);
+  const umaxX = Math.min(1.0, rect.umax[0] + expand);
+  const umaxY = Math.min(1.0, rect.umax[1] + expand);
+
+  const vpX = Math.floor(uminX * canvas.width);
+  const vpY = Math.floor(uminY * canvas.height);
+  const vpW = Math.ceil((umaxX - uminX) * canvas.width);
+  const vpH = Math.ceil((umaxY - uminY) * canvas.height);
+
+  // 🔸 ograniči SSAO render samo na region oko modela
+  gl.viewport(vpX, vpY, vpW, vpH);
+  gl.enable(gl.SCISSOR_TEST);
+  gl.scissor(vpX, vpY, vpW, vpH);
+
+  // 🔸 očisti samo unutar scissor regiona
+  gl.clearColor(1, 1, 1, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+
+  // --- Textures ---
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, gPosition);
+  gl.uniform1i(ssaoUniforms.gPosition, 0);
+
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, gNormal);
+  gl.uniform1i(ssaoUniforms.gNormal, 1);
+
+  gl.activeTexture(gl.TEXTURE2);
+  gl.bindTexture(gl.TEXTURE_2D, ssaoNoiseTexture);
+  gl.uniform1i(ssaoUniforms.tNoise, 2);
+
+  gl.activeTexture(gl.TEXTURE3);
+  gl.bindTexture(gl.TEXTURE_2D, gAlbedo);
+  gl.uniform1i(ssaoUniforms.gAlbedo, 3);
+
+  // --- Uniforms ---
+  gl.uniform2f(ssaoUniforms.uNoiseScale, canvas.width / SSAO_NOISE_SIZE, canvas.height / SSAO_NOISE_SIZE);
+  gl.uniform3fv(ssaoUniforms.samples, ssaoKernel);
+  gl.uniformMatrix4fv(ssaoUniforms.uProjection, false, proj);
+  gl.uniform1f(ssaoUniforms.uFrame, timeNow * 50.0);
+
+  // --- Draw ---
+  gl.bindVertexArray(quadVAO);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  // ✅ resetuj stanje posle SSAO pasa
+  gl.disable(gl.SCISSOR_TEST);
+  gl.viewport(0, 0, canvas.width, canvas.height);
   ssaoDirty = false;
 }
-
 
     // --- Proceduralno nebo ---
     gl.bindFramebuffer(gl.FRAMEBUFFER, finalFBO);
@@ -1611,7 +1749,7 @@ if (originalParts[i]?.roughnessTex) {
     gl.bindTexture(gl.TEXTURE_2D, gMaterial);
 
     gl.activeTexture(gl.TEXTURE4);
-    gl.bindTexture(gl.TEXTURE_2D, ssaoBlurBuffer);
+    gl.bindTexture(gl.TEXTURE_2D, ssaoColorBuffer);
 
     gl.activeTexture(gl.TEXTURE5);
     gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
@@ -1623,7 +1761,7 @@ if (originalParts[i]?.roughnessTex) {
     gl.bindTexture(gl.TEXTURE_2D, shadowDepthTex);
 
     gl.activeTexture(gl.TEXTURE8);
-    gl.bindTexture(gl.TEXTURE_2D, ssaoBlurBuffer);
+    gl.bindTexture(gl.TEXTURE_2D, ssaoColorBuffer);
 
     gl.activeTexture(gl.TEXTURE9);
     gl.bindTexture(gl.TEXTURE_2D, window.sceneColorTex);
@@ -1843,9 +1981,7 @@ gl.useProgram(acesProgram);
 gl.activeTexture(gl.TEXTURE0);
 gl.bindTexture(gl.TEXTURE_2D, finalColorTex);
 gl.uniform1i(gl.getUniformLocation(acesProgram, "uInput"), 0);
-gl.activeTexture(gl.TEXTURE1);
-gl.bindTexture(gl.TEXTURE_2D, finalColorTex);
-gl.uniform1i(gl.getUniformLocation(acesProgram, "uBloom"), 1);
+
 gl.bindVertexArray(quadVAO);
 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
@@ -1889,6 +2025,7 @@ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
 
 // --- FXAA ---
+
 gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 gl.viewport(0, 0, canvas.width, canvas.height);
 gl.useProgram(fxaaProgram);
@@ -1908,24 +2045,24 @@ gl.disable(gl.BLEND);
 gl.depthMask(true);
 gl.depthFunc(gl.LESS);
 gl.enable(gl.CULL_FACE);
-
+camera.moved = false;
 }
 
-let last = 0;
-let lastCleanup = performance.now();
+let lastTime = performance.now();
+let frameCount = 0;
 
 function renderLoop(now) {
-  const frameTime = 1000 / MAX_FPS;
-  if (now - last >= frameTime) {
-    last += frameTime;
-    render();
-    updateFPS();
-  }
+  render();
 
-  // 🔹 čišćenje na svakih 10 sekundi
-  if (now - lastCleanup > 10000) {
-    cleanupGLGarbage();
-    lastCleanup = now;
+  frameCount++;
+  const delta = now - lastTime;
+  if (delta >= 1000) {
+    fps = frameCount;
+    frameCount = 0;
+    lastTime = now;
+
+    const perfDiv = document.getElementById("fps-value");
+    if (perfDiv) perfDiv.textContent = fps;
   }
 
   requestAnimationFrame(renderLoop);
@@ -2140,22 +2277,22 @@ async function loadGLB(buf) {
         modelMatrices.push(modelMat);
         const renderIdx = modelMatrices.length - 1;
 
-        originalParts[renderIdx] = {
-          vao,
-          count: ind.length,
-          type,
-          baseColor,
-          metallic,
-          roughness,
-          baseColorTex,
-          pos: pos.slice(),
-          nor: nor.slice(),
-          ind: ind.slice(),
-          opacity, // 👈 dodato
-          alphaMode: alphaMode, // 👈 dodato
-          normalTex,
-          roughnessTex,
-        };
+  originalParts[renderIdx] = {
+    vao,
+    count: ind.length,
+    type,
+    baseColor,
+    metallic,
+    roughness,
+    baseColorTex,
+    pos: pos.slice(),
+    nor: nor.slice(),
+    ind: ind.slice(),
+    opacity,
+    alphaMode,
+    normalTex: normalTex || window.defaultNormalTex,
+    roughnessTex: roughnessTex || window.whiteTex,
+  };
         if (!realOriginalParts[renderIdx]) {
           realOriginalParts[renderIdx] = {
             ...originalParts[renderIdx],
@@ -2354,111 +2491,147 @@ async function parseGLBToPrepared(buf, url) {
       const glIdxType =
         aIdx.componentType === 5125 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT;
 
-      /* interleaved POS+NOR  ->  VBO / VAO */
-      const vao = gl.createVertexArray();
-      gl.bindVertexArray(vao);
+      /* interleaved POS+NOR(+UV+TANGENT)  ->  VBO / VAO */
+const vao = gl.createVertexArray();
+gl.bindVertexArray(vao);
 
-      const vbo = gl.createBuffer();
-      gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+const vbo = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
 
-      // --- UV atribut ---
-      const uvAttr = prim.attributes.TEXCOORD_0;
-      let uvArray = null;
-      if (uvAttr !== undefined) {
-        const uvAccessor = gltf.accessors[uvAttr];
-        const uvView = gltf.bufferViews[uvAccessor.bufferView];
-        const uvOffset =
-          (uvView.byteOffset || 0) + (uvAccessor.byteOffset || 0);
-        uvArray = new Float32Array(bin, uvOffset, uvAccessor.count * 2);
-      }
+// --- UV atribut ---
+const uvAttr = prim.attributes.TEXCOORD_0;
+let uvArray = null;
+if (uvAttr !== undefined) {
+  const uvAccessor = gltf.accessors[uvAttr];
+  const uvView = gltf.bufferViews[uvAccessor.bufferView];
+  const uvOffset = (uvView.byteOffset || 0) + (uvAccessor.byteOffset || 0);
+  uvArray = new Float32Array(bin, uvOffset, uvAccessor.count * 2);
+}
 
-      // --- interleaved: pos + nor + uv ---
-      const stride = (uvArray ? 8 : 6) * 4;
-      const inter = new Float32Array(
-        pos.length + nor.length + (uvArray ? uvArray.length : 0)
-      );
-      for (let i = 0, j = 0; i < pos.length / 3; ++i) {
-        inter[j++] = pos[i * 3];
-        inter[j++] = pos[i * 3 + 1];
-        inter[j++] = pos[i * 3 + 2];
-        inter[j++] = nor[i * 3];
-        inter[j++] = nor[i * 3 + 1];
-        inter[j++] = nor[i * 3 + 2];
-        if (uvArray) {
-          inter[j++] = uvArray[i * 2];
-          inter[j++] = uvArray[i * 2 + 1];
-        }
-      }
-      gl.bufferData(gl.ARRAY_BUFFER, inter, gl.STATIC_DRAW);
+// --- Tangenti ---
+let tangents = null;
+if (prim.attributes.TANGENT !== undefined) {
+  const ta = acc[prim.attributes.TANGENT];
+  const tv = views[ta.bufferView];
+  tangents = new Float32Array(bin, tv.byteOffset, ta.count * 4);
+}
 
-      // --- attributes ---
-      gl.enableVertexAttribArray(0);
-      gl.vertexAttribPointer(0, 3, gl.FLOAT, false, stride, 0);
-      gl.enableVertexAttribArray(1);
-      gl.vertexAttribPointer(1, 3, gl.FLOAT, false, stride, 12);
-      if (uvArray) {
-        gl.enableVertexAttribArray(2);
-        gl.vertexAttribPointer(2, 2, gl.FLOAT, false, stride, 24);
-      }
+// --- interleaved: pos + nor + uv + tangent ---
+const hasTangent = !!tangents;
+const stride = (3 + 3 + (uvArray ? 2 : 0) + (hasTangent ? 4 : 0)) * 4;
+const inter = new Float32Array(
+  pos.length + nor.length + (uvArray ? uvArray.length : 0) + (hasTangent ? tangents.length : 0)
+);
 
-      const ebo = gl.createBuffer();
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo);
-      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, ind, gl.STATIC_DRAW);
+for (let i = 0, j = 0; i < pos.length / 3; ++i) {
+  inter[j++] = pos[i * 3];
+  inter[j++] = pos[i * 3 + 1];
+  inter[j++] = pos[i * 3 + 2];
+  inter[j++] = nor[i * 3];
+  inter[j++] = nor[i * 3 + 1];
+  inter[j++] = nor[i * 3 + 2];
+  if (uvArray) {
+    inter[j++] = uvArray[i * 2];
+    inter[j++] = uvArray[i * 2 + 1];
+  }
+  if (hasTangent) {
+    inter[j++] = tangents[i * 4];
+    inter[j++] = tangents[i * 4 + 1];
+    inter[j++] = tangents[i * 4 + 2];
+    inter[j++] = tangents[i * 4 + 3];
+  }
+}
 
-      gl.bindVertexArray(null);
+gl.bufferData(gl.ARRAY_BUFFER, inter, gl.STATIC_DRAW);
 
-      /* ========== MATERIJAL ========== */
-      let baseColor = [1, 1, 1];
-      let metallic = 1.0;
-      let roughness = 1.0;
-      let opacity = 1.0;
-      let isBlend = false;
-      let baseColorTex = null;
+// --- attributes ---
+let offset = 0;
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 3, gl.FLOAT, false, stride, offset); offset += 12;
 
-      if (prim.material !== undefined) {
-        const mat = gltf.materials[prim.material] || {};
-        const pbr = mat.pbrMetallicRoughness || {};
+gl.enableVertexAttribArray(1);
+gl.vertexAttribPointer(1, 3, gl.FLOAT, false, stride, offset); offset += 12;
 
-        if (pbr.baseColorFactor) {
-          baseColor = pbr.baseColorFactor.slice(0, 3);
-          opacity = pbr.baseColorFactor[3] ?? 1.0;
-        }
-        if (typeof pbr.metallicFactor === "number")
-          metallic = pbr.metallicFactor;
-        if (typeof pbr.roughnessFactor === "number")
-          roughness = pbr.roughnessFactor;
+if (uvArray) {
+  gl.enableVertexAttribArray(2);
+  gl.vertexAttribPointer(2, 2, gl.FLOAT, false, stride, offset);
+  offset += 8;
+}
 
-        if (pbr.baseColorTexture) {
-          const texIdx = pbr.baseColorTexture.index;
-          baseColorTex = loadTextureFromImage(
-            gltf,
-            bin,
-            texIdx
-          ); /* ✨ isto kao u loadGLB */
-        }
+if (hasTangent) {
+  gl.enableVertexAttribArray(3);
+  gl.vertexAttribPointer(3, 4, gl.FLOAT, false, stride, offset);
+}
 
-        const alphaMode = mat.alphaMode || "OPAQUE";
-        isBlend = alphaMode === "BLEND" || opacity < 0.99999;
-      }
+const ebo = gl.createBuffer();
+gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo);
+gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, ind, gl.STATIC_DRAW);
+gl.bindVertexArray(null);
 
-      /* ---------- push rezultat ---------- */
-      out.push({
-        vao,
-        count: ind.length,
-        type: glIdxType,
-        pos: pos.slice() /* potrebni su ti kasnije za thumbnaile */,
-        nor: nor.slice(),
-        ind: ind.slice(),
 
-        baseColor: new Float32Array(baseColor),
-        metallic,
-        roughness,
-        opacity,
-        isBlend,
-        baseColorTex,
-        matName: gltf.materials[prim.material]?.name || `Mat_${p}`,
-        trisWorld: [],
-      });
+/* ========== MATERIJAL ========== */
+let baseColor = [1, 1, 1];
+let metallic = 1.0;
+let roughness = 1.0;
+let opacity = 1.0;
+let isBlend = false;
+let baseColorTex = null;
+let normalTex = null;
+let roughnessTex = null;
+
+if (prim.material !== undefined) {
+  const mat = gltf.materials[prim.material] || {};
+  const pbr = mat.pbrMetallicRoughness || {};
+
+  if (pbr.baseColorFactor) {
+    baseColor = pbr.baseColorFactor.slice(0, 3);
+    opacity = pbr.baseColorFactor[3] ?? 1.0;
+  }
+  if (typeof pbr.metallicFactor === "number")
+    metallic = pbr.metallicFactor;
+  if (typeof pbr.roughnessFactor === "number")
+    roughness = pbr.roughnessFactor;
+
+  // Base color
+  if (pbr.baseColorTexture) {
+    const texIdx = pbr.baseColorTexture.index;
+    baseColorTex = loadTextureFromImage(gltf, bin, texIdx);
+  }
+
+  // ✅ Normal mapa
+  if (mat.normalTexture && typeof mat.normalTexture.index === "number") {
+    normalTex = loadTextureFromImage(gltf, bin, mat.normalTexture.index);
+  }
+
+  // ✅ Metallic-Roughness mapa
+  if (pbr.metallicRoughnessTexture && typeof pbr.metallicRoughnessTexture.index === "number") {
+    roughnessTex = loadTextureFromImage(gltf, bin, pbr.metallicRoughnessTexture.index);
+  }
+
+  const alphaMode = mat.alphaMode || "OPAQUE";
+  isBlend = alphaMode === "BLEND" || opacity < 0.99999;
+}
+
+/* ---------- push rezultat ---------- */
+out.push({
+  vao,
+  count: ind.length,
+  type: glIdxType,
+  pos: pos.slice(),
+  nor: nor.slice(),
+  ind: ind.slice(),
+  baseColor: new Float32Array(baseColor),
+  metallic,
+  roughness,
+  opacity,
+  isBlend,
+  baseColorTex,
+  normalTex,
+  roughnessTex,
+  matName: gltf.materials[prim.material]?.name || `Mat_${p}`,
+  trisWorld: [],
+});
+
     }
   }
 
@@ -2467,37 +2640,24 @@ async function parseGLBToPrepared(buf, url) {
 
 async function replaceSelectedWithURL(url, variantName, partName) {
   showLoading();
-  
+
   const node = nodesMeta.find((n) => n.name === partName);
-  
-  if (node && currentParts[partName]?.name !== variantName) {
-  delete node.cachedBounds;
-}
   if (!node) {
     hideLoading();
     return;
   }
+  if (node && currentParts[partName]?.name !== variantName) {
+    delete node.cachedBounds;
+  }
 
   const cfgGroup = Object.values(VARIANT_GROUPS).find((g) => partName in g) || {};
   const mainMat = cfgGroup[partName]?.mainMat || "";
-
   transparentMeshes = transparentMeshes.filter((m) => m.partName !== partName);
 
+  // --- učitaj mesh ---
   let variantMeshes;
   if (!url) {
     variantMeshes = node.renderIdxs.map((r) => realOriginalParts[r.idx]).filter(Boolean);
-    if (originalGlassByPart[partName]) {
-      for (const g of originalGlassByPart[partName]) {
-        transparentMeshes.push({
-          ...g,
-          renderIdx: -1,
-          partName,
-          modelMat:
-            g.modelMat ||
-            new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
-        });
-      }
-    }
   } else {
     if (!preparedVariants[url]) {
       const buf = cachedVariants[url] || (await fetch(url).then((r) => r.arrayBuffer()));
@@ -2508,49 +2668,32 @@ async function replaceSelectedWithURL(url, variantName, partName) {
   }
 
   const oldSlots = node.renderIdxs.map((r) => r.idx);
-
-  for (let i = 0; i < variantMeshes.length; ++i) {
+  for (let i = 0; i < variantMeshes.length; i++) {
     const vm = variantMeshes[i];
     if (!vm) continue;
 
-    let renderIdx;
-    if (i < oldSlots.length) {
-      renderIdx = oldSlots[i];
-    } else {
-      renderIdx = modelVAOs.length;
+    let renderIdx = oldSlots[i] ?? modelVAOs.length;
+    if (renderIdx >= modelVAOs.length) {
       modelVAOs.push(null);
       idxCounts.push(0);
       idxTypes.push(null);
-      modelMatrices.push(
-        new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
-      );
+      modelMatrices.push(new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]));
       modelBaseColors.push(new Float32Array([1, 1, 1]));
       modelMetallics.push(1);
       modelRoughnesses.push(1);
       modelBaseTextures.push(null);
-
       node.renderIdxs.push({ idx: renderIdx, matName: vm.matName || "" });
       renderToNodeId[renderIdx] = node.id;
-    }
-
-    if (vm.isBlend) {
-      transparentMeshes.push({
-        ...vm,
-        renderIdx,
-        partName,
-        modelMat: modelMatrices[renderIdx],
-      });
-      idxCounts[renderIdx] = 0;
-      continue;
     }
 
     modelVAOs[renderIdx] = vm.vao;
     idxCounts[renderIdx] = vm.count;
     idxTypes[renderIdx] = vm.type;
-    modelBaseColors[renderIdx] = vm.baseColor;
-    modelMetallics[renderIdx] = vm.metallic;
-    modelRoughnesses[renderIdx] = vm.roughness;
-    modelBaseTextures[renderIdx] = vm.baseColorTex || null;
+    modelBaseColors[renderIdx] = vm.baseColor || new Float32Array([1, 1, 1]);
+    modelMetallics[renderIdx] = vm.metallic ?? 1;
+    modelRoughnesses[renderIdx] = vm.roughness ?? 1;
+    modelBaseTextures[renderIdx] = vm.baseColorTex || window.whiteTex;
+
     originalParts[renderIdx] = {
       vao: vm.vao,
       count: vm.count,
@@ -2558,60 +2701,87 @@ async function replaceSelectedWithURL(url, variantName, partName) {
       baseColor: modelBaseColors[renderIdx],
       metallic: vm.metallic,
       roughness: vm.roughness,
-      baseColorTex: vm.baseColorTex || null,
+      baseColorTex: modelBaseTextures[renderIdx],
       pos: vm.pos,
       nor: vm.nor,
       ind: vm.ind,
+      normalTex: vm.normalTex || window.defaultNormalTex,
+      roughnessTex: vm.roughnessTex || window.whiteTex,
     };
   }
 
-  for (let j = variantMeshes.length; j < oldSlots.length; ++j) {
-    idxCounts[oldSlots[j]] = 0;
-  }
+  // --- učitaj teksture iz configa PRE rendera ---
+  const variantData = (cfgGroup[partName]?.models || []).find(v => v.name === variantName);
   const savedColorName = savedColorsByPart[partName]?.[variantName];
-  if (savedColorName) {
-    const variantData = (cfgGroup[partName]?.models || []).find(v => v.name === variantName);
-    const c = variantData?.colors?.find(col => col.name === savedColorName);
-    if (c) {
-      if (c.type === "color") {
-        for (const r of node.renderIdxs) {
-          if (mainMat && r.matName === mainMat) {
-            modelBaseColors[r.idx] = new Float32Array(c.color);
-            modelBaseTextures[r.idx] = null;
-          } else if (!mainMat && r === node.renderIdxs[0]) {
-            modelBaseColors[r.idx] = new Float32Array(c.color);
-            modelBaseTextures[r.idx] = null;
-          }
-        }
-      } else if (c.type === "texture" && c.texture) {
-        const img = new Image();
-        img.src = c.texture;
-        img.onload = () => {
-          const tex = gl.createTexture();
-          gl.bindTexture(gl.TEXTURE_2D, tex);
-          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-          gl.generateMipmap(gl.TEXTURE_2D);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-          for (const r of node.renderIdxs) {
-            if (!mainMat || r.matName === mainMat)
-              modelBaseTextures[r.idx] = tex;
-          }
-          render();
-        };
+  const colorData = variantData?.colors?.find(c => c.name === savedColorName) || variantData?.colors?.[0];
+
+  if (colorData && colorData.type === "texture") {
+    const loadTex = async (src) => {
+      if (textureCache[src]) return textureCache[src];
+      const res = await fetch(src);
+      const blob = await res.blob();
+      const bmp = await createImageBitmap(blob);
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+      textureCache[src] = tex;
+      return tex;
+    };
+
+    try {
+      const [base, normal, rough] = await Promise.all([
+        loadTex(colorData.texture),
+        loadTex(colorData.normal),
+        loadTex(colorData.rough),
+      ]);
+
+      for (const r of node.renderIdxs) {
+        modelBaseTextures[r.idx] = base;
+        originalParts[r.idx].baseColorTex = base;
+        originalParts[r.idx].normalTex = normal;
+        originalParts[r.idx].roughnessTex = rough;
       }
+    } catch (e) {
+      console.warn("Greška u učitavanju tekstura:", e);
     }
   }
+// 🔹 Uskladi materijal za svaki deo — automatski prepoznaje boju ili teksturu
+for (const r of node.renderIdxs) {
+  const op = originalParts[r.idx];
+  if (!op) continue;
 
-  currentParts[partName] = { ...currentParts[partName], name: variantName };
-  if (!window.__suppressFocusCamera) {
-  focusCameraOnNode(node);
+  const hasTex =
+    op.baseColorTex && op.baseColorTex !== window.whiteTex;
+
+  // ako ima teksturu -> koristi nju
+  if (hasTex) {
+    modelBaseTextures[r.idx] = op.baseColorTex;
+  } else {
+    // ako nema -> koristi boju
+    modelBaseTextures[r.idx] = null;
+    modelBaseColors[r.idx] = new Float32Array(op.baseColor || [1, 1, 1]);
+  }
+
+  // fallback za normal/roughness
+  if (!op.normalTex) op.normalTex = window.defaultNormalTex;
+  if (!op.roughnessTex) op.roughnessTex = window.whiteTex;
 }
+
+  // --- sad tek render ---
+  gl.flush();
+  currentParts[partName] = { ...currentParts[partName], name: variantName };
+  if (!window.__suppressFocusCamera) focusCameraOnNode(node);
   hideLoading();
   sceneChanged = true;
   render();
   showPartInfo(variantName);
 }
+
 
 function refreshThumbnailsInUI() {
   document.querySelectorAll(".variant-item").forEach((itemEl) => {

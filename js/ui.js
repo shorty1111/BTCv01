@@ -101,7 +101,7 @@ function buildVariantSidebar() {
               colorEl.style.backgroundColor = `rgb(${c.color.map(v => v * 255).join(",")})`;
             }
             colorEl.title = c.name;
-            colorEl.addEventListener("click", (e) => {
+            colorEl.addEventListener("click", async (e) => {
               e.stopPropagation();
               const card = colorEl.closest(".variant-item");
               const partKey = card.dataset.part;
@@ -111,29 +111,48 @@ function buildVariantSidebar() {
               // ako kartica nije aktivna, prvo je aktiviraj
               if (!card.classList.contains("active")) {
                 card.click();
-                return;
               }
 
               // primeni boju
               const cfgGroup = Object.values(VARIANT_GROUPS).find((g) => partKey in g) || {};
               const mainMat = cfgGroup[partKey]?.mainMat || "";
 
-              if (c.type === "texture" && c.texture) {
-                const img = new Image();
-                img.src = c.texture;
-                img.onload = () => {
-                  const tex = gl.createTexture();
-                  gl.bindTexture(gl.TEXTURE_2D, tex);
-                  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-                  gl.generateMipmap(gl.TEXTURE_2D);
-                  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-                  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-                  for (const r of node.renderIdxs) {
-                    if (!mainMat || r.matName === mainMat) modelBaseTextures[r.idx] = tex;
-                  }
-                  render();
-                };
-              } else if (c.type === "color" && c.color) {
+if (c.type === "texture" && c.texture) {
+  const loadTex = (src) => new Promise((resolve) => {
+    const img = new Image();
+    img.src = src;
+    img.onload = () => {
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+      resolve(tex);
+    };
+  });
+
+  const [texBase, texNormal, texRough] = await Promise.all([
+    loadTex(c.texture),
+    loadTex(c.normal),
+    loadTex(c.rough)
+  ]);
+
+  for (const r of node.renderIdxs) {
+    if (!mainMat || r.matName === mainMat) {
+      modelBaseTextures[r.idx] = texBase;
+      originalParts[r.idx].baseColorTex = texBase;
+      if (texNormal) originalParts[r.idx].normalTex = texNormal;
+      if (texRough) originalParts[r.idx].roughnessTex = texRough;
+    }
+  }
+
+  sceneChanged = true;
+  render();
+}
+ else if (c.type === "color" && c.color) {
                   for (const r of node.renderIdxs) {
                     if (mainMat && r.matName === mainMat) {
                       modelBaseColors[r.idx] = new Float32Array(c.color);

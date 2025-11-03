@@ -11,107 +11,74 @@ uniform sampler2D tNoise;
 uniform mat4 uView;
 uniform mat4 uProjection;
 uniform vec3 samples[64];
-
-uniform float uFrame;       // za frame jitter
-uniform vec2  uNoiseScale;  // postavlja se iz JS: (canvas.width / SSAO_NOISE_SIZE, canvas.height / SSAO_NOISE_SIZE)
+uniform vec4 uViewportRect; // x = umin.x, y = umin.y, z = width, w = height
+uniform float uFrame;
+uniform vec2  uNoiseScale;
 
 #define KERNEL_SIZE 64
-const float bias        = 0.025;
-const float powerAO     = 3.50;
-
-/* ---------- helper ---------- */
-float rand(vec2 co) {
-    return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
-}
+const float bias     = 0.025;
+const float powerAO  = 1.5;
 
 /* ---------- main ---------- */
 void main() {
+    vec2 uv = vUV;
+    // prilagodi UV regionu koji se renderuje
+    uv = uViewportRect.xy + uv * uViewportRect.zw;
+
     vec3 fragPos = texture(gPosition, vUV).rgb;
-    
     if (length(fragPos) < 1e-5) discard;
 
     vec3 normal = normalize(texture(gNormal, vUV).rgb);
 
-    // noise → random tangent
+    // --- Noise: rotacija uzoraka po pixelu ---
     vec3 randomVec = normalize(texture(tNoise, vUV * uNoiseScale).xyz * 2.0 - 1.0);
-
-    // TBN (view-space)
     vec3 tangent   = normalize(randomVec - normal * dot(randomVec, normal));
     vec3 bitangent = cross(normal, tangent);
     mat3 TBN       = mat3(tangent, bitangent, normal);
 
+    // --- Camera-depth adaptacija ---
+    float camDepth = -fragPos.z;
+    float depthFactor = clamp(camDepth / 1.0, 0.0, 1.0);
+    float radius = mix(0.1, 1.0, depthFactor);
+    float adapt  = mix(1.0, 1.0, clamp(camDepth / 1.0, 0.0, 1.0));
+    int sampleCount = int(mix(48.0, 64.0, depthFactor));
+
     float occlusion = 0.0;
 
-    // bent akumulacija u TANGENT-SPACE
-    vec3  bentTS         = vec3(0.0);
-    float visibleSamples = 0.0;
+    // --- SSAO loop ---
+    for (int i = 0; i < sampleCount; ++i) {
+        vec3 sampleVecVS = TBN * samples[i];
+        vec3 samplePos = fragPos + sampleVecVS * radius;
 
-    float camDepth = -fragPos.z;
-    float depthFactor = clamp(camDepth / 50.0, 0.0, 1.0);
-    float radiusScaled = mix(0.2, 2.2, depthFactor);
-    float adapt    = mix(6.0, 8.0, clamp(camDepth / 100.0, 0.0, 1.0));
-
-    // jitter po frame-u
-    float frameJitter = 1.0;
-
-int sampleCount = int(mix(48.0, 64.0, depthFactor));
-for (int i = 0; i < sampleCount; ++i) {
-    int idx = int(mod(float(i) + frameJitter * float(KERNEL_SIZE), float(KERNEL_SIZE)));
-        // VS vektor za offset/proveru dubine
-        vec3 sampleVecVS = TBN * samples[idx];
-        vec3 samplePos   = fragPos + sampleVecVS * radiusScaled;
-
-        // u projection space
+        // projekcija u clip-space
         vec4 offset = uProjection * vec4(samplePos, 1.0);
         offset.xyz /= max(offset.w, 1e-6);
-        offset.xyz  = offset.xyz * 0.5 + 0.5;
+        vec2 suv = offset.xy * 0.5 + 0.5;
 
-        // granice
-        if (offset.x < 0.0 || offset.x > 1.0 || offset.y < 0.0 || offset.y > 1.0)
-            continue;
-
-        vec3 samplePosTex = texture(gPosition, offset.xy).rgb;
-        if (length(samplePosTex) < 1e-5)
-            continue;
-
+        // čitanje sample depth
+        vec3 samplePosTex = texture(gPosition, suv).rgb;
         float sampleDepth = samplePosTex.z;
-        float dist        = abs(sampleDepth - fragPos.z);
-        if (dist > adapt) continue;
+
+        // matematičke maske
+        float inBounds = step(0.0, suv.x) * step(suv.x, 1.0) * step(0.0, suv.y) * step(suv.y, 1.0);
+        float valid = float(length(samplePosTex) > 1e-5);
+        float dist = abs(sampleDepth - fragPos.z);
+        float pass = step(dist, adapt);
 
         float rangeCheck = 1.0 - smoothstep(0.0, adapt, dist);
-
-        // occlusion test (isti kao kod tebe)
         float occ = step(samplePos.z + bias, sampleDepth) * rangeCheck;
-        occlusion += occ;
-
-        // ako je vidljivo (nije okludirano), akumuliraj bent u TS
-       if (occ == 0.0)  {
-            vec3  sampleVecTS = samples[idx];                   // TS vektor
-            float weight      = max(dot(vec3(0,0,1), normalize(sampleVecTS)), 0.0);
-            bentTS += sampleVecTS * weight;
-            visibleSamples   += weight;
-        }
-    }
-    // --- AO ---
-    occlusion = 1.0 - (occlusion / float(KERNEL_SIZE));
-    occlusion = clamp(occlusion, 0.0, 1.0);
-    occlusion = pow(occlusion, powerAO);
-
-    // --- Bent normal ---
-    vec3 bentV;
-    if (visibleSamples > 0.0) {
-        bentTS = normalize(bentTS / visibleSamples);  // još uvek TS
-        bentV  = normalize(TBN * bentTS);             // jednom u VIEW
-        // prilepi uz površinsku normalu (stabilizacija)
-        float a = max(dot(bentV, normal), 0.0);
-        bentV   = normalize(mix(normal, bentV, smoothstep(0.4, 1.0, a)));
-    } else {
-        bentV = normal;
+        float weight = inBounds * valid * pass;
+        occlusion += occ * weight;
     }
 
-    // blago smirenje (po želji)
-    bentV = normalize(mix(normal, bentV, mix(0.2, 0.5, depthFactor)));
+    // --- AO rezultat ---
+    occlusion = 1.0 - (occlusion / float(sampleCount));
+    occlusion = clamp(pow(occlusion, powerAO), 0.0, 1.0);
 
-    // output: RGB = bent (view), A = AO
-    fragColor = vec4(bentV * 0.5 + 0.5, occlusion);
+    // --- Dither noise ---
+    float finalNoise = fract(sin(dot(vUV * vec2(91.7, 37.3) + uFrame, vec2(12.9898,78.233))) * 43758.5453);
+    occlusion = clamp(occlusion + (finalNoise - 0.5) * 0.015, 0.0, 1.0);
+
+    // izlaz samo AO u crno-beloj formi
+    fragColor = vec4(vec3(1.0), occlusion);
 }

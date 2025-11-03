@@ -94,7 +94,7 @@ function lookAt(eye, center, up) {
 }
 // ===== Init =====
 export function initSky(gl) {
-  const sphere = createSphere(8, 8, 200.0);
+  const sphere = createSphere(32, 32, 200.0);
   skyIdxCount = sphere.indices.length;
 
   skyVAO = gl.createVertexArray();
@@ -332,12 +332,11 @@ if (bool(uHideSun)) {
 
     vec3 groundBase   = vec3(0.014,0.02,0.035) * groundMask * uSunIntensity;
     float below       = smoothstep(0.0, 0.25, max(0.0, -dir.y));
-  
 
     // === 5. Finalna kompozicija ===
 // više HDR energije za sun disk i scatter
 vec3 color = (base * skyMask * uSunIntensity) +
-             (sunLight * skyMask * 10.0) +   // 15x jače sunce
+             (sunLight * skyMask * 1.0) +   // 15x jače sunce
              groundBase;
 
     // Fade celo nebo kad je noć (noć je nightAmt)

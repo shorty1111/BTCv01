@@ -1,4 +1,4 @@
-export const MAX_FPS = 60; // Change this to 30, 60, or 144 depending on performance.
+export const MAX_FPS = 45; // Change this to 30, 60, or 144 depending on performance.
 export const DEFAULT_MODEL = "assets/boat.glb";
 export const BASE_PRICE = 30000; // Base boat price in euros.
 
@@ -14,45 +14,82 @@ export const BOAT_INFO = {
 };
 
 export const VARIANT_GROUPS = {
-  Seats: {
-    BT_Base_03_A: {
-      mainMat: "M_Leather_A",
-      models: [
-        {
-          name: "Standard Seats",
-          src: null,
-          price: 0,
-          colors: [],
-          description:
-            "Durable marine-grade seats designed for everyday comfort and reliability.",
-        },
-        {
-          name: "Comfort Edition",
-          src: "variants/BT_Base_03_B.glb",
-          price: 500,
-          colors: [
-            { name: "Default Leather", type: "texture", texture: "leather_default.jpg" },
-            { name: "Leather Black", type: "texture", texture: "leather_black.jpg" },
-            { name: "Leather Brown", type: "texture", texture: "leather_brown.jpg" },
-          ],
-          description:
-            "Enhanced seating with thicker cushions and premium leather textures for a smoother ride.",
-        },
-        {
-          name: "Luxury Leather",
-          src: "variants/BT_Base_03_C.glb",
-          price: 700,
-          colors: [
-            { name: "Default Leather", type: "texture", texture: "leather_default.jpg" },
-            { name: "Leather Black", type: "texture", texture: "leather_black.jpg" },
-            { name: "Leather Brown", type: "texture", texture: "leather_brown.jpg" },
-          ],
-          description:
-            "Hand-stitched luxury seating with refined leather finishes and superior ergonomic support.",
-        },
-      ],
-    },
+Seats: {
+  BT_Base_03_A: {
+    mainMat: "M_Leather_A",
+    models: [
+      {
+        name: "Standard Seats",
+        src: null,
+        price: 0,
+        colors: [],
+        description:
+          "Durable marine-grade seats designed for everyday comfort and reliability.",
+      },
+      {
+        name: "Comfort Edition",
+        src: "variants/BT_Base_03_B.glb",
+        price: 500,
+        colors: [
+          {
+            name: "Default Leather",
+            type: "texture",
+            texture: "leather_default_B_C.jpg",
+            normal: "leather_default_N_C.jpg",
+            rough: "leather_default_R_C.jpg",
+          },
+          {
+            name: "Leather Black",
+            type: "texture",
+            texture: "leather_black_B_C.jpg",
+            normal: "leather_black_N_C.jpg",
+            rough: "leather_black_R_C.jpg",
+          },
+          {
+            name: "Leather Brown",
+            type: "texture",
+            texture: "leather_brown_B_C.jpg",
+            normal: "leather_brown_N_C.jpg",
+            rough: "leather_brown_R_C.jpg",
+          },
+        ],
+        description:
+          "Enhanced seating with thicker cushions and premium leather textures for a smoother ride.",
+      },
+      {
+        name: "Luxury Leather",
+        src: "variants/BT_Base_03_C.glb",
+        price: 700,
+        colors: [
+          {
+            name: "Default Leather",
+            type: "texture",
+            texture: "leather_default_B_C.jpg",
+            normal: "leather_default_N_C.jpg",
+            rough: "leather_default_R_C.jpg",
+          },
+          {
+            name: "Leather Black",
+            type: "texture",
+            texture: "leather_black_B_C.jpg",
+            normal: "leather_black_N_C.jpg",
+            rough: "leather_black_R_C.jpg",
+          },
+          {
+            name: "Leather Brown",
+            type: "texture",
+            texture: "leather_brown_B_C.jpg",
+            normal: "leather_brown_N_C.jpg",
+            rough: "leather_brown_R_C.jpg",
+          },
+        ],
+        description:
+          "Hand-stitched luxury seating with refined leather finishes and superior ergonomic support.",
+      },
+    ],
   },
+},
+
 
   Hull: {
     BT_Base_00_A: {

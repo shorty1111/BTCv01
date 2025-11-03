@@ -16,7 +16,9 @@ export function initCamera(canvas) {
   let useOrtho = false;
   let camWorld = [0, 0, 0];
   let view = new Float32Array(16);
-
+  let lastRx = rx, lastRy = ry, lastDist = dist;
+  let lastPan = pan.slice();
+  let moved = false;
   // === ✅ POČETNI UGAO I VISINA — KAO U STAROM main.js ===
   rx = rxTarget = Math.PI / 10;   // ~18° nagib iznad horizonta
   ry = ryTarget = Math.PI / 20;   // blagi yaw
@@ -45,6 +47,23 @@ export function initCamera(canvas) {
       distTarget += (maxDistDynamic - distTarget) * 0.2;
 
     dist += (distTarget - dist) * 0.14;
+    // 🔹 detekcija pomeranja kamere
+    if (
+      Math.abs(rx - lastRx) > 1e-5 ||
+      Math.abs(ry - lastRy) > 1e-5 ||
+      Math.abs(dist - lastDist) > 1e-5 ||
+      Math.abs(pan[0] - lastPan[0]) > 1e-5 ||
+      Math.abs(pan[1] - lastPan[1]) > 1e-5 ||
+      Math.abs(pan[2] - lastPan[2]) > 1e-5
+    ) {
+      moved = true;
+      lastRx = rx;
+      lastRy = ry;
+      lastDist = dist;
+      lastPan = pan.slice();
+    } else {
+      moved = false;
+    }
   }
 
   // === VIEW MATRICA ===
@@ -80,6 +99,8 @@ export function initCamera(canvas) {
     }
 
     return { proj, view, camWorld };
+    
+    
   }
     // === AUTO-FIT KAMERE NA SCENU ===
     function fitToBoundingBox(bmin, bmax) {
@@ -240,5 +261,7 @@ canvas.addEventListener("touchmove", (e) => {
     set dist(v) { dist = v; },
     get distTarget() { return distTarget; },
     set distTarget(v) { distTarget = v; },
+    get moved() { return moved; },
+    set moved(v) { moved = v; },
   };
 }
