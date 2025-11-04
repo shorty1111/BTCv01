@@ -117,42 +117,42 @@ function buildVariantSidebar() {
               const cfgGroup = Object.values(VARIANT_GROUPS).find((g) => partKey in g) || {};
               const mainMat = cfgGroup[partKey]?.mainMat || "";
 
-if (c.type === "texture" && c.texture) {
-  const loadTex = (src) => new Promise((resolve) => {
-    const img = new Image();
-    img.src = src;
-    img.onload = () => {
-      const tex = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-      gl.generateMipmap(gl.TEXTURE_2D);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-      resolve(tex);
-    };
-  });
+              if (c.type === "texture" && c.texture) {
+                const loadTex = (src) => new Promise((resolve) => {
+                  const img = new Image();
+                  img.src = src;
+                  img.onload = () => {
+                    const tex = gl.createTexture();
+                    gl.bindTexture(gl.TEXTURE_2D, tex);
+                    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+                    gl.generateMipmap(gl.TEXTURE_2D);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+                    resolve(tex);
+                  };
+                });
 
-  const [texBase, texNormal, texRough] = await Promise.all([
-    loadTex(c.texture),
-    loadTex(c.normal),
-    loadTex(c.rough)
-  ]);
+                const [texBase, texNormal, texRough] = await Promise.all([
+                  loadTex(c.texture),
+                  loadTex(c.normal),
+                  loadTex(c.rough)
+                ]);
 
-  for (const r of node.renderIdxs) {
-    if (!mainMat || r.matName === mainMat) {
-      modelBaseTextures[r.idx] = texBase;
-      originalParts[r.idx].baseColorTex = texBase;
-      if (texNormal) originalParts[r.idx].normalTex = texNormal;
-      if (texRough) originalParts[r.idx].roughnessTex = texRough;
-    }
-  }
+            for (const r of node.renderIdxs) {
+              if (!mainMat || r.matName === mainMat) {
+                modelBaseTextures[r.idx] = texBase;
+                originalParts[r.idx].baseColorTex = texBase;
+                if (texNormal) originalParts[r.idx].normalTex = texNormal;
+                if (texRough) originalParts[r.idx].roughnessTex = texRough;
+              }
+              }
 
-  sceneChanged = true;
-  render();
-}
- else if (c.type === "color" && c.color) {
+                sceneChanged = true;
+                render();
+              }
+              else if (c.type === "color" && c.color) {
                   for (const r of node.renderIdxs) {
                     if (mainMat && r.matName === mainMat) {
                       modelBaseColors[r.idx] = new Float32Array(c.color);
@@ -167,18 +167,22 @@ if (c.type === "texture" && c.texture) {
               currentParts[partKey] = { ...variant, selectedColor: c.name };
               updatePartsTable(partKey, `${variant.name} (${c.name})`);
 
-              // ažuriraj selekciju u UI
-              colorsDiv.querySelectorAll(".color-swatch").forEach(el => el.classList.remove("selected"));
-              colorEl.classList.add("selected");
-                sceneChanged = true;   // 🔹 dodaj ovde
-              render();
-              showPartInfo(`${variant.name} (${c.name})`);
+                  // ažuriraj selekciju u UI
+                  colorsDiv.querySelectorAll(".color-swatch").forEach(el => el.classList.remove("selected"));
+                  colorEl.classList.add("selected");
+                    sceneChanged = true;   // 🔹 dodaj ovde
+                  render();
+                  showPartInfo(`${variant.name} (${c.name})`);
+                });
+
+              colorsDiv.appendChild(colorEl);
             });
 
-        colorsDiv.appendChild(colorEl);
-      });
+      
 
         // 🔹 Nakon što su sve boje dodate, ponovo označi izabranu
+
+
         const saved = currentParts[partKey];
         if (saved && saved.selectedColor) {
           const sel = Array.from(colorsDiv.children).find(
@@ -253,6 +257,23 @@ if (prev && prev.selectedColor) {
   savedColorsByPart[partKey][prev.name] = prev.selectedColor;
 }
   replaceSelectedWithURL(variant.src, variant.name, partKey);
+  // ✅ Ako varijanta ima boje, automatski primeni prvu ako nije već izabrana
+const variantData = variant;
+if (variantData.colors && variantData.colors.length > 0) {
+  const savedColor = savedColorsByPart[partKey]?.[variant.name];
+  if (!savedColor) {
+    const first = variantData.colors[0];
+    savedColorsByPart[partKey] = savedColorsByPart[partKey] || {};
+    savedColorsByPart[partKey][variant.name] = first.name;
+
+    // primeni kroz isti mehanizam kao kad korisnik klikne boju
+    const colorsDiv = itemEl.querySelector(".colors");
+    const firstEl = colorsDiv?.querySelector(".color-swatch");
+    if (firstEl) {
+      setTimeout(() => firstEl.click(), 50); // ⏳ da sačeka render modela
+    }
+  }
+}
   updatePartsTable(partKey, variant.name);
   currentParts[partKey] = variant;
   itemsDiv.querySelectorAll(".variant-item").forEach((el) => el.classList.remove("active"));

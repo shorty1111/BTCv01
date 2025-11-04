@@ -188,17 +188,14 @@ void main(){
 
     // === 1. Dynamic sky colors by sunAlt ===
 
-    // DNEVNO NEBO (dan, zenit)
-    vec3 dayZenith   = vec3(0.12, 0.25, 0.60);
-    vec3 dayHorizon  = vec3(0.80, 0.90, 1.00);
+vec3 dayZenith   = vec3(0.22, 0.38, 0.65);   // dublje plavo, manje zeleno
+vec3 dayHorizon  = vec3(0.95, 0.8, 0.65);    // topli bež ton
 
-    // SUNSET (toplo, sunset, ljubičasto)
-    vec3 sunsetZenith   = vec3(0.18, 0.23, 0.55);   // plavo-ljubičasto
-    vec3 sunsetHorizon  = vec3(1.00, 0.35, 0.10);   // narandžasto
+vec3 sunsetZenith   = vec3(0.38, 0.28, 0.65);  // ljubičasto-cijan prelaz
+vec3 sunsetHorizon  = vec3(1.1, 0.45, 0.18);   // zlatno-narandžasto
 
-    // NOĆ (deep blue)
-    vec3 nightZenith   = vec3(0.01, 0.02, 0.10);
-    vec3 nightHorizon  = vec3(0.05, 0.06, 0.13);
+vec3 nightZenith   = vec3(0.02, 0.03, 0.08);
+vec3 nightHorizon  = vec3(0.05, 0.06, 0.1);
 
     // Koliko je sunset aktivan (0 dan, 1 sunset)
     float sunsetAmt = smoothstep(0.0, 0.15, clamp(0.2 - sunAlt, 0.0, 0.2));
@@ -219,7 +216,8 @@ void main(){
     curHorizon = mix(curHorizon, nightHorizon, nightAmt);
 
     vec3 base = mix(curZenith, curHorizon, hS);
-    
+    float air = exp(-pow(dir.y * 1.2, 2.0));
+base = mix(base, vec3(1.0, 0.85, 0.75), air * 0.15);
 
 
     // === 2. Procedural clouds, halo, sunset boost ===
@@ -274,7 +272,7 @@ cloudCol += vec3(1.0, 0.95, 0.9) * sunFacing * 0.25;
 
 // --- visinska nijansa ---
 cloudCol = mix(cloudCol, vec3(0.9, 0.9, 0.95), 1.0 - heightMix);
-
+cloudCol *= mix(vec3(1.0), uSunColor * 1.2, pow(max(sunAlt, 0.0), 0.6));
 
         totalDensity += density * (1.0 - totalDensity);
         colorAcc += cloudCol * density * (1.0 - totalDensity);

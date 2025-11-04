@@ -18,6 +18,7 @@ let finalColorTex = null;
 let ssaoUniforms = {};
 let lastView = new Float32Array(16);
 let lastProj = new Float32Array(16);
+
 let shadowDirty = true;
 let ssaoDirty = true;
 let lastViewMatrix = new Float32Array(16);
@@ -72,7 +73,7 @@ async function preloadAllConfigTextures() {
 
 
 // CENTRALNO SUNCE
-const SUN = {dir: v3.norm([-0.9,0.8, 0.3]), color: [1.0, 0.92, 0.76], intensity: 0.0, 
+const SUN = {dir: v3.norm([-0.9,1.0, 0.3]), color: [1.0, 0.92, 0.76], intensity: 0.0, 
 };
 window.SUN = SUN;
 updateSun();
@@ -99,7 +100,7 @@ function updateSun() {
 }
 
 function setWeather(presetName) {
-  const presets = { day:{y:1.0}, sunset:{y:0.15} };
+  const presets = { day:{y:1.0}, sunset:{y:0.12} };
   const preset = presets[presetName];
   if (!preset) return;
 
@@ -114,6 +115,11 @@ function setWeather(presetName) {
     useTonemap: false,
     hideSun: true,
   });
+  // 🔹 OVO DODAJ
+gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
+gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
+
   cubeMaxMip = Math.floor(Math.log2(envSize));
   sceneChanged = true;
   render();
@@ -1045,7 +1051,7 @@ window.ssaoBlurUniforms = {
     // === 3. Init PBR konstantnih uniforma ===
     gl.useProgram(program);
     gl.uniform1f(pbrUniforms.uLightSize, 0.00025);
-    window.globalExposure = 1.0; // globalni exposure za sve svetlo
+    window.globalExposure = 1.3; // globalni exposure za sve svetlo
     gl.uniform1f(pbrUniforms.uGlobalExposure, window.globalExposure);
     gl.uniform2f(pbrUniforms.uShadowMapSize, SHADOW_RES, SHADOW_RES);
     gl.uniform1f(pbrUniforms.uNormalBias, 0.005);
@@ -2209,12 +2215,14 @@ async function loadGLB(buf) {
     normalTex: normalTex || window.defaultNormalTex,
     roughnessTex: roughnessTex || window.whiteTex,
   };
-        if (!realOriginalParts[renderIdx]) {
-          realOriginalParts[renderIdx] = {
-            ...originalParts[renderIdx],
-            modelMatrix: modelMat.slice(),
-          };
-        }
+      if (!realOriginalParts[renderIdx]) {
+        realOriginalParts[renderIdx] = {
+          ...originalParts[renderIdx],
+          normalTex: normalTex || window.defaultNormalTex,
+          roughnessTex: roughnessTex || window.whiteTex,
+          modelMatrix: modelMat.slice(),
+        };
+      }
 
         let nodeId = nodesMeta.findIndex(
           (n) => n.name === (myNode.name || `mesh_${meshIdx}`)
@@ -2556,24 +2564,37 @@ out.push({
 
 async function replaceSelectedWithURL(url, variantName, partName) {
   showLoading();
-
+  
   const node = nodesMeta.find((n) => n.name === partName);
+  
+  if (node && currentParts[partName]?.name !== variantName) {
+  delete node.cachedBounds;
+}
   if (!node) {
     hideLoading();
     return;
   }
-  if (node && currentParts[partName]?.name !== variantName) {
-    delete node.cachedBounds;
-  }
 
   const cfgGroup = Object.values(VARIANT_GROUPS).find((g) => partName in g) || {};
   const mainMat = cfgGroup[partName]?.mainMat || "";
+
   transparentMeshes = transparentMeshes.filter((m) => m.partName !== partName);
 
-  // --- učitaj mesh ---
   let variantMeshes;
   if (!url) {
     variantMeshes = node.renderIdxs.map((r) => realOriginalParts[r.idx]).filter(Boolean);
+    if (originalGlassByPart[partName]) {
+      for (const g of originalGlassByPart[partName]) {
+        transparentMeshes.push({
+          ...g,
+          renderIdx: -1,
+          partName,
+          modelMat:
+            g.modelMat ||
+            new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
+        });
+      }
+    }
   } else {
     if (!preparedVariants[url]) {
       const buf = cachedVariants[url] || (await fetch(url).then((r) => r.arrayBuffer()));
@@ -2584,32 +2605,49 @@ async function replaceSelectedWithURL(url, variantName, partName) {
   }
 
   const oldSlots = node.renderIdxs.map((r) => r.idx);
-  for (let i = 0; i < variantMeshes.length; i++) {
+
+  for (let i = 0; i < variantMeshes.length; ++i) {
     const vm = variantMeshes[i];
     if (!vm) continue;
 
-    let renderIdx = oldSlots[i] ?? modelVAOs.length;
-    if (renderIdx >= modelVAOs.length) {
+    let renderIdx;
+    if (i < oldSlots.length) {
+      renderIdx = oldSlots[i];
+    } else {
+      renderIdx = modelVAOs.length;
       modelVAOs.push(null);
       idxCounts.push(0);
       idxTypes.push(null);
-      modelMatrices.push(new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]));
+      modelMatrices.push(
+        new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
+      );
       modelBaseColors.push(new Float32Array([1, 1, 1]));
       modelMetallics.push(1);
       modelRoughnesses.push(1);
       modelBaseTextures.push(null);
+
       node.renderIdxs.push({ idx: renderIdx, matName: vm.matName || "" });
       renderToNodeId[renderIdx] = node.id;
+    }
+
+    if (vm.isBlend) {
+      transparentMeshes.push({
+        ...vm,
+        renderIdx,
+        partName,
+        modelMat: modelMatrices[renderIdx],
+      });
+      idxCounts[renderIdx] = 0;
+      continue;
     }
 
     modelVAOs[renderIdx] = vm.vao;
     idxCounts[renderIdx] = vm.count;
     idxTypes[renderIdx] = vm.type;
-    modelBaseColors[renderIdx] = vm.baseColor || new Float32Array([1, 1, 1]);
-    modelMetallics[renderIdx] = vm.metallic ?? 1;
-    modelRoughnesses[renderIdx] = vm.roughness ?? 1;
-    modelBaseTextures[renderIdx] = vm.baseColorTex || window.whiteTex;
-
+    modelBaseColors[renderIdx] = vm.baseColor;
+    modelMetallics[renderIdx] = vm.metallic;
+    modelRoughnesses[renderIdx] = vm.roughness;
+    modelBaseTextures[renderIdx] = vm.baseColorTex || null;
     originalParts[renderIdx] = {
       vao: vm.vao,
       count: vm.count,
@@ -2617,82 +2655,88 @@ async function replaceSelectedWithURL(url, variantName, partName) {
       baseColor: modelBaseColors[renderIdx],
       metallic: vm.metallic,
       roughness: vm.roughness,
-      baseColorTex: modelBaseTextures[renderIdx],
+      baseColorTex: vm.baseColorTex || null,
       pos: vm.pos,
       nor: vm.nor,
       ind: vm.ind,
-      normalTex: vm.normalTex || window.defaultNormalTex,
-      roughnessTex: vm.roughnessTex || window.whiteTex,
+      normalTex: vm.normalTex || window.defaultNormalTex,     // 👈 dodaj ovo
+      roughnessTex: vm.roughnessTex || window.whiteTex,       // 👈 i ovo
     };
   }
 
-  // --- učitaj teksture iz configa PRE rendera ---
-  const variantData = (cfgGroup[partName]?.models || []).find(v => v.name === variantName);
-  const savedColorName = savedColorsByPart[partName]?.[variantName];
-  const colorData = variantData?.colors?.find(c => c.name === savedColorName) || variantData?.colors?.[0];
+  for (let j = variantMeshes.length; j < oldSlots.length; ++j) {
+    idxCounts[oldSlots[j]] = 0;
+  }
+// ✅ UVEK učitaj kompletnu boju (color ili texture) iz configa
+const variantData = (cfgGroup[partName]?.models || []).find(v => v.name === variantName);
+const savedColorName = savedColorsByPart[partName]?.[variantName];
+const activeColor = savedColorName
+  ? variantData?.colors?.find(c => c.name === savedColorName)
+  : variantData?.colors?.[0];
 
-  if (colorData && colorData.type === "texture") {
-    const loadTex = async (src) => {
-      if (textureCache[src]) return textureCache[src];
-      const res = await fetch(src);
-      const blob = await res.blob();
-      const bmp = await createImageBitmap(blob);
-      const tex = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
-      gl.generateMipmap(gl.TEXTURE_2D);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-      textureCache[src] = tex;
-      return tex;
-    };
-
-    try {
-      const [base, normal, rough] = await Promise.all([
-        loadTex(colorData.texture),
-        loadTex(colorData.normal),
-        loadTex(colorData.rough),
-      ]);
-
-      for (const r of node.renderIdxs) {
-        modelBaseTextures[r.idx] = base;
-        originalParts[r.idx].baseColorTex = base;
-        originalParts[r.idx].normalTex = normal;
-        originalParts[r.idx].roughnessTex = rough;
+if (activeColor) {
+  if (activeColor.type === "color" && activeColor.color) {
+    for (const r of node.renderIdxs) {
+      if (mainMat && r.matName === mainMat) {
+        modelBaseColors[r.idx] = new Float32Array(activeColor.color);
+        modelBaseTextures[r.idx] = null;
+      } else if (!mainMat && r === node.renderIdxs[0]) {
+        modelBaseColors[r.idx] = new Float32Array(activeColor.color);
+        modelBaseTextures[r.idx] = null;
       }
-    } catch (e) {
-      console.warn("Greška u učitavanju tekstura:", e);
+    }
+  } else if (activeColor.type === "texture" && activeColor.texture) {
+      const loadTex = async (src) => {
+        if (!src) return null;
+
+        // ✅ koristi keš ako već postoji
+        if (textureCache[src]) return textureCache[src];
+
+        try {
+          const res = await fetch(src);
+          const blob = await res.blob();
+          const bmp = await createImageBitmap(blob);
+          const tex = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, tex);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
+          gl.generateMipmap(gl.TEXTURE_2D);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+          textureCache[src] = tex; // cache rezultat
+          return tex;
+        } catch (err) {
+          console.warn("⚠️ Ne može da učita teksturu:", src, err);
+          return null;
+        }
+      };
+
+
+    const [texBase, texNormal, texRough] = await Promise.all([
+      loadTex(activeColor.texture),
+      loadTex(activeColor.normal),
+      loadTex(activeColor.rough),
+    ]);
+
+    for (const r of node.renderIdxs) {
+      if (!mainMat || r.matName === mainMat) {
+        modelBaseTextures[r.idx] = texBase;
+        originalParts[r.idx].baseColorTex = texBase;
+        if (texNormal) originalParts[r.idx].normalTex = texNormal;
+        if (texRough) originalParts[r.idx].roughnessTex = texRough;
+      }
     }
   }
-// 🔹 Uskladi materijal za svaki deo — automatski prepoznaje boju ili teksturu
-for (const r of node.renderIdxs) {
-  const op = originalParts[r.idx];
-  if (!op) continue;
-
-  const hasTex =
-    op.baseColorTex && op.baseColorTex !== window.whiteTex;
-
-  // ako ima teksturu -> koristi nju
-  if (hasTex) {
-    modelBaseTextures[r.idx] = op.baseColorTex;
-  } else {
-    // ako nema -> koristi boju
-    modelBaseTextures[r.idx] = null;
-    modelBaseColors[r.idx] = new Float32Array(op.baseColor || [1, 1, 1]);
-  }
-
-  // fallback za normal/roughness
-  if (!op.normalTex) op.normalTex = window.defaultNormalTex;
-  if (!op.roughnessTex) op.roughnessTex = window.whiteTex;
 }
 
-  // --- sad tek render ---
-  gl.flush();
+
   currentParts[partName] = { ...currentParts[partName], name: variantName };
-  if (!window.__suppressFocusCamera) focusCameraOnNode(node);
+  if (!window.__suppressFocusCamera) {
+  focusCameraOnNode(node);
+}
   hideLoading();
+  
   sceneChanged = true;
   render();
   showPartInfo(variantName);

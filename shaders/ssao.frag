@@ -16,8 +16,8 @@ uniform float uFrame;
 uniform vec2  uNoiseScale;
 
 #define KERNEL_SIZE 64
-const float bias     = 0.025;
-const float powerAO  = 2.65;
+const float bias     = 0.035;
+const float powerAO  = 1.0;
 
 /* ---------- main ---------- */
 void main() {
@@ -35,9 +35,9 @@ void main() {
 
     // --- Camera-depth adaptacija ---
     float camDepth = -fragPos.z;
-    float depthFactor = clamp(camDepth / 1.0, 0.0, 1.0);
+    float depthFactor = clamp(camDepth / 3.0, 0.0, 1.0);
     float radius = mix(0.1, 1.0, depthFactor);
-    float adapt  = mix(1.0, 1.0, clamp(camDepth / 1.0, 0.0, 1.0));
+    float adapt  = mix(0.1, 1.0, clamp(camDepth / 3.0, 0.0, 1.0));
     int sampleCount = int(mix(48.0, 64.0, depthFactor));
 
     float occlusion = 0.0;

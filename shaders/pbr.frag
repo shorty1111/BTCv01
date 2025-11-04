@@ -134,7 +134,7 @@ void main(){
     float NdotL  = max(dot(N, Lv), 0.0);
     float NdotV  = max(dot(N, V ), 0.0);
 
-    vec3 F0 = mix(vec3(0.04), baseColor, metal);
+    vec3 F0 = mix(vec3(0.02), baseColor, metal * 0.9);
     float D  = distributionGGX(N, H, rough);
     float G  = geometrySmith(NdotV, NdotL, rough);
     vec3  F  = fresnelSchlickRoughness(max(dot(H, V), 0.0), F0, rough);
@@ -143,16 +143,45 @@ void main(){
     vec3 kd   = (1.0 - F) * (1.0 - metal);
     vec3 diff = kd * ( baseColor / 3.141592 ) * ao;
 
-    float mipDiff = uCubeMaxMip ; // svetlije gi env
-    vec3 NdiffW = normalize(Rw);
-    vec3 envBent = textureLod(uEnvMap, NdiffW, mipDiff).rgb * uSunIntensity;
-    vec3 ambient = envBent * ao;
-    vec3 radiance = uSunColor * uSunIntensity;
+    float mipDiff = uCubeMaxMip;          // 8 → meko, difuzno
+    float mipSpec = rough * rough* uCubeMaxMip;  // dinamički, za refleksije
 
-    /* --- Specular IBL — spec occlusion nikad ne spusti ispod MIN --- */
-    float mip = clamp(uCubeMaxMip * rough * rough, 0.0, uCubeMaxMip);
-    vec3 envSpec = textureLod(uEnvMap, normalize(Rw), mip).rgb;
-    envSpec = mix(envSpec, vec3(dot(envSpec, vec3(0.333))), rough * 0.3);
+    vec3 NdiffW = Nw;
+    vec3 envDiff = textureLod(uEnvMap, NdiffW, mipDiff).rgb;
+
+    vec3 radiance = uSunColor * uSunIntensity;
+    
+    radiance += envDiff;
+
+    // --- prošireni AO uzorak za fake GI ---
+    float aoWide =1.50;
+    const float giRadius = 0.50; // povećaj na 60-100 ako hoćeš još šire
+    aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( giRadius,  0.0)).a;
+    aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2(-giRadius,  0.0)).a;
+    aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( 0.0,  giRadius)).a;
+    aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( 0.0, -giRadius)).a;
+    aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( giRadius,  giRadius)).a;
+    aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2(-giRadius,  giRadius)).a;
+    aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( giRadius, -giRadius)).a;
+    aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2(-giRadius, -giRadius)).a;
+
+
+    float giBoost = mix(0.0, 0.01, pow(1.0 - aoWide, 2.0));
+    
+    vec3 ambient = envDiff * giBoost;
+
+    vec3 envSpec = textureLod(uEnvMap, Rw, mipSpec).rgb;
+
+    // ☀️ Utišavanje efekta po jačini sunca (radiance)
+    float sunStrength = clamp(length(radiance), 0.0, 1.5); // kad je sunset → manja vrednost
+
+    // 🌊 Fake ground tint samo za dole gledajuće refleksije
+    float groundMask = smoothstep(-0.6, 0.2, Rw.y);
+    float tintAmt = (1.0 - groundMask) * 0.2 * sunStrength;
+    vec3 tintColor = baseColor  + vec3(0.05);
+
+    envSpec = mix(envSpec, mix(envSpec, tintColor, tintAmt), tintAmt);
+
 
     vec2 brdf = texture(uBRDFLUT, vec2(NdotV, rough)).rg;
     vec3 F_ibl = fresnelSchlickRoughness(NdotV, F0, rough);
@@ -165,26 +194,11 @@ void main(){
     /* --- Final --- */
 
 
+
+    vec3 fakeGI = baseColor * 0.01 * giBoost ;
     vec3 color = direct + diffIBL + specIBL ;
     color *= uGlobalExposure;
-
-// --- prošireni AO uzorak za fake GI ---
-float aoWide = 0.0;
-const float giRadius = 2.50; // povećaj na 60-100 ako hoćeš još šire
-aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( giRadius,  0.0)).a;
-aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2(-giRadius,  0.0)).a;
-aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( 0.0,  giRadius)).a;
-aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( 0.0, -giRadius)).a;
-aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( giRadius,  giRadius)).a;
-aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2(-giRadius,  giRadius)).a;
-aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( giRadius, -giRadius)).a;
-aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2(-giRadius, -giRadius)).a;
-aoWide *= 0.135;
-
-// koristi prošireni AO za fake GI, uski za senčenje
-float giBoost = mix(0.0, 1.0, pow(1.0 - aoWide, 2.0)) * uSunIntensity;
-vec3 fakeGI = baseColor * giBoost *0.05 ;
-color += fakeGI * ao * uSunIntensity;
+    color += fakeGI ;
 
     fragColor = vec4(vec3(color), 1.0);
 }

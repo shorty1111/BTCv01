@@ -137,8 +137,7 @@ vec3 n3 = texture(waterNormalTex, vUV * 6.5 + scroll3).xyz * 2.0 - 1.0;
     reflUV = clamp(reflUV, 0.001, 0.999);
 
     vec3 planarReflection = texture(uReflectionTex, reflUV).rgb;
-    planarReflection = pow(planarReflection, vec3(0.7));
-    planarReflection *= 0.7;
+
 
 
     // --- Environment refleksija ---
