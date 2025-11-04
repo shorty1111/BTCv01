@@ -109,8 +109,10 @@ void main(){
     vec3 baseColor = texture(gAlbedo, vUV).rgb;
     
     vec4 m         = texture(gMaterial, vUV);
-    float rough = clamp(m.r, 0.04, 1.0);
-    float metal    = clamp(m.g,0.0,1.0);
+    // ✅ DODAJ OVO:
+    float roughPerceptual = clamp(m.r, 0.04, 1.0);  // perceptual roughness iz teksture
+    float rough = roughPerceptual * roughPerceptual; // alpha roughness za GGX
+    float metal = clamp(m.g, 0.0, 1.0);
 
     // Bent + AO (u VIEW space)
     vec4 bnAO  = texture(tBentNormalAO, vUV);
@@ -134,7 +136,7 @@ void main(){
     float NdotL  = max(dot(N, Lv), 0.0);
     float NdotV  = max(dot(N, V ), 0.0);
 
-    vec3 F0 = mix(vec3(0.02), baseColor, metal * 0.9);
+    vec3 F0 = mix(vec3(0.04), baseColor, metal);
     float D  = distributionGGX(N, H, rough);
     float G  = geometrySmith(NdotV, NdotL, rough);
     vec3  F  = fresnelSchlickRoughness(max(dot(H, V), 0.0), F0, rough);
@@ -144,17 +146,15 @@ void main(){
     vec3 diff = kd * ( baseColor / 3.141592 ) * ao;
 
     float mipDiff = uCubeMaxMip;          // 8 → meko, difuzno
-    float mipSpec = rough * rough* uCubeMaxMip;  // dinamički, za refleksije
+    float mipSpec = roughPerceptual * uCubeMaxMip;
 
-    vec3 NdiffW = Nw;
-    vec3 envDiff = textureLod(uEnvMap, NdiffW, mipDiff).rgb;
+    vec3 NdiffW = Rw;
+    vec3 envDiff = textureLod(uEnvMap, Rw, mipDiff).rgb;
 
-    vec3 radiance = uSunColor * uSunIntensity;
-    
-    radiance += envDiff;
+    vec3 sunRadiance = uSunColor * uSunIntensity;
 
     // --- prošireni AO uzorak za fake GI ---
-    float aoWide =1.50;
+    float aoWide = texture(tBentNormalAO, vUV).a;
     const float giRadius = 0.50; // povećaj na 60-100 ako hoćeš još šire
     aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( giRadius,  0.0)).a;
     aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2(-giRadius,  0.0)).a;
@@ -164,41 +164,39 @@ void main(){
     aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2(-giRadius,  giRadius)).a;
     aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( giRadius, -giRadius)).a;
     aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2(-giRadius, -giRadius)).a;
+    aoWide /= 3.65;
 
-
-    float giBoost = mix(0.0, 0.01, pow(1.0 - aoWide, 2.0));
-    
-    vec3 ambient = envDiff * giBoost;
-
+    float giBoost = mix(0.1, 0.3, pow(1.0 - aoWide,2.0));   
+   
+  
     vec3 envSpec = textureLod(uEnvMap, Rw, mipSpec).rgb;
 
     // ☀️ Utišavanje efekta po jačini sunca (radiance)
-    float sunStrength = clamp(length(radiance), 0.0, 1.5); // kad je sunset → manja vrednost
+    float sunStrength = clamp(length(sunRadiance), 0.0, 1.5); // kad je sunset → manja vrednost
 
     // 🌊 Fake ground tint samo za dole gledajuće refleksije
-    float groundMask = smoothstep(-0.6, 0.2, Rw.y);
-    float tintAmt = (1.0 - groundMask) * 0.2 * sunStrength;
-    vec3 tintColor = baseColor  + vec3(0.05);
+    float groundMask = smoothstep(-0.6, 0.3, Rw.y);
+    float tintAmt = (1.0 - groundMask) * 0.4 * sunStrength;
+    vec3 tintColor = baseColor * 0.4 + vec3(0.02);
 
     envSpec = mix(envSpec, mix(envSpec, tintColor, tintAmt), tintAmt);
+    envDiff = mix(envDiff, mix(envDiff, tintColor, tintAmt), tintAmt);
+    
+    vec3 ambient = envDiff * giBoost;
 
 
-    vec2 brdf = texture(uBRDFLUT, vec2(NdotV, rough)).rg;
+    vec2 brdf = texture(uBRDFLUT, vec2(NdotV, roughPerceptual)).rg;
     vec3 F_ibl = fresnelSchlickRoughness(NdotV, F0, rough);
 
     vec3 diffIBL = ambient * baseColor * (1.0 - metal);
     vec3 specIBL = envSpec * (F_ibl * (brdf.x + brdf.y)) ;
 
     /* --- Direct lighting mix --- */
-    vec3 direct = (diff + specBRDF) *  NdotL * radiance * shadow ;
+    vec3 direct = (diff + specBRDF) * NdotL * sunRadiance * shadow;
     /* --- Final --- */
 
 
-
-    vec3 fakeGI = baseColor * 0.01 * giBoost ;
     vec3 color = direct + diffIBL + specIBL ;
     color *= uGlobalExposure;
-    color += fakeGI ;
-
     fragColor = vec4(vec3(color), 1.0);
 }

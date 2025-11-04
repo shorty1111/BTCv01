@@ -259,7 +259,7 @@ if (segLen > 0.0) {
 // --- osnovna senka i belina ---
 vec3 lightDir = normalize(uSunDir);
 float shade = max(dot(lightDir, normalize(vec3(0.0,1.0,0.0))), 0.0);
-vec3 cloudCol = mix(vec3(0.35,0.36,0.4), vec3(1.0), shade);
+vec3 cloudCol = mix(vec3(0.5, 0.52, 0.55), vec3(0.95), shade * 0.8);
 
 // --- tamniji centar oblaka, svetlije ivice ---
 float core = smoothstep(0.45, 0.9, cl);        // 0 = ivice, 1 = centar
@@ -272,7 +272,7 @@ cloudCol += vec3(1.0, 0.95, 0.9) * sunFacing * 0.25;
 
 // --- visinska nijansa ---
 cloudCol = mix(cloudCol, vec3(0.9, 0.9, 0.95), 1.0 - heightMix);
-cloudCol *= mix(vec3(1.0), uSunColor * 1.2, pow(max(sunAlt, 0.0), 0.6));
+cloudCol *= mix(vec3(0.8), uSunColor * 0.95, pow(max(sunAlt, 0.0), 0.5));
 
         totalDensity += density * (1.0 - totalDensity);
         colorAcc += cloudCol * density * (1.0 - totalDensity);
@@ -320,7 +320,7 @@ if (bool(uHideSun)) {
 
     float g = 0.8;
     float mie = (1.0 - g*g) / pow(1.0 + g*g - 2.0*g*cosToSun, 1.5);
-    mie *= 0.015 * (1.0 + 2.0*(1.0 - sunAlt)) * uSunHaloScale * uMieStrength;
+    mie *= 0.025 * (1.0 + 3.0*(1.0 - sunAlt)) * uSunHaloScale * uMieStrength;
     float halo = exp(-pow(ang / (sunSize * 6.0), 1.3));
   sunLight += uSunColor * halo * uSunIntensity * 0.05;
 
@@ -332,13 +332,13 @@ if (bool(uHideSun)) {
     float below       = smoothstep(0.0, 0.25, max(0.0, -dir.y));
 
     // === 5. Finalna kompozicija ===
-// više HDR energije za sun disk i scatter
-vec3 color = (base * skyMask * uSunIntensity) +
-             (sunLight * skyMask * 1.0) +   // 15x jače sunce
-             groundBase;
+    // više HDR energije za sun disk i scatter
+    vec3 color = (base * skyMask * uSunIntensity) +
+                (sunLight * skyMask * 1.0) +   // 15x jače sunce
+                groundBase;
 
     // Fade celo nebo kad je noć (noć je nightAmt)
-    color = mix(color, nightZenith, nightAmt*0.95);
+    color = mix(color, nightZenith * 0.5, nightAmt*0.85);
 
 // linear HDR output (ACES tonemap ide kasnije u glavnom passu)
 vec3 hdrColor = color * uGlobalExposure;
@@ -386,7 +386,9 @@ function applySkyUniforms(gl, view, proj, sunDir, opts) {
   gl.uniform1f(skyUniforms.uCloudSpeed, 0.0);
 
   // parametri neba
-  gl.uniform1f(skyUniforms.uGlobalExposure, window.globalExposure * SUN.intensity);
+gl.uniform1f(skyUniforms.uGlobalExposure, 
+  (o.globalExposure ?? window.globalExposure ?? 1.0)
+);
   gl.uniform1f(skyUniforms.uSunSizeDeg, o.sunSizeDeg);
   gl.uniform1f(skyUniforms.uSunHaloScale, o.sunHaloScale);
   gl.uniform1f(skyUniforms.uHorizonSoft, o.horizonSoft);

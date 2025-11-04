@@ -9,6 +9,7 @@ export function initCamera(canvas) {
   let touchPanLastMid = null;
 
   let currentView = "iso";
+  let _lastView = "iso"; 
   let rx = 0, ry = 0, dist = 5;
 
   let pan = [0, 0, 0];
@@ -67,41 +68,54 @@ export function initCamera(canvas) {
   }
 
   // === VIEW MATRICA ===
-  function updateView() {
-    const aspect = canvas.width / canvas.height;
-    const proj = persp(60, aspect, 0.1, 100000);
+function updateView() {
+  const aspect = canvas.width / canvas.height;
+  
+  // ✅ Definiši near/far
+  const near = 0.1;
+  const far = 100000;
+  
+  const proj = persp(60, aspect, near, far);
 
-        if (useOrtho) {
-          const center = window.sceneBoundingCenter || [0, 0, 0];
-          const d = window.sceneFitDistance || 10.0; // ista udaljenost kao u iso
-          let eye, up;
+  if (useOrtho) {
+    const center = window.sceneBoundingCenter || [0, 0, 0];
+    const d = window.sceneFitDistance || 10.0;
+    let eye, up;
 
-          switch (currentView) {
-            case "front": eye = [center[0], center[1], center[2] + d]; up = [0, 1, 0]; break;
-            case "back":  eye = [center[0], center[1], center[2] - d]; up = [0, 1, 0]; break;
-            case "left":  eye = [center[0] - d, center[1], center[2]]; up = [0, 1, 0]; break;
-            case "right": eye = [center[0] + d, center[1], center[2]]; up = [0, 1, 0]; break;
-            case "top":   eye = [center[0], center[1] + d, center[2]]; up = [0, 0, -1]; break;
-            default:      eye = [center[0] + d, center[1] + d, center[2] + d]; up = [0, 1, 0]; break;
-          }
-
-          view.set(look(eye, center, up));
-          camWorld = eye.slice();
-        }
-        else {
-      const eye = [
-        dist * Math.cos(rx) * Math.sin(ry) + pan[0],
-        dist * Math.sin(rx) + pan[1],
-        dist * Math.cos(rx) * Math.cos(ry) + pan[2],
-      ];
-      view.set(look(eye, pan, [0, 1, 0]));
-      camWorld = eye.slice();
+    switch (currentView) {
+      case "front": eye = [center[0], center[1], center[2] + d]; up = [0, 1, 0]; break;
+      case "back":  eye = [center[0], center[1], center[2] - d]; up = [0, 1, 0]; break;
+      case "left":  eye = [center[0] - d, center[1], center[2]]; up = [0, 1, 0]; break;
+      case "right": eye = [center[0] + d, center[1], center[2]]; up = [0, 1, 0]; break;
+      case "top":   eye = [center[0], center[1] + d, center[2]]; up = [0, 0, -1]; break;
+      default:      eye = [center[0] + d, center[1] + d, center[2] + d]; up = [0, 1, 0]; break;
     }
 
-    return { proj, view, camWorld };
-    
-    
+    view.set(look(eye, center, up));
+    camWorld = eye.slice();
+  } else {
+    const eye = [
+      dist * Math.cos(rx) * Math.sin(ry) + pan[0],
+      dist * Math.sin(rx) + pan[1],
+      dist * Math.cos(rx) * Math.cos(ry) + pan[2],
+    ];
+    view.set(look(eye, pan, [0, 1, 0]));
+    camWorld = eye.slice();
   }
+
+  if (currentView !== _lastView) {
+    if (typeof window !== 'undefined') {
+      window.ssaoDirty = true;
+      window.sceneChanged = true;
+      window.shadowDirty = true;
+    }
+    _lastView = currentView;
+    moved = true;
+  }
+  
+  // ✅ VRATI near i far!
+  return { proj, view, camWorld, near, far };
+}
     // === AUTO-FIT KAMERE NA SCENU ===
     function fitToBoundingBox(bmin, bmax) {
       // centar i veličina

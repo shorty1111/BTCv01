@@ -21,6 +21,7 @@ let lastProj = new Float32Array(16);
 
 let shadowDirty = true;
 let ssaoDirty = true;
+
 let lastViewMatrix = new Float32Array(16);
 let lastSunDir = [0, 0, 0];
 const textureCache = {}; // key = url, value = WebGLTexture
@@ -64,11 +65,6 @@ async function preloadAllConfigTextures() {
       }
     }
   }
-
-  const uniquePaths = [...new Set(allPaths.filter(Boolean))];
-  console.log(`⏳ Učitavam ${uniquePaths.length} tekstura iz configa...`);
-  await Promise.all(uniquePaths.map(loadTex));
-  console.log("✅ Sve teksture iz configa su keširane!");
 }
 
 
@@ -115,16 +111,35 @@ function setWeather(presetName) {
     useTonemap: false,
     hideSun: true,
   });
-  // 🔹 OVO DODAJ
-gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
-gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
-gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
+  //   // 🔹 OVO DODAJ
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
+  gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
 
   cubeMaxMip = Math.floor(Math.log2(envSize));
   sceneChanged = true;
   render();
 }
 
+function refreshLighting() {
+  updateSun();
+  shadowDirty = true;
+
+  envTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
+    ...DEFAULT_SKY,
+    sunColor: SUN.color,
+    sunIntensity: SUN.intensity,
+    useTonemap: false,
+    hideSun: true,
+  });
+
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
+  gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
+
+  cubeMaxMip = Math.floor(Math.log2(envSize));
+  sceneChanged = true;
+}
 function smoothstep(edge0, edge1, x) {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
@@ -168,7 +183,7 @@ let savedColorsByPart = {};
 let reflectionFBO = null;
 let reflectionTex = null;
 let reflectionColorProgram = null;
-let envSize = 256; // kontrola kvaliteta/performansi
+let envSize = 512; // kontrola kvaliteta/performansi
 let cubeMaxMip = Math.floor(Math.log2(envSize));
 window.showWater = true;
 window.showDimensions = false;
@@ -242,28 +257,47 @@ function getPreviewProgram(gl) {
   return prog;
 }
 function createReflectionTarget(gl, width, height) {
-  
+  // 🔹 Obriši stare resurse ako postoje
+  if (reflectionTex) gl.deleteTexture(reflectionTex);
+  if (window.reflectionDepthTex) gl.deleteTexture(window.reflectionDepthTex);
+  if (reflectionFBO) gl.deleteFramebuffer(reflectionFBO);
+
+  // 🔹 Reflection color (RGBA16F)
   reflectionTex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, reflectionTex);
-  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,width,height,0,gl.RGBA, gl.HALF_FLOAT,null);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-
-  window.reflectionDepthTex = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, window.reflectionDepthTex);
-  gl.texImage2D(
-  gl.TEXTURE_2D, 0,gl.DEPTH_COMPONENT24,  width,height,0, gl.DEPTH_COMPONENT,gl.UNSIGNED_INT,null);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, width, height, 0, gl.RGBA, gl.HALF_FLOAT, null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
+  // 🔹 Depth texture
+  window.reflectionDepthTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, window.reflectionDepthTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, width, height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+  // 🔹 FBO setup
   reflectionFBO = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, reflectionFBO);
-  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,reflectionTex,0);
-  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.TEXTURE_2D,window.reflectionDepthTex,0 );
-  gl.bindTexture(gl.TEXTURE_2D, null);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, reflectionTex, 0);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, window.reflectionDepthTex, 0);
+
+  // 🔹 Proveri status
+  const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+  if (status !== gl.FRAMEBUFFER_COMPLETE) {
+    console.error("❌ Reflection FBO incomplete:", status.toString(16));
+    return false;
+  }
+
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  
+  console.log("✅ Reflection target created:", width, "x", height);
+  return true;
 }
 
 function getReflectedCamera(camPos, target, up) {
@@ -308,6 +342,8 @@ function createFinalColorTarget(w, h) {
 
 function focusCameraOnNode(node) {
   if (!node) return;
+  camera.useOrtho = false; // 🔥 prebaci nazad u perspektivu
+  
   if (node.cachedBounds) {
     camera.pan = node.cachedBounds.center;
     camera.distTarget = node.cachedBounds.dist;  
@@ -440,7 +476,11 @@ const gl = canvas.getContext("webgl2", { alpha: true, antialias: true });
 
 canvas.__glContext = gl;
 if (!gl) alert("WebGL2 nije podržan u ovom pregledaču.");
-gl.getExtension("EXT_color_buffer_float");
+if (!gl.getExtension("EXT_color_buffer_float")) {
+  alert(
+    "Ovaj browser ne podržava EXT_color_buffer_float.\nGI efekti neće raditi."
+  );
+}
 gl.getExtension("OES_texture_float_linear");
 
 // OVAJ KOD DODAJ OVDE:
@@ -844,12 +884,7 @@ function initShadowMap() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   // zakači depth teksturu na FBO
   gl.framebufferTexture2D( gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.TEXTURE_2D,shadowDepthTex,0);
-  const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
-if (status !== gl.FRAMEBUFFER_COMPLETE) {
-  console.error("❌ Shadow framebuffer incomplete:", status.toString(16));
-} else {
-  console.log("✅ Shadow framebuffer OK");
-}
+
   // pošto nemamo color attachment → mora ovako
   gl.drawBuffers([gl.NONE]);
   gl.readBuffer(gl.NONE);
@@ -954,6 +989,7 @@ window.ssaoBlurUniforms = {
       uView: gl.getUniformLocation(ssrProgram, "uView"),
       uProjection: gl.getUniformLocation(ssrProgram, "uProjection"),
       uResolution: gl.getUniformLocation(ssrProgram, "uResolution"),
+      uEnvMap: gl.getUniformLocation(ssrProgram, "uEnvMap"),
     };
     
     const glassVS = await loadShader("shaders/glass.vert");
@@ -1051,7 +1087,7 @@ window.ssaoBlurUniforms = {
     // === 3. Init PBR konstantnih uniforma ===
     gl.useProgram(program);
     gl.uniform1f(pbrUniforms.uLightSize, 0.00025);
-    window.globalExposure = 1.3; // globalni exposure za sve svetlo
+    window.globalExposure = 1.0; // globalni exposure za sve svetlo
     gl.uniform1f(pbrUniforms.uGlobalExposure, window.globalExposure);
     gl.uniform2f(pbrUniforms.uShadowMapSize, SHADOW_RES, SHADOW_RES);
     gl.uniform1f(pbrUniforms.uNormalBias, 0.005);
@@ -1372,15 +1408,22 @@ function computeLightBounds(min, max, lightView) {
 
 function render() {
   const timeNow = performance.now() * 0.001; // koristi u SSAO i vodi
-  let reflView = null;
   // === 1. Animacija kamere i matrica pogleda ===
-    showWater = window.showWater;
+  showWater = window.showWater;
   showDimensions = window.showDimensions;
   camera.animateCamera();
-  ({ proj, view, camWorld } = camera.updateView());
+  ({ proj, view, camWorld } = camera.updateView()); // ✅ prvo ažuriraj kameru
   
-  if (camera.moved) ssaoDirty = true;
+  // ✅ TEK SADA izračunaj reflView sa NOVIM camWorld
+  let reflCam = getReflectedCamera(camWorld, camera.pan, [0, 1, 0]);
+  let reflView = reflCam.view;
+  let reflProj = proj;
 
+// ✅ DODAJ OVO — proveri da li se kamera pomerila
+if (!arraysEqual(lastViewMatrix, view)) {
+  ssaoDirty = true;
+  lastViewMatrix.set(view);
+}
   // === 1A. CLEAR FINALNI FBO NA POČETKU (OBAVEZNO!) ===
   gl.bindFramebuffer(gl.FRAMEBUFFER, finalFBO);
   gl.viewport(0, 0, canvas.width, canvas.height);
@@ -1478,76 +1521,77 @@ if (shadowDirty) {
   shadowDirty = false; // ✅ Gotovo — koristi isti depth dok se ne promeni
 }
 
+// === 3B. Reflection pass ===
 
-  // === 3B. Reflection pass ===
-  if (showWater) {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, reflectionFBO);
-    
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.clearColor(0, 0, 0, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    gl.enable(gl.DEPTH_TEST);
 
-    let reflCam = getReflectedCamera(camWorld, camera.pan, [0, 1, 0]);
-    let reflProj = proj;
+// ✅ UVEK izračunaj reflView
+if (showWater) {
+  reflCam = getReflectedCamera(camWorld, camera.pan, [0, 1, 0]);
+  reflView = reflCam.view;
+  reflProj = proj;
 
-    reflView = reflCam.view;
+  // 🔧 UKLONI USLOV - renderuj UVEK, ne samo kad je sceneChanged
+  gl.bindFramebuffer(gl.FRAMEBUFFER, reflectionFBO);
+  
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.clearColor(0, 0, 0, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST);
 
-    // ✅ DODAJ OVO — prvo nacrtaj nebo u reflection FBO
-    drawSky(gl, reflectionFBO, reflView, reflProj, SUN.dir, {
-      ...DEFAULT_SKY,
-      worldLocked: 1,
-      sunColor: SUN.color,
-      sunIntensity: SUN.intensity,
-      hideSun: true, // ✅ ključna linija
-      useTonemap: false,
-    });
+  // Nacrtaj nebo
+  drawSky(gl, reflectionFBO, reflView, reflProj, SUN.dir, {
+    ...DEFAULT_SKY,
+    worldLocked: 1,
+    sunColor: SUN.color,
+    sunIntensity: SUN.intensity,
+    hideSun: true,
+    useTonemap: false,
+  });
 
-    gl.useProgram(reflectionColorProgram);
+  gl.useProgram(reflectionColorProgram);
+  
+  gl.uniform3fv(reflectionUniforms.uSunDir, SUN.dir);
+  gl.uniform3fv(reflectionUniforms.uSunColor, SUN.color);
+  gl.uniform1f(reflectionUniforms.uSunIntensity, SUN.intensity);
+  gl.uniform3fv(reflectionUniforms.uCameraPos, camWorld);
+  gl.uniform1f(reflectionUniforms.uRoughness, 0.08);
+  gl.uniform1f(reflectionUniforms.uSpecularStrength, 1.0);
 
-    // --- Globalni uniformi ---
-    gl.uniform3fv(reflectionUniforms.uSunDir, SUN.dir);
-    gl.uniform3fv(reflectionUniforms.uSunColor, SUN.color);
-    gl.uniform1f(reflectionUniforms.uSunIntensity, SUN.intensity);
-    gl.uniform3fv(reflectionUniforms.uCameraPos, camWorld);
-    gl.uniform1f(reflectionUniforms.uRoughness, 0.08);
-    gl.uniform1f(reflectionUniforms.uSpecularStrength, 1.0);
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
+  gl.uniform1i(reflectionUniforms.uEnvMap, 1);
 
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
-    gl.uniform1i(reflectionUniforms.uEnvMap, 1);
+  gl.uniformMatrix4fv(reflectionUniforms.uProjection, false, reflProj);
+  gl.uniformMatrix4fv(reflectionUniforms.uView, false, reflView);
 
-    gl.uniformMatrix4fv(reflectionUniforms.uProjection, false, reflProj);
-    gl.uniformMatrix4fv(reflectionUniforms.uView, false, reflView);
+  for (let i = 0; i < modelVAOs.length; ++i) {
+    const meshName = nodesMeta[renderToNodeId[i]]?.name?.toLowerCase() || "";
+    if (meshName.includes("water")) continue;
+    if (originalParts[i]?.alphaMode === "BLEND" || originalParts[i]?.opacity < 0.999)
+      continue;
+    if (!idxCounts[i]) continue;
 
-    // --- Petlja kroz model ---
-    for (let i = 0; i < modelVAOs.length; ++i) {
-      const meshName = nodesMeta[renderToNodeId[i]]?.name?.toLowerCase() || "";
-      if (meshName.includes("water")) continue;
-      if (originalParts[i]?.alphaMode === "BLEND" || originalParts[i]?.opacity < 0.999)
-        continue;
-      if (!idxCounts[i]) continue;
+    gl.uniformMatrix4fv(reflectionUniforms.uModel, false, modelMatrices[i]);
+    gl.uniform3fv(reflectionUniforms.uBaseColor, modelBaseColors[i] || [1, 1, 1]);
 
-      gl.uniformMatrix4fv(reflectionUniforms.uModel, false, modelMatrices[i]);
-      gl.uniform3fv(reflectionUniforms.uBaseColor, modelBaseColors[i] || [1, 1, 1]);
-
-      if (modelBaseTextures[i]) {
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, modelBaseTextures[i]);
-        gl.uniform1i(reflectionUniforms.uBaseColorTex, 0);
-        gl.uniform1i(reflectionUniforms.uUseBaseColorTex, 1);
-      } else {
-        gl.uniform1i(reflectionUniforms.uUseBaseColorTex, 0);
-      }
-
-      gl.bindVertexArray(modelVAOs[i]);
-      gl.drawElements(gl.TRIANGLES, idxCounts[i], idxTypes[i], 0);
+    if (modelBaseTextures[i]) {
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, modelBaseTextures[i]);
+      gl.uniform1i(reflectionUniforms.uBaseColorTex, 0);
+      gl.uniform1i(reflectionUniforms.uUseBaseColorTex, 1);
+    } else {
+      gl.uniform1i(reflectionUniforms.uUseBaseColorTex, 0);
     }
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.bindVertexArray(modelVAOs[i]);
+    gl.drawElements(gl.TRIANGLES, idxCounts[i], idxTypes[i], 0);
   }
+
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+
+}
+gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
   // === 4. Geometry pass (g-buffer) za opaque objekte ===
   gl.viewport(0, 0, canvas.width, canvas.height);
@@ -1585,18 +1629,18 @@ if (shadowDirty) {
       gl.uniform1i(gBufferUniforms.uUseNormalTex, 0);
     }
 
-    // 🔹 Roughness mapa
-if (originalParts[i]?.roughnessTex) {
-  gl.activeTexture(gl.TEXTURE2);
-  gl.bindTexture(gl.TEXTURE_2D, originalParts[i].roughnessTex);
-  gl.uniform1i(gBufferUniforms.uRoughnessTex, 2);
-  gl.uniform1i(gBufferUniforms.uUseRoughnessTex, 1);
-} else {
-  gl.activeTexture(gl.TEXTURE2);
-  gl.bindTexture(gl.TEXTURE_2D, window.whiteTex); // ✅ fallback
-  gl.uniform1i(gBufferUniforms.uRoughnessTex, 2);
-  gl.uniform1i(gBufferUniforms.uUseRoughnessTex, 0);
-}
+      // 🔹 Roughness mapa
+  if (originalParts[i]?.roughnessTex) {
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, originalParts[i].roughnessTex);
+    gl.uniform1i(gBufferUniforms.uRoughnessTex, 2);
+    gl.uniform1i(gBufferUniforms.uUseRoughnessTex, 1);
+  } else {
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, window.whiteTex); // ✅ fallback
+    gl.uniform1i(gBufferUniforms.uRoughnessTex, 2);
+    gl.uniform1i(gBufferUniforms.uUseRoughnessTex, 0);
+  }
 
     gl.bindVertexArray(modelVAOs[i]);
     gl.drawElements(gl.TRIANGLES, idxCounts[i], idxTypes[i], 0);
@@ -1733,41 +1777,44 @@ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, 0, 0, canvas.width, canvas.height, 0);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    sceneChanged = false; // ✅ reset
+
   }
-  if (showWater) {
-    // NEMOJ PONOVO bindFramebuffer(finalFBO)! (VEĆ SI U njemu)
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.enable(gl.DEPTH_TEST);
-    gl.depthMask(true);
-    gl.disable(gl.CULL_FACE);
-    // ⬇️ Kopiraj depth iz gBuffer u finalFBO pre crtanja vode
-    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, gBuffer);
-    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, finalFBO);
-    gl.blitFramebuffer(0,0,canvas.width,canvas.height,0,0,canvas.width,canvas.height,gl.DEPTH_BUFFER_BIT,gl.NEAREST);
-    drawWater(
-      gl,
-      proj,
-      view,
-      camWorld,
-      [0, 0, 0],
-      envTex,
-      SUN.dir,
-      SUN.color,
-      SUN.intensity,
-      performance.now() * 0.001,
-      sceneDepthTex,
-      gAlbedo,
-      0.1,
-      100000.0,
-      [canvas.width, canvas.height],
-      shadowDepthTex,
-      lightVP,
-      reflectionTex,
-      mat4mul(proj, reflView),
-      window.globalExposure // 👈 ovo dodaj
-    );
-  }
+if (showWater) {
+// NEMOJ PONOVO bindFramebuffer(finalFBO)! (VEĆ SI U njemu)
+gl.viewport(0, 0, canvas.width, canvas.height);
+gl.enable(gl.DEPTH_TEST);
+gl.depthMask(true);
+gl.disable(gl.CULL_FACE);
+
+// Kopiraj depth iz gBuffer u finalFBO pre crtanja vode
+gl.bindFramebuffer(gl.READ_FRAMEBUFFER, gBuffer);
+gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, finalFBO);
+gl.blitFramebuffer(0,0,canvas.width,canvas.height,0,0,canvas.width,canvas.height,gl.DEPTH_BUFFER_BIT,gl.NEAREST);
+
+const reflMatrix = mat4mul(proj, reflView);
+drawWater(
+  gl,
+  proj,
+  view,
+  camWorld,
+  [0, 0, 0],
+  envTex,
+  SUN.dir,
+  SUN.color,
+  SUN.intensity,
+  performance.now() * 0.001,
+  window.finalDepthTex,  // ✅ koristi stvarni depth
+  gAlbedo,
+  camera.near,           // ✅ koristi iz kamere
+  camera.far,            // ✅ koristi iz kamere
+  [canvas.width, canvas.height],
+  shadowDepthTex,
+  lightVP,
+  reflectionTex,
+  reflMatrix,
+  window.globalExposure
+);
+}
 
   // === 11. Overlay / dimenzije (ako su uključene) ===
   if (showDimensions && boatLengthLine && boatMin && boatMax) {
@@ -1935,16 +1982,18 @@ gl.activeTexture(gl.TEXTURE3);
 gl.bindTexture(gl.TEXTURE_2D, gMaterial);
 gl.uniform1i(window.ssrUniforms.gMaterial, 3);
 
+gl.bindVertexArray(quadVAO);
+gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+gl.disable(gl.BLEND);
+gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
 gl.uniformMatrix4fv(window.ssrUniforms.uView, false, view);
 gl.uniformMatrix4fv(window.ssrUniforms.uProjection, false, proj);
 gl.uniform2f(window.ssrUniforms.uResolution, canvas.width, canvas.height);
 
 gl.bindVertexArray(quadVAO);
 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-gl.disable(gl.BLEND);
-gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-
 // --- FXAA ---
 
 gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -1966,7 +2015,7 @@ gl.disable(gl.BLEND);
 gl.depthMask(true);
 gl.depthFunc(gl.LESS);
 gl.enable(gl.CULL_FACE);
-camera.moved = false;
+
 }
 
 
@@ -2023,6 +2072,7 @@ async function loadGLB(buf) {
   o += jlen;
   if (jtype !== 0x4e4f534a) return; // "JSON"
   const gltf = JSON.parse(jtxt);
+  
   const blen = dv.getUint32(o, true);
   o += 8;
   const bin = buf.slice(o, o + blen);
@@ -2285,13 +2335,14 @@ async function loadGLB(buf) {
     sceneBoundingCenter[1] + sceneBoundingRadius * 2.0,
     sceneBoundingCenter[2] + sceneBoundingRadius * 2.0,
   ],
+  
 };
 
 
-camera.fitToBoundingBox(min, max);
-camera.rx = camera.rxTarget = Math.PI / 10;
-camera.ry = camera.ryTarget = Math.PI / 20;
-camera.updateView();
+  camera.fitToBoundingBox(min, max);
+  camera.rx = camera.rxTarget = Math.PI / 10;
+  camera.ry = camera.ryTarget = Math.PI / 20;
+  camera.updateView();
 
 
 
@@ -2299,6 +2350,7 @@ camera.updateView();
   // Sačekaj da se sve teksture spuste u GPU
   await waitForPendingTextures(8000);
   await new Promise(requestAnimationFrame);
+  
   }
 
 function loadTextureFromImage(gltf, bin, texIndex) {
@@ -2320,11 +2372,21 @@ function loadTextureFromImage(gltf, bin, texIndex) {
   const image = new Image();
 
   const tex = gl.createTexture();
+  
+  // ✅ DODAJ OVO - sačuvaj staro stanje
+  const oldBinding = gl.getParameter(gl.TEXTURE_BINDING_2D);
+  
   gl.bindTexture(gl.TEXTURE_2D, tex);
-
-  // Temporary 1x1 pixel while image loads
-  gl.texImage2D(gl.TEXTURE_2D,0, gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([255, 0, 255, 255]));
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, 
+    new Uint8Array([255, 0, 255, 255]));
+  
+  // ✅ VRATI STARO STANJE ODMAH
+  gl.bindTexture(gl.TEXTURE_2D, oldBinding);
+  
   image.onload = () => {
+    // ✅ SAČUVAJ OPET
+    const oldBinding2 = gl.getParameter(gl.TEXTURE_BINDING_2D);
+    
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
 
@@ -2338,13 +2400,18 @@ function loadTextureFromImage(gltf, bin, texIndex) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, minFilter);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, magFilter);
 
-    if (isPowerOf2(image.width) && isPowerOf2(image.height)) {gl.generateMipmap(gl.TEXTURE_2D);
+    if (isPowerOf2(image.width) && isPowerOf2(image.height)) {
+      gl.generateMipmap(gl.TEXTURE_2D);
     } else {
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-        }
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    }
+    
+    // ✅ VRATI STARO STANJE
+    gl.bindTexture(gl.TEXTURE_2D, oldBinding2);
+    
     URL.revokeObjectURL(url);
     window.pendingTextures--;
   };
@@ -2352,6 +2419,8 @@ function loadTextureFromImage(gltf, bin, texIndex) {
   image.src = url;
   return tex;
 }
+
+
 
 function isPowerOf2(value) {
   return (value & (value - 1)) === 0;
@@ -2537,25 +2606,24 @@ if (prim.material !== undefined) {
 }
 
 /* ---------- push rezultat ---------- */
-out.push({
-  vao,
-  count: ind.length,
-  type: glIdxType,
-  pos: pos.slice(),
-  nor: nor.slice(),
-  ind: ind.slice(),
-  baseColor: new Float32Array(baseColor),
-  metallic,
-  roughness,
-  opacity,
-  isBlend,
-  baseColorTex,
-  normalTex,
-  roughnessTex,
-  matName: gltf.materials[prim.material]?.name || `Mat_${p}`,
-  trisWorld: [],
-});
-
+      out.push({
+        vao,
+        count: ind.length,
+        type: glIdxType,
+        pos: pos.slice(),
+        nor: nor.slice(),
+        ind: ind.slice(),
+        baseColor: new Float32Array(baseColor),
+        metallic,
+        roughness,
+        opacity,
+        isBlend,
+        baseColorTex,
+        normalTex,
+        roughnessTex,
+        matName: gltf.materials[prim.material]?.name || `Mat_${p}`,
+        trisWorld: [],
+      });
     }
   }
 
@@ -2686,32 +2754,39 @@ if (activeColor) {
       }
     }
   } else if (activeColor.type === "texture" && activeColor.texture) {
-      const loadTex = async (src) => {
-        if (!src) return null;
+const loadTex = async (src) => {
+  if (!src) return null;
 
-        // ✅ koristi keš ako već postoji
-        if (textureCache[src]) return textureCache[src];
+  // ✅ koristi keš ako već postoji
+  if (textureCache[src]) return textureCache[src];
 
-        try {
-          const res = await fetch(src);
-          const blob = await res.blob();
-          const bmp = await createImageBitmap(blob);
-          const tex = gl.createTexture();
-          gl.bindTexture(gl.TEXTURE_2D, tex);
-          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
-          gl.generateMipmap(gl.TEXTURE_2D);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-          textureCache[src] = tex; // cache rezultat
-          return tex;
-        } catch (err) {
-          console.warn("⚠️ Ne može da učita teksturu:", src, err);
-          return null;
-        }
-      };
-
+  try {
+    const res = await fetch(src);
+    const blob = await res.blob();
+    const bmp = await createImageBitmap(blob);
+    
+    // ✅ SAČUVAJ STARO STANJE
+    const oldBinding = gl.getParameter(gl.TEXTURE_BINDING_2D);
+    
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    
+    // ✅ VRATI STARO STANJE
+    gl.bindTexture(gl.TEXTURE_2D, oldBinding);
+    
+    textureCache[src] = tex;
+    return tex;
+  } catch (err) {
+    console.warn("⚠️ Ne može da učita teksturu:", src, err);
+    return null;
+  }
+};
 
     const [texBase, texNormal, texRough] = await Promise.all([
       loadTex(activeColor.texture),
@@ -2732,14 +2807,31 @@ if (activeColor) {
 
 
   currentParts[partName] = { ...currentParts[partName], name: variantName };
+
   if (!window.__suppressFocusCamera) {
-  focusCameraOnNode(node);
-}
-  hideLoading();
-  
-  sceneChanged = true;
-  render();
-  showPartInfo(variantName);
+      focusCameraOnNode(node);
+    }
+hideLoading();
+
+// ✅ DODAJ DEBUG
+console.log("🔍 PRE refreshLighting:");
+console.log("  reflectionFBO:", gl.isFramebuffer(reflectionFBO));
+console.log("  reflectionTex:", gl.isTexture(reflectionTex));
+console.log("  envTex:", gl.isTexture(envTex));
+
+refreshLighting();
+
+console.log("🔍 POSLE refreshLighting:");
+console.log("  reflectionFBO:", gl.isFramebuffer(reflectionFBO));
+console.log("  reflectionTex:", gl.isTexture(reflectionTex));
+console.log("  envTex:", gl.isTexture(envTex));
+
+shadowDirty = true;
+ssaoDirty = true;
+sceneChanged = true;
+
+render();
+showPartInfo(variantName);
 }
 
 function refreshThumbnailsInUI() {

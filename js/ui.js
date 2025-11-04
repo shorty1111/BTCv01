@@ -205,28 +205,28 @@ function buildVariantSidebar() {
           : `+${rawPrice} € (incl. VAT)`;
         footer.innerHTML = `<span class="price">${priceText}</span>`;
         itemEl.appendChild(footer);
-// ➕ Dodaj dugme i opis ako postoji opis u configu
-if (variant.description) {
-  const descBtn = document.createElement("button");
-  descBtn.className = "desc-toggle";
-  descBtn.textContent = "ℹ️";
-  itemEl.appendChild(descBtn);
+      // ➕ Dodaj dugme i opis ako postoji opis u configu
+      if (variant.description) {
+        const descBtn = document.createElement("button");
+        descBtn.className = "desc-toggle";
+        descBtn.textContent = "ℹ️";
+        itemEl.appendChild(descBtn);
 
-  const descEl = document.createElement("div");
-  descEl.className = "variant-description";
-  descEl.textContent = variant.description;
-  itemEl.appendChild(descEl);
-}
+        const descEl = document.createElement("div");
+        descEl.className = "variant-description";
+        descEl.textContent = variant.description;
+        itemEl.appendChild(descEl);
+      }
 
-itemEl.addEventListener("click", (e) => {
-  // ako klik potiče sa dugmeta za opis, ignoriši
-  if (e.target.closest(".desc-toggle")) return;
-  const isEquipmentOnly = !variant.src && !data.mainMat;
-if (isEquipmentOnly) {
-  // 🚫 Ako je "Included" u additional grupi → ignoriši klik
-  if ((variant.price ?? 0) === 0) {
-    return; // ne radi ništa
-  }
+      itemEl.addEventListener("click", (e) => {
+        // ako klik potiče sa dugmeta za opis, ignoriši
+        if (e.target.closest(".desc-toggle")) return;
+        const isEquipmentOnly = !variant.src && !data.mainMat;
+      if (isEquipmentOnly) {
+        // 🚫 Ako je "Included" u additional grupi → ignoriši klik
+        if ((variant.price ?? 0) === 0) {
+          return; // ne radi ništa
+        }
 
   const key = variant.name;
   const alreadyActive = itemEl.classList.contains("active");
@@ -257,6 +257,7 @@ if (prev && prev.selectedColor) {
   savedColorsByPart[partKey][prev.name] = prev.selectedColor;
 }
   replaceSelectedWithURL(variant.src, variant.name, partKey);
+  
   // ✅ Ako varijanta ima boje, automatski primeni prvu ako nije već izabrana
 const variantData = variant;
 if (variantData.colors && variantData.colors.length > 0) {
@@ -723,28 +724,62 @@ closeOptions.addEventListener("click", () => {
 });
 
 
-  document
-      .querySelectorAll("#camera-controls button[data-view]")
-      .forEach((btn) => {
+document
+  .querySelectorAll("#camera-controls button[data-view]")
+  .forEach((btn) => {
     btn.addEventListener("click", () => {
-    const viewName = btn.getAttribute("data-view");
-    camera.currentView = viewName;
-  if (viewName === "iso") {
-    camera.useOrtho = false;
-    camera.fitToBoundingBox(window.boatMin, window.boatMax);
-    camera.rx = camera.rxTarget = Math.PI / 10;
-    camera.ry = camera.ryTarget = Math.PI / 20;
-  } else {
-    camera.useOrtho = true;
-    camera.currentView = viewName;
-    camera.fitToBoundingBox(window.boatMin, window.boatMax);
-  }
-  ({ proj, view, camWorld } = camera.updateView());
-  render();
+      const viewName = btn.getAttribute("data-view");
+      camera.currentView = viewName;
+      
+      // ✅ UVEK perspective, nikad ortho!
+      camera.useOrtho = false;
 
-});
+      // ✅ Postavi uglove za svaki view
+      const center = window.sceneBoundingCenter || [0, 0, 0];
+      camera.pan = center.slice();
 
+      switch (viewName) {
+        case "iso":
+          camera.rxTarget = Math.PI / 10;
+          camera.ryTarget = Math.PI / 20;
+          break;
+          
+        case "front":
+          camera.rxTarget = Math.PI / 25;
+          camera.ryTarget = 0; // gleda pravo napred
+          break;
+          
+        case "back":
+          camera.rxTarget = Math.PI / 10;
+          camera.ryTarget = Math.PI; // gleda pozadi
+          break;
+          
+        case "left":
+          camera.rxTarget = Math.PI / 50;
+          camera.ryTarget = -Math.PI / 2; // gleda levo
+          break;
+          
+        case "right":
+          camera.rxTarget = Math.PI / 10;
+          camera.ryTarget = Math.PI / 2; // gleda desno
+          break;
+          
+        case "top":
+          camera.rxTarget = Math.PI / 2 - 0.05; // skoro 90°
+          camera.ryTarget = 0;
+          break;
+      }
+
+      if (window.boatMin && window.boatMax) {
+        camera.fitToBoundingBox(window.boatMin, window.boatMax);
+      }
+
+      ({ proj, view, camWorld } = camera.updateView());
+      sceneChanged = true;
+      render();
+    });
   });
+
 document.querySelectorAll("#camera-controls button").forEach((btn) => {
   btn.addEventListener("click", () => {
     // ako već jeste aktivno — poništi
@@ -777,6 +812,7 @@ document.querySelectorAll("#camera-controls button").forEach((btn) => {
   toggleWaterBtn.addEventListener("click", () => {
     showWater = !showWater;
     toggleWaterBtn.innerText = showWater ? "Studio" : "Env";
+    sceneChanged = true;
     render();
   });
   
@@ -866,6 +902,7 @@ input.addEventListener("change", async (e) => {
 
  await loadGLB(buf);  // čeka i model i teksture
 hideLoading();        // sad sigurno sve gotovo
+sceneChanged = true;
 render();             // sad tek nacrtaj prvi frame
 
   input.value = ""; 
