@@ -84,7 +84,7 @@ function updateSun() {
   ];
 
   const fade = Math.pow(Math.max(alt, 0.0), 0.4);
-  SUN.intensity = 1.8 * fade; 
+  SUN.intensity = 1.0 * fade; 
 
   if (alt < 0.0) {
     const glow = smoothstep(-0.3, 0.0, alt);
@@ -973,6 +973,7 @@ window.ssaoBlurUniforms = {
       uResolution: gl.getUniformLocation(ssrProgram, "uResolution"),
       uEnvMap: gl.getUniformLocation(ssrProgram, "uEnvMap"),           // 👈 DODAJ
       uCubeMaxMip: gl.getUniformLocation(ssrProgram, "uCubeMaxMip"),   // 👈 DODAJ
+        uGlobalExposure: gl.getUniformLocation(ssrProgram, "uGlobalExposure"), 
     };
         
     const glassVS = await loadShader("shaders/glass.vert");
@@ -1131,17 +1132,19 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     createSSAOBuffers(canvas.width, canvas.height);
 
     // === BRDF LUT precompute ===
+// === BRDF LUT precompute ===
 const LUT_SIZE = 256;
 const brdfFBO = gl.createFramebuffer();
 gl.bindFramebuffer(gl.FRAMEBUFFER, brdfFBO);
 brdfTex = gl.createTexture();
 gl.bindTexture(gl.TEXTURE_2D, brdfTex);
 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG16F, LUT_SIZE, LUT_SIZE, 0, gl.RG, gl.HALF_FLOAT, null);
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); // 👈 PROMENI U LINEAR
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); // 👈 PROMENI U LINEAR
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); // 👈 DODAJ
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); // 👈 DODAJ
 gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, brdfTex, 0);
 
-// Realistic GGX BRDF integration (original)
 const vsSrc = `#version 300 es
 layout(location=0) in vec2 aPos;
 out vec2 vUV;
@@ -1149,6 +1152,7 @@ void main(){
   vUV = aPos * 0.5 + 0.5;
   gl_Position = vec4(aPos, 0.0, 1.0);
 }`;
+
 const fsSrc = `#version 300 es
 precision highp float;
 in vec2 vUV;
@@ -1162,9 +1166,11 @@ float RadicalInverse_VdC(uint bits) {
   bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
   return float(bits) * 2.3283064365386963e-10;
 }
+
 vec2 Hammersley(uint i, uint N) {
   return vec2(float(i)/float(N), RadicalInverse_VdC(i));
 }
+
 vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness) {
   float a = roughness*roughness;
   float phi = 6.2831853 * Xi.x;
@@ -1176,15 +1182,22 @@ vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness) {
   vec3 tangentY = cross(N, tangentX);
   return normalize(tangentX*H.x + tangentY*H.y + N*H.z);
 }
+
 float GeometrySchlickGGX(float NdotV, float roughness) {
-  float r = roughness + 1.0;
-  float k = (r*r)/8.0;
+  float a = roughness;
+  float k = (a*a)/2.0; // 👈 IBL verzija, ne direktno svetlo
   return NdotV / (NdotV*(1.0 - k) + k);
 }
+
 float GeometrySmith(float NdotV, float NdotL, float roughness) {
   return GeometrySchlickGGX(NdotV, roughness) * GeometrySchlickGGX(NdotL, roughness);
 }
+
 vec2 IntegrateBRDF(float NdotV, float roughness) {
+  // 👇 ZAŠTITA OD GRANIČNIH SLUČAJEVA
+  NdotV = max(NdotV, 0.001);
+  roughness = clamp(roughness, 0.04, 1.0);
+  
   vec3 V;
   V.x = sqrt(1.0 - NdotV*NdotV);
   V.y = 0.0;
@@ -1194,28 +1207,36 @@ vec2 IntegrateBRDF(float NdotV, float roughness) {
   float B = 0.0;
   vec3 N = vec3(0.0,0.0,1.0);
 
-  const uint SAMPLE_COUNT = 256u;
+  const uint SAMPLE_COUNT = 512u; // 👈 povećaj na 512 za bolji kvalitet
+  
   for(uint i = 0u; i < SAMPLE_COUNT; ++i) {
     vec2 Xi = Hammersley(i, SAMPLE_COUNT);
     vec3 H = ImportanceSampleGGX(Xi, N, roughness);
     vec3 L = normalize(2.0 * dot(V,H) * H - V);
+    
     float NdotL = max(L.z, 0.0);
     float NdotH = max(H.z, 0.0);
     float VdotH = max(dot(V,H), 0.0);
+    
     if(NdotL > 0.0) {
       float G = GeometrySmith(NdotV, NdotL, roughness);
-      float G_Vis = (G * VdotH) / (NdotH * NdotV);
+      float G_Vis = (G * VdotH) / max(NdotH * NdotV, 0.001); // 👈 zaštita od deljenja sa 0
       float Fc = pow(1.0 - VdotH, 5.0);
+      
       A += (1.0 - Fc) * G_Vis;
       B += Fc * G_Vis;
     }
   }
+  
   A /= float(SAMPLE_COUNT);
   B /= float(SAMPLE_COUNT);
-  return vec2(A,B);
+  
+  // 👇 FINALNA ZAŠTITA - clamp u razumne granice
+  return clamp(vec2(A, B), 0.0, 1.0);
 }
+
 void main(){
-  fragColor = IntegrateBRDF(vUV.x, vUV.y) ;
+  fragColor = IntegrateBRDF(vUV.x, vUV.y);
 }`;
 
 const vs = gl.createShader(gl.VERTEX_SHADER);
@@ -1968,6 +1989,7 @@ gl.uniformMatrix4fv(window.ssrUniforms.uView, false, view);
 gl.uniformMatrix4fv(window.ssrUniforms.uProjection, false, proj);
 gl.uniform2f(window.ssrUniforms.uResolution, canvas.width, canvas.height);
 gl.uniform1f(window.ssrUniforms.uCubeMaxMip, cubeMaxMip); // 👈 DODAJ
+gl.uniform1f(window.ssrUniforms.uGlobalExposure, window.globalExposure);
 
 gl.bindVertexArray(quadVAO);
 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -1981,7 +2003,7 @@ gl.viewport(0, 0, canvas.width, canvas.height);
 gl.useProgram(fxaaProgram);
 
 gl.activeTexture(gl.TEXTURE0);
-gl.bindTexture(gl.TEXTURE_2D, ssrOutputTex); // ✅ sad FXAA vidi SSR rezultat
+gl.bindTexture(gl.TEXTURE_2D, ssrOutputTex); // ✅ sad FXAA vidi SSR rezultat ssrOutputTex
 gl.uniform1i(gl.getUniformLocation(fxaaProgram, "uInput"), 0);
 gl.uniform2f(gl.getUniformLocation(fxaaProgram, "uResolution"), canvas.width, canvas.height);
 
@@ -2611,7 +2633,12 @@ if (prim.material !== undefined) {
 }
 
 async function replaceSelectedWithURL(url, variantName, partName) {
-  showLoading();
+
+    const alreadyCached = !url || preparedVariants[url];
+  
+  if (!alreadyCached) {
+    showLoading(); // 👈 prikaži SAMO ako treba da fetchuje
+  }
   
   const node = nodesMeta.find((n) => n.name === partName);
   
@@ -2619,10 +2646,9 @@ async function replaceSelectedWithURL(url, variantName, partName) {
   delete node.cachedBounds;
 }
   if (!node) {
-    hideLoading();
+    if (!alreadyCached) hideLoading(); // 👈 sakrij SAMO ako si pokazao
     return;
   }
-
   const cfgGroup = Object.values(VARIANT_GROUPS).find((g) => partName in g) || {};
   const mainMat = cfgGroup[partName]?.mainMat || "";
 
@@ -2652,7 +2678,7 @@ async function replaceSelectedWithURL(url, variantName, partName) {
     variantMeshes = preparedVariants[url].filter(Boolean);
   }
 
-  const oldSlots = node.renderIdxs.map((r) => r.idx);
+ const oldSlots = node.renderIdxs.map((r) => r.idx);
 
   for (let i = 0; i < variantMeshes.length; ++i) {
     const vm = variantMeshes[i];
@@ -2791,20 +2817,13 @@ const loadTex = async (src) => {
   if (!window.__suppressFocusCamera) {
       focusCameraOnNode(node);
     }
-hideLoading();
+  if (!alreadyCached) {
+    hideLoading(); // 👈 zameni безусловни hideLoading() sa uslovnim
+  }
 
-// ✅ DODAJ DEBUG
-console.log("🔍 PRE refreshLighting:");
-console.log("  reflectionFBO:", gl.isFramebuffer(reflectionFBO));
-console.log("  reflectionTex:", gl.isTexture(reflectionTex));
-console.log("  envTex:", gl.isTexture(envTex));
 
 refreshLighting();
 
-console.log("🔍 POSLE refreshLighting:");
-console.log("  reflectionFBO:", gl.isFramebuffer(reflectionFBO));
-console.log("  reflectionTex:", gl.isTexture(reflectionTex));
-console.log("  envTex:", gl.isTexture(envTex));
 
 shadowDirty = true;
 ssaoDirty = true;

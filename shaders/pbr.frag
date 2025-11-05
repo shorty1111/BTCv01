@@ -123,15 +123,17 @@ void main(){
     // Matrice / prostori
     mat3 V3     = mat3(uView);
     mat3 invV3  = transpose(V3);
-    vec3 N      = normalize(normalV);          // view
-    vec3 Nw     = normalize(invV3 * N);        // world
-    vec3 V      = normalize(-fragPosV);        // view
+    vec3 N      = normalize(normalV);          // view-space normala
+    vec3 Nw     = normalize(invV3 * N);        // world-space normala
+    vec3 V      = normalize(-fragPosV);
     vec3 Lv     = normalize(V3 * normalize(uSunDir));
     vec3 H      = normalize(V + Lv);
+    
+    // 👇 Refleksija MORA koristiti pravu normalu (ne bent!)
     vec3 Rv     = reflect(-V, N);
     vec3 Rw     = invV3 * Rv;
 
-    /* --- Direct lighting --- */
+    /* --- Direct lighting (koristi pravu normalu) --- */
     float shadow = getShadowView(fragPosV, N);
     float NdotL  = max(dot(N, Lv), 0.0);
     float NdotV  = max(dot(N, V ), 0.0);
@@ -143,61 +145,61 @@ void main(){
     vec3  specBRDF = (D * G * F) / (4.0 * max(NdotV * NdotL, 0.001));
 
     vec3 kd   = (1.0 - F) * (1.0 - metal);
-    vec3 diff = kd * ( baseColor / 3.141592 );
+    vec3 diff = kd * (baseColor / 3.141592);
 
-    float mipDiff = uCubeMaxMip;          // 8 → meko, difuzno
-    float mipSpec = roughPerceptual * uCubeMaxMip;
 
-    vec3 envDiff = textureLod(uEnvMap, Rw, mipDiff).rgb;
+    float mipDiff =  uCubeMaxMip;          // 8 → meko, difuzno
+    vec3 envDiff = textureLod(uEnvMap, Nw, mipDiff).rgb; 
 
+    float mipSpec = roughPerceptual  * uCubeMaxMip;
+    vec3 envSpec = textureLod(uEnvMap, Rw, mipSpec).rgb;
+        
+    
     vec3 sunRadiance = uSunColor * uSunIntensity;
+    vec3 direct = (diff + specBRDF) * NdotL * sunRadiance * shadow;
 
     // --- prošireni AO uzorak za fake GI ---
-    float aoWide = texture(tBentNormalAO, vUV).a;
-    const float giRadius = 0.30; // povećaj na 60-100 ako hoćeš još šire
-    aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( giRadius,  0.0)).a;
-    aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2(-giRadius,  0.0)).a;
-    aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( 0.0,  giRadius)).a;
-    aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( 0.0, -giRadius)).a;
-    aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( giRadius,  giRadius)).a;
-    aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2(-giRadius,  giRadius)).a;
-    aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( giRadius, -giRadius)).a;
-    aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2(-giRadius, -giRadius)).a;
-    aoWide /= 3.65;
+    // float aoWide = texture(tBentNormalAO, vUV).a;
+    // const float giRadius = 0.30; // povećaj na 60-100 ako hoćeš još šire
+    // aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( giRadius,  0.0)).a;
+    // aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2(-giRadius,  0.0)).a;
+    // aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( 0.0,  giRadius)).a;
+    // aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( 0.0, -giRadius)).a;
+    // aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( giRadius,  giRadius)).a;
+    // aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2(-giRadius,  giRadius)).a;
+    // aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( giRadius, -giRadius)).a;
+    // aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2(-giRadius, -giRadius)).a;
+    // aoWide /= 3.65;
 
-    float giBoost = mix(0.1, 0.3, pow(1.0 - aoWide,2.0));   
-   
+    // float giBoost = mix(0.1, 0.3, pow(1.0 - aoWide,2.0));   
+
+
+
+    vec3 ambient = envDiff *  ao;
   
-    vec3 envSpec = textureLod(uEnvMap, Rw, mipSpec).rgb;
-
-    // ☀️ Utišavanje efekta po jačini sunca (radiance)
-    float sunStrength = clamp(length(sunRadiance), 0.0, 2.0); // kad je sunset → manja vrednost
-
-    // 🌊 Fake ground tint samo za dole gledajuće refleksije
-    float groundMask = smoothstep(-0.25, 0.8, Rw.y);
-    float tintAmt = smoothstep(0.8, -0.2, Rw.y) * 0.25;
-    vec3 tintColor = baseColor * 0.4 ;
-vec3 groundTint = vec3(0.12, 0.10, 0.08);
-
-envSpec = mix(envSpec, groundTint, tintAmt);
-    envDiff = mix(envDiff, mix(envDiff, tintColor, tintAmt), tintAmt) ;
+   
+   
+    // float tintAmt = smoothstep(0.8, -0.2, Rw.y) * 0.25;
+    // vec3 tintColor = baseColor * 0.4;
+    // vec3 groundTint = vec3(0.12, 0.10, 0.08);
     
-    vec3 ambient = envDiff * giBoost;
+    // envSpec = mix(envSpec, groundTint, tintAmt);
+    // envDiff = mix(envDiff, mix(envDiff, tintColor, tintAmt), tintAmt);
+    
 
 
-    vec2 brdf = texture(uBRDFLUT, vec2(NdotV, rough)).rg;
-    vec3 F_ibl = fresnelSchlickRoughness(NdotV, F0, rough);
 
-    vec3 kd_ibl = (1.0 - F_ibl) * (1.0 - metal);
-vec3 diffIBL = ambient * baseColor * kd_ibl;
-    vec3 specIBL = envSpec * (F_ibl * (brdf.x + brdf.y)) ;
+    vec2 brdf = texture(uBRDFLUT, vec2(NdotV, roughPerceptual)).rg; 
+    vec3 F_ibl = fresnelSchlickRoughness(NdotV, F0, roughPerceptual);
 
-    /* --- Direct lighting mix --- */
-    vec3 direct = (diff + specBRDF) * NdotL * sunRadiance * shadow;
-    /* --- Final --- */
+    vec3 kd_ibl = vec3(1.0 - metal);
+    vec3 diffIBL = ambient * baseColor * kd_ibl;
+    vec3 specIBL = envSpec * (F_ibl * brdf.x + brdf.y);
 
 
-    vec3 color = direct + diffIBL + specIBL ;
+    vec3 color = direct + diffIBL + specIBL;
     color *= uGlobalExposure;
+
+
     fragColor = vec4(vec3(color), 1.0);
 }

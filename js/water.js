@@ -396,7 +396,7 @@ export function drawWater(
   safeBindTex(gl, 1, gl.TEXTURE_CUBE_MAP, envTex);
   gl.uniform1i(waterUniforms.uEnvTex, 1);
 
-  safeBindTex(gl, 2, gl.TEXTURE_2D, sceneDepthTex);
+ safeBindTex(gl, 2, gl.TEXTURE_2D, window.finalDepthTex);
   gl.uniform1i(waterUniforms.uSceneDepth, 2);
 
   safeBindTex(gl, 3, gl.TEXTURE_2D, finalSceneTex);

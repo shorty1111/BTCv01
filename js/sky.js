@@ -94,7 +94,7 @@ function lookAt(eye, center, up) {
 }
 // ===== Init =====
 export function initSky(gl) {
-  const sphere = createSphere(32, 32, 200.0);
+  const sphere = createSphere(8, 8, 200.0);
   skyIdxCount = sphere.indices.length;
 
   skyVAO = gl.createVertexArray();
@@ -130,11 +130,11 @@ precision highp float;
 in  vec3 vDir;
 out vec4 fragColor;
 
+
 // === Sunce & atmosfera ===
 uniform float uTime;
 uniform float uCameraHeight;
 uniform int   uUseTonemap;
-
 uniform vec3  uSunDir;
 uniform vec3  uSunColor;
 uniform float uSunIntensity;
@@ -188,14 +188,14 @@ void main(){
 
     // === 1. Dynamic sky colors by sunAlt ===
 
-vec3 dayZenith   = vec3(0.22, 0.38, 0.65);   // dublje plavo, manje zeleno
-vec3 dayHorizon  = vec3(0.95, 0.8, 0.65);    // topli bež ton
+      vec3 dayZenith   = vec3(0.22, 0.38, 0.65);   // dublje plavo, manje zeleno
+      vec3 dayHorizon  = vec3(0.95, 0.8, 0.65);    // topli bež ton
 
-vec3 sunsetZenith   = vec3(0.38, 0.28, 0.65);  // ljubičasto-cijan prelaz
-vec3 sunsetHorizon  = vec3(1.1, 0.45, 0.18);   // zlatno-narandžasto
+      vec3 sunsetZenith   = vec3(0.38, 0.28, 0.65);  // ljubičasto-cijan prelaz
+      vec3 sunsetHorizon  = vec3(1.1, 0.45, 0.18);   // zlatno-narandžasto
 
-vec3 nightZenith   = vec3(0.02, 0.03, 0.08);
-vec3 nightHorizon  = vec3(0.05, 0.06, 0.1);
+      vec3 nightZenith   = vec3(0.02, 0.03, 0.08);
+      vec3 nightHorizon  = vec3(0.05, 0.06, 0.1);
 
     // Koliko je sunset aktivan (0 dan, 1 sunset)
     float sunsetAmt = smoothstep(0.0, 0.15, clamp(0.2 - sunAlt, 0.0, 0.2));
@@ -217,7 +217,7 @@ vec3 nightHorizon  = vec3(0.05, 0.06, 0.1);
 
     vec3 base = mix(curZenith, curHorizon, hS);
     float air = exp(-pow(dir.y * 1.2, 2.0));
-base = mix(base, vec3(1.0, 0.85, 0.75), air * 0.15);
+    base = mix(base, vec3(1.0, 0.85, 0.75), air * 0.15);
 
 
     // === 2. Procedural clouds, halo, sunset boost ===
@@ -256,23 +256,23 @@ if (segLen > 0.0) {
         float density = smoothstep(0.4, 0.8, cl);
         float heightMix = i / layers;
 
-// --- osnovna senka i belina ---
-vec3 lightDir = normalize(uSunDir);
-float shade = max(dot(lightDir, normalize(vec3(0.0,1.0,0.0))), 0.0);
-vec3 cloudCol = mix(vec3(0.5, 0.52, 0.55), vec3(0.95), shade * 0.8);
+      // --- osnovna senka i belina ---
+      vec3 lightDir = normalize(uSunDir);
+      float shade = max(dot(lightDir, normalize(vec3(0.0,1.0,0.0))), 0.0);
+      vec3 cloudCol = mix(vec3(0.5, 0.52, 0.55), vec3(0.95), shade * 0.8);
 
-// --- tamniji centar oblaka, svetlije ivice ---
-float core = smoothstep(0.45, 0.9, cl);        // 0 = ivice, 1 = centar
-float edge = 1.0 - core;                       // svetle ivice
-cloudCol = mix(cloudCol * 0.6, cloudCol, edge); // centar tamniji, ivice belje
+      // --- tamniji centar oblaka, svetlije ivice ---
+      float core = smoothstep(0.45, 0.9, cl);        // 0 = ivice, 1 = centar
+      float edge = 1.0 - core;                       // svetle ivice
+      cloudCol = mix(cloudCol * 0.6, cloudCol, edge); // centar tamniji, ivice belje
 
-// --- lagani highlight prema suncu ---
-float sunFacing = pow(max(dot(lightDir, vec3(0.0,1.0,0.0)), 0.0), 8.0);
-cloudCol += vec3(1.0, 0.95, 0.9) * sunFacing * 0.25;
+      // --- lagani highlight prema suncu ---
+      float sunFacing = pow(max(dot(lightDir, vec3(0.0,1.0,0.0)), 0.0), 8.0);
+      cloudCol += vec3(1.0, 0.95, 0.9) * sunFacing * 0.25;
 
-// --- visinska nijansa ---
-cloudCol = mix(cloudCol, vec3(0.9, 0.9, 0.95), 1.0 - heightMix);
-cloudCol *= mix(vec3(0.8), uSunColor * 0.95, pow(max(sunAlt, 0.0), 0.5));
+      // --- visinska nijansa ---
+      cloudCol = mix(cloudCol, vec3(0.9, 0.9, 0.95), 1.0 - heightMix);
+      cloudCol *= mix(vec3(0.8), uSunColor * 0.95, pow(max(sunAlt, 0.0), 0.5));
 
         totalDensity += density * (1.0 - totalDensity);
         colorAcc += cloudCol * density * (1.0 - totalDensity);
@@ -313,10 +313,10 @@ cloudCol *= mix(vec3(0.8), uSunColor * 0.95, pow(max(sunAlt, 0.0), 0.5));
     float limb = exp(-pow(ang/(sunSize*2.2), 2.0)); // uže, izraženije
     vec3  sunLight = uSunColor * (disk*uSunIntensity + limb*(uSunIntensity*0.18));
 
-// ako je uHideSun == 1, izbaci disk i halo
-if (bool(uHideSun)) {
-    sunLight = vec3(0.0);
-}
+    // ako je uHideSun == 1, izbaci disk i halo
+    if (bool(uHideSun)) {
+        sunLight = vec3(0.0);
+    }
 
     float g = 0.8;
     float mie = (1.0 - g*g) / pow(1.0 + g*g - 2.0*g*cosToSun, 1.5);
@@ -328,7 +328,7 @@ if (bool(uHideSun)) {
     float skyMask    = smoothstep(-0.04, 0.02, dir.y);
     float groundMask = 1.0 - skyMask;
 
-    vec3 groundBase   = vec3(0.03,0.04,0.055) * groundMask * uSunIntensity;
+    vec3 groundBase   = vec3(0.005,0.005,0.006) * groundMask * uSunIntensity;
     float below       = smoothstep(0.0, 0.25, max(0.0, -dir.y));
 
     // === 5. Finalna kompozicija ===
@@ -340,9 +340,9 @@ if (bool(uHideSun)) {
     // Fade celo nebo kad je noć (noć je nightAmt)
     color = mix(color, nightZenith * 0.5, nightAmt*0.85);
 
-// linear HDR output (ACES tonemap ide kasnije u glavnom passu)
-vec3 hdrColor = color * uGlobalExposure;
-fragColor = vec4(hdrColor, 1.0);
+    // linear HDR output (ACES tonemap ide kasnije u glavnom passu)
+    vec3 hdrColor = color * uGlobalExposure;
+    fragColor = vec4(hdrColor, 1.0);
 }
 
 `;

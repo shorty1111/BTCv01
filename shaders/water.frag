@@ -35,14 +35,14 @@ uniform float       uGlobalExposure;
 
 
 // === PARAMETRI ===
-const float DEPTH_SCALE     = 6.4;
+const float DEPTH_SCALE     = 6.3;
 const float DEPTH_CURVE     = 0.2;
 const float SSS_STRENGTH    = 100.0;
 const float SSS_WRAP        = 1.3;
 const vec3  SSS_FALLOFF     = vec3(0.0431, 0.0667, 0.0667);
 const float CREST_INTENSITY = 0.01;
 const float CREST_BLEND     = 0.01;
-const float DEPTH_CONTRAST  = 2.0;
+const float DEPTH_CONTRAST  = 1.9;
 
 
 vec2 getPlanarReflectionUV(vec3 worldPos) {
@@ -64,13 +64,13 @@ void main() {
     float depthFactor = clamp(depthM / DEPTH_SCALE, 0.0, 1.0);
 
     // --- Normal mapa ---
-vec2 scroll1 = vec2(0.02, 0.05) * uTime;
-vec2 scroll2 = vec2(-0.015, 0.01) * uTime;
-vec2 scroll3 = vec2(0.07, -0.03) * uTime * 0.5;
+        vec2 scroll1 = vec2(0.02, 0.05) * uTime;
+        vec2 scroll2 = vec2(-0.015, 0.01) * uTime;
+        vec2 scroll3 = vec2(0.07, -0.03) * uTime * 0.5;
 
-vec3 n1 = texture(waterNormalTex, vUV * 2.0 + scroll1).xyz * 2.0 - 1.0;
-vec3 n2 = texture(waterNormalTex, vUV * 0.8 + scroll2).xyz * 2.0 - 1.0;
-vec3 n3 = texture(waterNormalTex, vUV * 6.5 + scroll3).xyz * 2.0 - 1.0;
+        vec3 n1 = texture(waterNormalTex, vUV * 2.0 + scroll1).xyz * 2.0 - 1.0;
+        vec3 n2 = texture(waterNormalTex, vUV * 0.8 + scroll2).xyz * 2.0 - 1.0;
+        vec3 n3 = texture(waterNormalTex, vUV * 6.5 + scroll3).xyz * 2.0 - 1.0;
 
     vec3 tangentNormal = normalize((n1 * 0.5 + n2 * 0.6 + n3 * 0.3) / 1.4);
 
@@ -120,7 +120,7 @@ vec3 n3 = texture(waterNormalTex, vUV * 6.5 + scroll3).xyz * 2.0 - 1.0;
 
     // --- Horizon fade ---
     float dist = length(uCameraPos - vWorldPos);
-    float horizonFade = pow(clamp(1.0 - abs(dot(N, V)), 0.0, 1.0), 0.3);
+    float horizonFade = pow(clamp(1.0 - abs(dot(N, V)), 0.0, 1.0), 0.6);
     float reflectionFade = mix(0.2, 1.0, horizonFade);
 
     // --- Bazna boja ---
@@ -138,8 +138,6 @@ vec3 n3 = texture(waterNormalTex, vUV * 6.5 + scroll3).xyz * 2.0 - 1.0;
 
     vec3 planarReflection = texture(uReflectionTex, reflUV).rgb;
 
-
-
     // --- Environment refleksija ---
     vec3 envRefl = textureLod(uEnvTex, normalize(R), uRoughness).rgb;
 
@@ -149,7 +147,7 @@ vec3 n3 = texture(waterNormalTex, vUV * 6.5 + scroll3).xyz * 2.0 - 1.0;
     // --- Fake SSS ---
     float backLit   = clamp((dot(-L, N) + SSS_WRAP) / (1.0 + SSS_WRAP), 0.0, 1.0);
     backLit         = smoothstep(0.4, 0.98, backLit);
-    float sunFacing = pow(clamp(dot(V, -L), 0.0, 1.0), 4.0);
+    float sunFacing = pow(clamp(dot(V, -L), 0.0, 1.0), 5.0);
     vec3 warmTint   = vec3(1.0, 0.65, 0.3);
     vec3 sssColor   = mix(uShallowColor, warmTint, sunFacing * 0.8);
     vec3 falloff    = exp(-SSS_FALLOFF * depthM);
@@ -169,7 +167,7 @@ vec3 n3 = texture(waterNormalTex, vUV * 6.5 + scroll3).xyz * 2.0 - 1.0;
     baseColor = mix(baseColor, baseColor * vec3(0.25, 0.3, 0.35), depthFactor * DEPTH_CONTRAST);
 
     // === FINAL MIX - POPRAVLJENO ===
-    vec3 refracted = mix(baseColor, baseColor + sssLight, 0.6); // Više refrakcije
+    vec3 refracted = mix(baseColor, baseColor + sssLight, 0.8); // Više refrakcije
     vec3 reflected = envRefl * uSpecularStrength * reflectionFade;
 
     // Kada si nisko, daj prednost refrakciji

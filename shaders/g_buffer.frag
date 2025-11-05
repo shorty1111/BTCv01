@@ -31,7 +31,7 @@ void main() {
     // --- Normal mapa ---
     vec3 normalView = normalize(vNormalView);
     if (uUseNormalTex) {
-        vec3 nTex = texture(uNormalTex, vUV_out, 0.5).rgb * 2.0 - 1.0; // ✅ dodaj mip bias 0.5
+        vec3 nTex = texture(uNormalTex, vUV_out, 0.5).rgb * 2.0 - 1.0;
         nTex.y = -nTex.y;
         normalView = normalize(vTBN * nTex);
     }
