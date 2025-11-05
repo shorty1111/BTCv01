@@ -120,7 +120,7 @@ vec3 n3 = texture(waterNormalTex, vUV * 6.5 + scroll3).xyz * 2.0 - 1.0;
 
     // --- Horizon fade ---
     float dist = length(uCameraPos - vWorldPos);
-    float horizonFade = pow(clamp(1.0 - abs(dot(N, V)), 0.0, 1.0), 0.6);
+    float horizonFade = pow(clamp(1.0 - abs(dot(N, V)), 0.0, 1.0), 0.3);
     float reflectionFade = mix(0.2, 1.0, horizonFade);
 
     // --- Bazna boja ---

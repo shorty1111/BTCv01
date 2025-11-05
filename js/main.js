@@ -21,7 +21,6 @@ let lastProj = new Float32Array(16);
 
 let shadowDirty = true;
 let ssaoDirty = true;
-
 let lastViewMatrix = new Float32Array(16);
 let lastSunDir = [0, 0, 0];
 const textureCache = {}; // key = url, value = WebGLTexture
@@ -85,7 +84,7 @@ function updateSun() {
   ];
 
   const fade = Math.pow(Math.max(alt, 0.0), 0.4);
-  SUN.intensity = 1.0 * fade; 
+  SUN.intensity = 1.8 * fade; 
 
   if (alt < 0.0) {
     const glow = smoothstep(-0.3, 0.0, alt);
@@ -101,9 +100,10 @@ function setWeather(presetName) {
   if (!preset) return;
 
   SUN.dir = v3.norm([-0.90, preset.y, 0.3]);
-  shadowDirty = true; // 👉 senka mora ponovo da se izračuna kad se promeni svetlo
+  shadowDirty = true;
   updateSun();
 
+  // ✅ OVO JE KLJUČNO - rebake envmap!
   envTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
     ...DEFAULT_SKY,
     sunColor: SUN.color,
@@ -111,7 +111,8 @@ function setWeather(presetName) {
     useTonemap: false,
     hideSun: true,
   });
-  //   // 🔹 OVO DODAJ
+  
+  // 🔹 DODAJ OVO - generisaj mipmaps!
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
   gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
@@ -257,47 +258,28 @@ function getPreviewProgram(gl) {
   return prog;
 }
 function createReflectionTarget(gl, width, height) {
-  // 🔹 Obriši stare resurse ako postoje
-  if (reflectionTex) gl.deleteTexture(reflectionTex);
-  if (window.reflectionDepthTex) gl.deleteTexture(window.reflectionDepthTex);
-  if (reflectionFBO) gl.deleteFramebuffer(reflectionFBO);
-
-  // 🔹 Reflection color (RGBA16F)
+  
   reflectionTex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, reflectionTex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, width, height, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,width,height,0,gl.RGBA, gl.HALF_FLOAT,null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+  window.reflectionDepthTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, window.reflectionDepthTex);
+  gl.texImage2D(
+  gl.TEXTURE_2D, 0,gl.DEPTH_COMPONENT24,  width,height,0, gl.DEPTH_COMPONENT,gl.UNSIGNED_INT,null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-  // 🔹 Depth texture
-  window.reflectionDepthTex = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, window.reflectionDepthTex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, width, height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-  // 🔹 FBO setup
   reflectionFBO = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, reflectionFBO);
-  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, reflectionTex, 0);
-  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, window.reflectionDepthTex, 0);
-
-  // 🔹 Proveri status
-  const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
-  if (status !== gl.FRAMEBUFFER_COMPLETE) {
-    console.error("❌ Reflection FBO incomplete:", status.toString(16));
-    return false;
-  }
-
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,reflectionTex,0);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.TEXTURE_2D,window.reflectionDepthTex,0 );
   gl.bindTexture(gl.TEXTURE_2D, null);
-  
-  console.log("✅ Reflection target created:", width, "x", height);
-  return true;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
 
 function getReflectedCamera(camPos, target, up) {
@@ -984,14 +966,15 @@ window.ssaoBlurUniforms = {
     window.ssrUniforms = {
       gPosition: gl.getUniformLocation(ssrProgram, "gPosition"),
       gNormal: gl.getUniformLocation(ssrProgram, "gNormal"),
-      gMaterial: gl.getUniformLocation(ssrProgram, "gMaterial"), // ← dodaj ovo
+      gMaterial: gl.getUniformLocation(ssrProgram, "gMaterial"),
       uSceneColor: gl.getUniformLocation(ssrProgram, "uSceneColor"),
       uView: gl.getUniformLocation(ssrProgram, "uView"),
       uProjection: gl.getUniformLocation(ssrProgram, "uProjection"),
       uResolution: gl.getUniformLocation(ssrProgram, "uResolution"),
-      uEnvMap: gl.getUniformLocation(ssrProgram, "uEnvMap"),
+      uEnvMap: gl.getUniformLocation(ssrProgram, "uEnvMap"),           // 👈 DODAJ
+      uCubeMaxMip: gl.getUniformLocation(ssrProgram, "uCubeMaxMip"),   // 👈 DODAJ
     };
-    
+        
     const glassVS = await loadShader("shaders/glass.vert");
     const glassFS = await loadShader("shaders/glass.frag");
     programGlass = createShaderProgram(gl, glassVS, glassFS);
@@ -1408,22 +1391,16 @@ function computeLightBounds(min, max, lightView) {
 
 function render() {
   const timeNow = performance.now() * 0.001; // koristi u SSAO i vodi
+  let reflView = null;
+  let reflProj = proj;
   // === 1. Animacija kamere i matrica pogleda ===
-  showWater = window.showWater;
+    showWater = window.showWater;
   showDimensions = window.showDimensions;
   camera.animateCamera();
-  ({ proj, view, camWorld } = camera.updateView()); // ✅ prvo ažuriraj kameru
+  ({ proj, view, camWorld } = camera.updateView());
   
-  // ✅ TEK SADA izračunaj reflView sa NOVIM camWorld
-  let reflCam = getReflectedCamera(camWorld, camera.pan, [0, 1, 0]);
-  let reflView = reflCam.view;
-  let reflProj = proj;
+  if (camera.moved) ssaoDirty = true;
 
-// ✅ DODAJ OVO — proveri da li se kamera pomerila
-if (!arraysEqual(lastViewMatrix, view)) {
-  ssaoDirty = true;
-  lastViewMatrix.set(view);
-}
   // === 1A. CLEAR FINALNI FBO NA POČETKU (OBAVEZNO!) ===
   gl.bindFramebuffer(gl.FRAMEBUFFER, finalFBO);
   gl.viewport(0, 0, canvas.width, canvas.height);
@@ -1522,7 +1499,7 @@ if (shadowDirty) {
 }
 
 // === 3B. Reflection pass ===
-
+let reflCam = null;
 
 // ✅ UVEK izračunaj reflView
 if (showWater) {
@@ -1530,9 +1507,8 @@ if (showWater) {
   reflView = reflCam.view;
   reflProj = proj;
 
-  // 🔧 UKLONI USLOV - renderuj UVEK, ne samo kad je sceneChanged
+  // ✅ I nacrtaj reflection pass UVEK (čak i u top view-u)
   gl.bindFramebuffer(gl.FRAMEBUFFER, reflectionFBO);
-  
   gl.viewport(0, 0, canvas.width, canvas.height);
   gl.clearColor(0, 0, 0, 1);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -1589,8 +1565,8 @@ if (showWater) {
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.bindTexture(gl.TEXTURE_2D, null);
-
 }
+
 gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
   // === 4. Geometry pass (g-buffer) za opaque objekte ===
@@ -1777,43 +1753,44 @@ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, 0, 0, canvas.width, canvas.height, 0);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-
+    sceneChanged = false; // ✅ reset
   }
 if (showWater) {
-// NEMOJ PONOVO bindFramebuffer(finalFBO)! (VEĆ SI U njemu)
-gl.viewport(0, 0, canvas.width, canvas.height);
-gl.enable(gl.DEPTH_TEST);
-gl.depthMask(true);
-gl.disable(gl.CULL_FACE);
+  // NEMOJ PONOVO bindFramebuffer(finalFBO)! (VEĆ SI U njemu)
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.enable(gl.DEPTH_TEST);
+  gl.depthMask(true);
+  gl.disable(gl.CULL_FACE);
+  
+  // Kopiraj depth iz gBuffer u finalFBO pre crtanja vode
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, gBuffer);
+  gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, finalFBO);
+  gl.blitFramebuffer(0,0,canvas.width,canvas.height,0,0,canvas.width,canvas.height,gl.DEPTH_BUFFER_BIT,gl.NEAREST);
+  
+  const reflMatrix = reflView ? mat4mul(proj, reflView) : mat4mul(proj, view);
 
-// Kopiraj depth iz gBuffer u finalFBO pre crtanja vode
-gl.bindFramebuffer(gl.READ_FRAMEBUFFER, gBuffer);
-gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, finalFBO);
-gl.blitFramebuffer(0,0,canvas.width,canvas.height,0,0,canvas.width,canvas.height,gl.DEPTH_BUFFER_BIT,gl.NEAREST);
-
-const reflMatrix = mat4mul(proj, reflView);
-drawWater(
-  gl,
-  proj,
-  view,
-  camWorld,
-  [0, 0, 0],
-  envTex,
-  SUN.dir,
-  SUN.color,
-  SUN.intensity,
-  performance.now() * 0.001,
-  window.finalDepthTex,  // ✅ koristi stvarni depth
-  gAlbedo,
-  camera.near,           // ✅ koristi iz kamere
-  camera.far,            // ✅ koristi iz kamere
-  [canvas.width, canvas.height],
-  shadowDepthTex,
-  lightVP,
-  reflectionTex,
-  reflMatrix,
-  window.globalExposure
-);
+  drawWater(
+    gl,
+    proj,
+    view,
+    camWorld,
+    [0, 0, 0],
+    envTex,
+    SUN.dir,
+    SUN.color,
+    SUN.intensity,
+    performance.now() * 0.001,
+    sceneDepthTex,
+    gAlbedo,
+    0.1,
+    100000.0,
+    [canvas.width, canvas.height],
+    shadowDepthTex,
+    lightVP,
+    reflectionTex,
+    reflMatrix,
+    window.globalExposure
+  );
 }
 
   // === 11. Overlay / dimenzije (ako su uključene) ===
@@ -1982,18 +1959,21 @@ gl.activeTexture(gl.TEXTURE3);
 gl.bindTexture(gl.TEXTURE_2D, gMaterial);
 gl.uniform1i(window.ssrUniforms.gMaterial, 3);
 
+// ✅ DODAJ EnvMap
+gl.activeTexture(gl.TEXTURE4);
+gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
+gl.uniform1i(window.ssrUniforms.uEnvMap, 4);
+
+gl.uniformMatrix4fv(window.ssrUniforms.uView, false, view);
+gl.uniformMatrix4fv(window.ssrUniforms.uProjection, false, proj);
+gl.uniform2f(window.ssrUniforms.uResolution, canvas.width, canvas.height);
+gl.uniform1f(window.ssrUniforms.uCubeMaxMip, cubeMaxMip); // 👈 DODAJ
+
 gl.bindVertexArray(quadVAO);
 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
 gl.disable(gl.BLEND);
 gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-gl.uniformMatrix4fv(window.ssrUniforms.uView, false, view);
-gl.uniformMatrix4fv(window.ssrUniforms.uProjection, false, proj);
-gl.uniform2f(window.ssrUniforms.uResolution, canvas.width, canvas.height);
-
-gl.bindVertexArray(quadVAO);
-gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 // --- FXAA ---
 
 gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -2015,7 +1995,7 @@ gl.disable(gl.BLEND);
 gl.depthMask(true);
 gl.depthFunc(gl.LESS);
 gl.enable(gl.CULL_FACE);
-
+camera.moved = false;
 }
 
 

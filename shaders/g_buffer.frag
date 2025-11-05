@@ -6,18 +6,15 @@ smooth in vec3 vNormalView;
 smooth in mat3 vTBN;
 in vec2 vUV_out;
 
-uniform vec3  uBaseColor;
+uniform vec3 uBaseColor;
 uniform sampler2D uBaseColorTex;
-uniform bool  uUseBaseColorTex;
+uniform bool uUseBaseColorTex;
 
 uniform sampler2D uNormalTex;
-uniform bool  uUseNormalTex;
+uniform bool uUseNormalTex;
 
 uniform sampler2D uRoughnessTex;
-uniform bool  uUseRoughnessTex;
-
-uniform sampler2D uMetallicTex;
-uniform bool  uUseMetallicTex;
+uniform bool uUseRoughnessTex;
 
 uniform float uRoughness;
 uniform float uMetallic;
@@ -34,8 +31,8 @@ void main() {
     // --- Normal mapa ---
     vec3 normalView = normalize(vNormalView);
     if (uUseNormalTex) {
-        vec3 nTex = texture(uNormalTex, vUV_out).rgb * 2.0 - 1.0;
-        nTex.y = -nTex.y; // GLTF normal map (invert Y)
+        vec3 nTex = texture(uNormalTex, vUV_out, 0.5).rgb * 2.0 - 1.0; // ✅ dodaj mip bias 0.5
+        nTex.y = -nTex.y;
         normalView = normalize(vTBN * nTex);
     }
     outGNormal = vec4(normalView, 1.0);
@@ -51,17 +48,15 @@ void main() {
     outGAlbedo = vec4(albedo, 1.0);
 
     // --- Roughness i Metallic ---
-    float rough = clamp(uRoughness, 0.0, 1.0);
+    // Prvo postavi fallback vrednosti iz uniforma
+    float rough = clamp(uRoughness, 0.04, 1.0); // min 0.04 za fizički korektno PBR
     float metal = clamp(uMetallic, 0.0, 1.0);
 
-    // Ako imaš posebnu roughness mapu (crno–bela)
+    // Ako postoji glTF metallicRoughness tekstura, ZAMENI vrednosti
     if (uUseRoughnessTex) {
-        rough *= texture(uRoughnessTex, vUV_out).r; // koristi R kanal
-    }
-
-    // Ako imaš posebnu metallic mapu (crno–bela)
-    if (uUseMetallicTex) {
-        metal *= texture(uMetallicTex, vUV_out).r; // koristi R kanal
+        vec3 mrSample = texture(uRoughnessTex, vUV_out).rgb;
+        rough *= mrSample.g; // ✅ Zeleni kanal = roughness (ZAMENI, ne mnozi!)
+        metal *= mrSample.b; // ✅ Plavi kanal = metallic (ako postoji u teksturi)
     }
 
     // Zapiši u G-buffer

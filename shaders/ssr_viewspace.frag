@@ -8,7 +8,10 @@ uniform sampler2D gPosition;
 uniform sampler2D gNormal;
 uniform sampler2D gMaterial;   // roughness = .r , metal = .g
 uniform sampler2D uSceneColor;
-uniform mat4  uProjection;
+uniform mat4 uProjection;
+uniform mat4 uView;              // 👈 NOVO - za world space
+uniform samplerCube uEnvMap;     // 👈 NOVO - fallback
+uniform float uCubeMaxMip;       // 👈 NOVO - za roughness LOD
 
 const int   MAX_STEPS  = 30;
 const float STEP_SIZE  = 0.05;
@@ -68,7 +71,7 @@ void main() {
     vec2 hitUV = vec2(0.0);
     float hit = 0.0;
 
-    // === Raymarch bez blura ===
+    // === Raymarch ===
     for (int i = 0; i < MAX_STEPS; i++) {
         ray += stepV;
         if (ray.z < -MAX_DIST || ray.z > -0.1) break;
@@ -90,7 +93,7 @@ void main() {
         }
     }
 
-    // === Roughness blur (samo jednom) ===
+    // === Roughness blur (samo ako ima hit) ===
     if (hit > 0.5 && rough > 0.05) {
         vec2 texel = 1.0 / vec2(textureSize(uSceneColor, 0));
         float radius = mix(0.0, 4.0, rough);
@@ -109,11 +112,34 @@ void main() {
         hitColor = mix(hitColor, blurred, rough * 1.2);
     }
 
+    // === ✅ EnvMap Fallback ===
     vec3 base = texture(uSceneColor, vUV).rgb;
     float gloss = 1.0 - rough;
-    float fres  = pow(1.0 - Nv, 5.0);
+    float fres = pow(1.0 - Nv, 5.0);
     float reflectivity = mix(0.04, 1.0, metal);
-    float blend = hit * gloss * reflectivity * (1.0 + 0.5 * fres);
 
-    fragColor = vec4(mix(base, hitColor, blend), 1.0);
+    // Pretvori reflection vektor iz view-space u world-space
+    mat3 invView = transpose(mat3(uView));
+    vec3 Rworld = invView * R;
+    
+    // Sample envmap sa roughness LOD-om
+    float mipLevel = rough * uCubeMaxMip;
+    vec3 envReflection = textureLod(uEnvMap, Rworld, mipLevel).rgb;
+
+    // ✅ Blend SSR i EnvMap sa edge fade-om
+    vec3 finalReflection;
+    if (hit > 0.5) {
+        // Fade out SSR na ivicama ekrana za smooth prelaz u EnvMap
+        vec2 screenEdge = abs(hitUV * 2.0 - 1.0); // 0.0 = centar, 1.0 = ivica
+        float edgeFade = 1.0 - smoothstep(0.7, 1.0, max(screenEdge.x, screenEdge.y));
+        
+        finalReflection = mix(envReflection, hitColor, edgeFade);
+    } else {
+        // Ako nema SSR hit → koristi EnvMap
+        finalReflection = envReflection;
+    }
+
+    // ✅ Final blend sa baznom bojom
+    float strength = gloss * reflectivity * (0.5 + 1.0 * fres);
+    fragColor = vec4(mix(base, finalReflection, strength), 1.0);
 }

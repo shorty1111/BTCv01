@@ -328,7 +328,7 @@ if (bool(uHideSun)) {
     float skyMask    = smoothstep(-0.04, 0.02, dir.y);
     float groundMask = 1.0 - skyMask;
 
-    vec3 groundBase   = vec3(0.014,0.02,0.035) * groundMask * uSunIntensity;
+    vec3 groundBase   = vec3(0.03,0.04,0.055) * groundMask * uSunIntensity;
     float below       = smoothstep(0.0, 0.25, max(0.0, -dir.y));
 
     // === 5. Finalna kompozicija ===
