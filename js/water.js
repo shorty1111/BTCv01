@@ -2,6 +2,7 @@
 
 import { createShaderProgram } from "./shader.js";
 import { mat4Identity } from "./math.js";
+import { TEXTURE_SLOTS, bindTextureToSlot } from "./texture-slots.js"; 
 
 // === Seedovani RNG (da talasi uvek budu isti) ===
 function makeRNG(seed = 1234) {
@@ -290,6 +291,13 @@ gl.bindVertexArray(null);
   uploadWaveSet(gl, waterProgram, waveSet);
   waterNormalTex = loadTexture2D(gl, "assets/water_normal.png");
     // === STATIČNI UNIFORMI (mogu preći u initWater ako želiš još više performansi) ===
+  gl.uniform1i(waterUniforms.uWaterNormal, TEXTURE_SLOTS.WATER_NORMAL);
+  gl.uniform1i(waterUniforms.uEnvTex, TEXTURE_SLOTS.WATER_ENV_MAP);
+  gl.uniform1i(waterUniforms.uSceneDepth, TEXTURE_SLOTS.WATER_SCENE_DEPTH);
+  gl.uniform1i(waterUniforms.uSceneColor, TEXTURE_SLOTS.WATER_SCENE_COLOR);
+  gl.uniform1i(waterUniforms.uReflectionTex, TEXTURE_SLOTS.WATER_REFLECTION);
+  gl.uniform1i(waterUniforms.uShadowMap, TEXTURE_SLOTS.WATER_SHADOW_MAP);
+
   gl.uniform1f(waterUniforms.uOpacity, 1.0);
   gl.uniform1f(waterUniforms.uRoughness, 0.02);
   gl.uniform1f(waterUniforms.uSpecularStrength, 1.0);
@@ -390,21 +398,13 @@ export function drawWater(
 
   // === TEKSTURE (optimizovano) ===
   boundTex.fill(null); // resetuj cache da ne preskoči novi reflectionTex
-  safeBindTex(gl, 0, gl.TEXTURE_2D, waterNormalTex);
-  gl.uniform1i(waterUniforms.uWaterNormal, 0);
-
-  safeBindTex(gl, 1, gl.TEXTURE_CUBE_MAP, envTex);
-  gl.uniform1i(waterUniforms.uEnvTex, 1);
-
- safeBindTex(gl, 2, gl.TEXTURE_2D, window.finalDepthTex);
-  gl.uniform1i(waterUniforms.uSceneDepth, 2);
-
-  safeBindTex(gl, 3, gl.TEXTURE_2D, finalSceneTex);
-  gl.uniform1i(waterUniforms.uSceneColor, 3);
-
-  safeBindTex(gl, 4, gl.TEXTURE_2D, reflectionTex);
-  gl.uniform1i(waterUniforms.uReflectionTex, 4);
+  bindTextureToSlot(gl, waterNormalTex, TEXTURE_SLOTS.WATER_NORMAL);
+  safeBindTex(gl, TEXTURE_SLOTS.WATER_ENV_MAP, gl.TEXTURE_CUBE_MAP, envTex);
+  safeBindTex(gl, TEXTURE_SLOTS.WATER_SCENE_DEPTH, gl.TEXTURE_2D, window.finalDepthTex);
+  safeBindTex(gl, TEXTURE_SLOTS.WATER_SCENE_COLOR, gl.TEXTURE_2D, finalSceneTex);
+  safeBindTex(gl, TEXTURE_SLOTS.WATER_REFLECTION, gl.TEXTURE_2D, reflectionTex);
   gl.uniformMatrix4fv(waterUniforms.uReflectionMatrix, false, reflProjView);
+
 // 👇 dodaj ovo:
 if (window.reflectionSize) {
   const sx = window.reflectionSize[0] / gl.canvas.width;

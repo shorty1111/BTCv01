@@ -7,6 +7,7 @@ import { DEFAULT_SKY } from "./sky.js";
 import {MAX_FPS,DEFAULT_MODEL,BASE_PRICE,VARIANT_GROUPS,BOAT_INFO,SIDEBAR_INFO } from "./config.js";
 import {mat4mul,persp,ortho,look,composeTRS,computeBounds,mulMat4Vec4, v3,} from "./math.js";
 import { initUI, renderBoatInfo, showPartInfo, showLoading, hideLoading } from "./ui.js";
+import { TEXTURE_SLOTS, bindTextureToSlot } from "./texture-slots.js";
 
 let sceneChanged = true;
 let pbrUniforms = {};
@@ -431,18 +432,6 @@ function arraysEqual(a, b) {
     if (Math.abs(a[i] - b[i]) > 1e-5) return false;
   }
   return true;
-}
-function updateFPS() {
-  const now = performance.now();
-  frames++;
-  if (now - lastFrame >= 1000) {
-    fps = frames;
-    frames = 0;
-    lastFrame = now;
-    // Prikazi FPS u divu
-    const fpsSpan = document.getElementById("fps-value");
-    if (fpsSpan) fpsSpan.textContent = fps;
-  }
 }
 
 
@@ -950,18 +939,18 @@ async function initShaders() {
     ssaoProgram = createShaderProgram(gl, quadVertSrc, ssaoFragSrc);
 
     const ssaoBlurFragSrc = await loadShader("../shaders/ssao_blur.frag");
-const ssaoBlurProgram = createShaderProgram(gl, quadVertSrc, ssaoBlurFragSrc);
-window.ssaoBlurProgram = ssaoBlurProgram;
-window.ssaoBlurUniforms = {
-  tSSAO: gl.getUniformLocation(ssaoBlurProgram, "tSSAO"),
-  uTexelSize: gl.getUniformLocation(ssaoBlurProgram, "uTexelSize"),
-};
+    const ssaoBlurProgram = createShaderProgram(gl, quadVertSrc, ssaoBlurFragSrc);
+    window.ssaoBlurProgram = ssaoBlurProgram;
+    window.ssaoBlurUniforms = {
+      tSSAO: gl.getUniformLocation(ssaoBlurProgram, "tSSAO"),
+      uTexelSize: gl.getUniformLocation(ssaoBlurProgram, "uTexelSize"),
+    };
 
     const ssrFragSrc = await loadShader("../shaders/ssr_viewspace.frag");
     const ssrProgram = createShaderProgram(gl, quadVertSrc, ssrFragSrc);
 
-    window.ssrProgram = ssrProgram;
-    window.ssrUniforms = {
+      window.ssrProgram = ssrProgram;
+      window.ssrUniforms = {
       gPosition: gl.getUniformLocation(ssrProgram, "gPosition"),
       gNormal: gl.getUniformLocation(ssrProgram, "gNormal"),
       gMaterial: gl.getUniformLocation(ssrProgram, "gMaterial"),
@@ -971,9 +960,17 @@ window.ssaoBlurUniforms = {
       uResolution: gl.getUniformLocation(ssrProgram, "uResolution"),
       uEnvMap: gl.getUniformLocation(ssrProgram, "uEnvMap"),           // 👈 DODAJ
       uCubeMaxMip: gl.getUniformLocation(ssrProgram, "uCubeMaxMip"),   // 👈 DODAJ
-        uGlobalExposure: gl.getUniformLocation(ssrProgram, "uGlobalExposure"), 
+      uGlobalExposure: gl.getUniformLocation(ssrProgram, "uGlobalExposure"), 
     };
         
+        // ✅ DODAJ OVO (setup texture slotova za SSR):
+    gl.useProgram(ssrProgram);
+    gl.uniform1i(window.ssrUniforms.gPosition, TEXTURE_SLOTS.SSR_POSITION);
+    gl.uniform1i(window.ssrUniforms.gNormal, TEXTURE_SLOTS.SSR_NORMAL);
+    gl.uniform1i(window.ssrUniforms.uSceneColor, TEXTURE_SLOTS.SSR_SCENE_COLOR);
+    gl.uniform1i(window.ssrUniforms.gMaterial, TEXTURE_SLOTS.SSR_MATERIAL);
+    gl.uniform1i(window.ssrUniforms.uEnvMap, TEXTURE_SLOTS.SSR_ENV_MAP);
+
     const glassVS = await loadShader("shaders/glass.vert");
     const glassFS = await loadShader("shaders/glass.frag");
     programGlass = createShaderProgram(gl, glassVS, glassFS);
@@ -1076,16 +1073,16 @@ window.ssaoBlurUniforms = {
     gl.uniform1f(pbrUniforms.uBiasBase, 0.0005);
     gl.uniform1f(pbrUniforms.uBiasSlope, 0.0015);
     gl.uniform2f(pbrUniforms.uTexelSize, 1.0 / canvas.width, 1.0 / canvas.height);
-    gl.uniform1i(pbrUniforms.gPosition, 0);
-    gl.uniform1i(pbrUniforms.gNormal, 1);
-    gl.uniform1i(pbrUniforms.gAlbedo, 2);
-    gl.uniform1i(pbrUniforms.gMaterial, 3);
-    gl.uniform1i(pbrUniforms.ssao, 4);
-    gl.uniform1i(pbrUniforms.uEnvMap, 5);
-    gl.uniform1i(pbrUniforms.uBRDFLUT, 6);
-    gl.uniform1i(pbrUniforms.uShadowMap, 7);
-    gl.uniform1i(pbrUniforms.tBentNormalAO, 8);
-    gl.uniform1i(pbrUniforms.uSceneColor, 9);
+    gl.uniform1i(pbrUniforms.gPosition, TEXTURE_SLOTS.PBR_POSITION);
+    gl.uniform1i(pbrUniforms.gNormal, TEXTURE_SLOTS.PBR_NORMAL);
+    gl.uniform1i(pbrUniforms.gAlbedo, TEXTURE_SLOTS.PBR_ALBEDO);
+    gl.uniform1i(pbrUniforms.gMaterial, TEXTURE_SLOTS.PBR_MATERIAL);
+    gl.uniform1i(pbrUniforms.ssao, TEXTURE_SLOTS.PBR_SSAO);
+    gl.uniform1i(pbrUniforms.uEnvMap, TEXTURE_SLOTS.PBR_ENV_MAP);
+    gl.uniform1i(pbrUniforms.uBRDFLUT, TEXTURE_SLOTS.PBR_BRDF_LUT);
+    gl.uniform1i(pbrUniforms.uShadowMap, TEXTURE_SLOTS.PBR_SHADOW_MAP);
+    gl.uniform1i(pbrUniforms.tBentNormalAO, TEXTURE_SLOTS.PBR_BENT_NORMAL_AO);
+    gl.uniform1i(pbrUniforms.uSceneColor, TEXTURE_SLOTS.PBR_SCENE_COLOR);
 
     return true;
   } catch (err) {
@@ -1720,35 +1717,16 @@ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.useProgram(program);
 
     // --- Teksture ---
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, gPosition);
-
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, gNormal);
-
-    gl.activeTexture(gl.TEXTURE2);
-    gl.bindTexture(gl.TEXTURE_2D, gAlbedo);
-
-    gl.activeTexture(gl.TEXTURE3);
-    gl.bindTexture(gl.TEXTURE_2D, gMaterial);
-
-    gl.activeTexture(gl.TEXTURE4);
-   gl.bindTexture(gl.TEXTURE_2D, window.ssaoBlurColor);
-
-    gl.activeTexture(gl.TEXTURE5);
-    gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
-
-    gl.activeTexture(gl.TEXTURE6);
-    gl.bindTexture(gl.TEXTURE_2D, brdfTex);
-
-    gl.activeTexture(gl.TEXTURE7);
-    gl.bindTexture(gl.TEXTURE_2D, shadowDepthTex);
-
-    gl.activeTexture(gl.TEXTURE8);
-    gl.bindTexture(gl.TEXTURE_2D, window.ssaoBlurColor);
-
-    gl.activeTexture(gl.TEXTURE9);
-    gl.bindTexture(gl.TEXTURE_2D, window.sceneColorTex);
+    bindTextureToSlot(gl, gPosition, TEXTURE_SLOTS.PBR_POSITION);
+    bindTextureToSlot(gl, gNormal, TEXTURE_SLOTS.PBR_NORMAL);
+    bindTextureToSlot(gl, gAlbedo, TEXTURE_SLOTS.PBR_ALBEDO);
+    bindTextureToSlot(gl, gMaterial, TEXTURE_SLOTS.PBR_MATERIAL);
+    bindTextureToSlot(gl, window.ssaoBlurColor, TEXTURE_SLOTS.PBR_SSAO);
+    bindTextureToSlot(gl, envTex, TEXTURE_SLOTS.PBR_ENV_MAP, gl.TEXTURE_CUBE_MAP);
+    bindTextureToSlot(gl, brdfTex, TEXTURE_SLOTS.PBR_BRDF_LUT);
+    bindTextureToSlot(gl, shadowDepthTex, TEXTURE_SLOTS.PBR_SHADOW_MAP);
+    bindTextureToSlot(gl, window.ssaoBlurColor, TEXTURE_SLOTS.PBR_BENT_NORMAL_AO);
+    bindTextureToSlot(gl, window.sceneColorTex, TEXTURE_SLOTS.PBR_SCENE_COLOR);
 
     // --- Uniforme ---
     gl.uniform2f(pbrUniforms.uResolution, canvas.width, canvas.height);
@@ -1976,26 +1954,12 @@ gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
 gl.useProgram(window.ssrProgram);
 
-gl.activeTexture(gl.TEXTURE0);
-gl.bindTexture(gl.TEXTURE_2D, gPosition);
-gl.uniform1i(window.ssrUniforms.gPosition, 0);
-
-gl.activeTexture(gl.TEXTURE1);
-gl.bindTexture(gl.TEXTURE_2D, gNormal);
-gl.uniform1i(window.ssrUniforms.gNormal, 1);
-
-gl.activeTexture(gl.TEXTURE2);
-gl.bindTexture(gl.TEXTURE_2D, toneMapTex);
-gl.uniform1i(window.ssrUniforms.uSceneColor, 2);
-
-gl.activeTexture(gl.TEXTURE3);
-gl.bindTexture(gl.TEXTURE_2D, gMaterial);
-gl.uniform1i(window.ssrUniforms.gMaterial, 3);
-
-// ✅ DODAJ EnvMap
-gl.activeTexture(gl.TEXTURE4);
-gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
-gl.uniform1i(window.ssrUniforms.uEnvMap, 4);
+// ✅ NOVE LINIJE (samo binding - uniformi su već postavljeni):
+bindTextureToSlot(gl, gPosition, TEXTURE_SLOTS.SSR_POSITION);
+bindTextureToSlot(gl, gNormal, TEXTURE_SLOTS.SSR_NORMAL);
+bindTextureToSlot(gl, toneMapTex, TEXTURE_SLOTS.SSR_SCENE_COLOR);
+bindTextureToSlot(gl, gMaterial, TEXTURE_SLOTS.SSR_MATERIAL);
+bindTextureToSlot(gl, envTex, TEXTURE_SLOTS.SSR_ENV_MAP, gl.TEXTURE_CUBE_MAP);
 
 gl.uniformMatrix4fv(window.ssrUniforms.uView, false, view);
 gl.uniformMatrix4fv(window.ssrUniforms.uProjection, false, proj);
@@ -2031,8 +1995,57 @@ gl.depthFunc(gl.LESS);
 gl.enable(gl.CULL_FACE);
 camera.moved = false;
 }
-
-
+function renderSceneForProbe(gl, proj, view, probePos, sceneData, skyParams) {
+  // ✅ 1. Prvo nacrtaj nebo
+  const { sunDir, sunColor, sunIntensity } = skyParams;
+  
+  drawSky(gl, null, view, proj, sunDir, {
+    ...DEFAULT_SKY,
+    sunColor,
+    sunIntensity,
+    useTonemap: false,
+    hideSun: false,
+    worldLocked: 0,
+  });
+  
+  // ✅ 2. Nacrtaj opaque geometriju (BEZ vode, stakla, overlay-a)
+  gl.useProgram(gBufferProgram);
+  gl.enable(gl.DEPTH_TEST);
+  gl.depthMask(true);
+  
+  gl.uniformMatrix4fv(gBufferUniforms.uProjection, false, proj);
+  gl.uniformMatrix4fv(gBufferUniforms.uView, false, view);
+  
+  const { modelVAOs, idxCounts, idxTypes, modelMatrices, modelBaseColors, modelMetallics, modelRoughnesses, modelBaseTextures } = sceneData;
+  
+  for (let i = 0; i < modelVAOs.length; i++) {
+    if (!idxCounts[i]) continue;
+    
+    // Preskoči vodu i transparentne objekte
+    const meshName = nodesMeta[renderToNodeId[i]]?.name?.toLowerCase() || "";
+    if (meshName.includes("water")) continue;
+    if (originalParts[i]?.alphaMode === "BLEND") continue;
+    
+    gl.uniformMatrix4fv(gBufferUniforms.uModel, false, modelMatrices[i]);
+    gl.uniform3fv(gBufferUniforms.uBaseColor, modelBaseColors[i] || [1, 1, 1]);
+    gl.uniform1f(gBufferUniforms.uMetallic, modelMetallics[i] ?? 1.0);
+    gl.uniform1f(gBufferUniforms.uRoughness, modelRoughnesses[i] ?? 1.0);
+    
+    if (modelBaseTextures[i]) {
+      gl.activeTexture(gl.TEXTURE0 + TEXTURE_SLOTS.GBUFFER_BASE_COLOR);
+      gl.bindTexture(gl.TEXTURE_2D, modelBaseTextures[i]);
+      gl.uniform1i(gBufferUniforms.uBaseColorTex, TEXTURE_SLOTS.GBUFFER_BASE_COLOR);
+      gl.uniform1i(gBufferUniforms.uUseBaseColorTex, 1);
+    } else {
+      gl.uniform1i(gBufferUniforms.uUseBaseColorTex, 0);
+    }
+    
+    gl.bindVertexArray(modelVAOs[i]);
+    gl.drawElements(gl.TRIANGLES, idxCounts[i], idxTypes[i], 0);
+  }
+  
+  gl.bindVertexArray(null);
+}
 let lastTime = performance.now();
 let frameCount = 0;
 
@@ -2440,9 +2453,6 @@ function loadTextureFromImage(gltf, bin, texIndex) {
   image.src = url;
   return tex;
 }
-
-
-
 function isPowerOf2(value) {
   return (value & (value - 1)) === 0;
 }

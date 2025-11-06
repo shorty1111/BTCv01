@@ -9,9 +9,7 @@ uniform sampler2D gNormal;
 uniform sampler2D gMaterial;   // roughness = .r , metal = .g
 uniform sampler2D uSceneColor;
 uniform mat4  uProjection;
-uniform mat4 uView;              // 👈 DODAJ (za world space)
-uniform samplerCube uEnvMap;     // 👈 DODAJ
-uniform float uCubeMaxMip;       // 👈 DODAJ (za roughness LOD)
+
 
 const int   MAX_STEPS  = 30;
 const float STEP_SIZE  = 0.05;

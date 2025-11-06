@@ -278,17 +278,3 @@ about: `
 };
 
 
-export const REFLECTION_PROBES = [
-  { 
-    name: "cockpit", 
-    pos: [0, 1.5, -1.0],  // centar kokpita
-    radius: 3.0,          // zona uticaja
-    priority: 10 
-  },
-  { 
-    name: "deck", 
-    pos: [0, 0.8, 0.5],   // sredina palube
-    radius: 4.0,
-    priority: 5 
-  },
-];
