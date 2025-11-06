@@ -15,6 +15,7 @@ uniform sampler2D tBentNormalAO;
 uniform samplerCube uEnvMap;
 uniform sampler2D uBRDFLUT;
 uniform sampler2DShadow uShadowMap;
+
 uniform float uNormalBias; 
 uniform mat4  uView, uLightVP;
 uniform vec3  uSunDir, uSunColor;
@@ -129,7 +130,9 @@ void main(){
     vec3 Lv     = normalize(V3 * normalize(uSunDir));
     vec3 H      = normalize(V + Lv);
     
-    // 👇 Refleksija MORA koristiti pravu normalu (ne bent!)
+    vec3 upN = normalize(invV3 * N);
+    upN = mix(upN, vec3(upN.x, abs(upN.y), upN.z), 0.5); // smanji uticaj grounda
+
     vec3 Rv     = reflect(-V, N);
     vec3 Rw     = invV3 * Rv;
 
@@ -145,11 +148,11 @@ void main(){
     vec3  specBRDF = (D * G * F) / (4.0 * max(NdotV * NdotL, 0.001));
 
     vec3 kd   = (1.0 - F) * (1.0 - metal);
-    vec3 diff = kd * (baseColor / 3.141592);
+    vec3 diff = kd * (baseColor / 3.141592) * ao;
 
 
     float mipDiff =  uCubeMaxMip;          // 8 → meko, difuzno
-    vec3 envDiff = textureLod(uEnvMap, Nw, mipDiff).rgb; 
+    vec3 envDiff = textureLod(uEnvMap, upN, mipDiff).rgb; 
 
     float mipSpec = roughPerceptual  * uCubeMaxMip;
     vec3 envSpec = textureLod(uEnvMap, Rw, mipSpec).rgb;

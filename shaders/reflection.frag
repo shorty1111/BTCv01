@@ -18,6 +18,7 @@ uniform float uRoughness;
 uniform float uSpecularStrength;
 uniform vec3 uCameraPos;
 uniform float uGlobalExposure;
+in float vClipDist;
 
 out vec4 fragColor;
 
@@ -39,6 +40,7 @@ float GeometrySmith(float NdotV, float NdotL, float a){
 }
 
 void main() {
+    if (vClipDist < -max(0.3, 0.002 * abs(vWorldPos.y))) discard;
     // Albedo
     vec3 albedo = uUseBaseColorTex ? pow(texture(uBaseColorTex, vUV).rgb, vec3(2.2)) : uBaseColor;
     vec3 N = normalize(vNormal);

@@ -729,9 +729,26 @@ document
   .forEach((btn) => {
     btn.addEventListener("click", () => {
       const viewName = btn.getAttribute("data-view");
+
+      // 👇 DODAJ - HOME button specijalan slučaj
+      if (viewName === "iso" && window.initialCameraState) {
+        console.log("🏠 HOME clicked - restoring initial state");
+        camera.pan = window.initialCameraState.pan.slice();
+        camera.distTarget = window.initialCameraState.dist;
+
+        camera.rxTarget = window.initialCameraState.rx;
+
+        camera.ryTarget = window.initialCameraState.ry;
+        camera.ry = window.initialCameraState.ry;
+
+        ({ proj, view, camWorld } = camera.updateView());
+        sceneChanged = true;
+        render();
+        return; // 👈 ВАЖНО - izađi iz funkcije
+      }
+
+
       camera.currentView = viewName;
-      
-      // ✅ UVEK perspective, nikad ortho!
       camera.useOrtho = false;
 
       // ✅ Postavi uglove za svaki view

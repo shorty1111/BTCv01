@@ -66,7 +66,21 @@ export function look(eye, tgt, up) {
     1,
   ]);
 }
-
+export function lookReflected(eye, tgt) {
+  const forward = v3.norm(v3.sub(tgt, eye)); // ka meti (ne od mete)
+  const right = v3.norm(v3.cross([0, 1, 0], forward));
+  const up = v3.cross(forward, right);
+  
+  return new Float32Array([
+    right[0], up[0], -forward[0], 0,
+    right[1], up[1], -forward[1], 0,
+    right[2], up[2], -forward[2], 0,
+    -v3.dot(right, eye),
+    -v3.dot(up, eye),
+    v3.dot(forward, eye),
+    1
+  ]);
+}
 export function mat4Identity() {
   return new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 }

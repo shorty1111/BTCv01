@@ -405,7 +405,13 @@ export function drawWater(
   safeBindTex(gl, 4, gl.TEXTURE_2D, reflectionTex);
   gl.uniform1i(waterUniforms.uReflectionTex, 4);
   gl.uniformMatrix4fv(waterUniforms.uReflectionMatrix, false, reflProjView);
-
+// 👇 dodaj ovo:
+if (window.reflectionSize) {
+  const sx = window.reflectionSize[0] / gl.canvas.width;
+  const sy = window.reflectionSize[1] / gl.canvas.height;
+  const loc = gl.getUniformLocation(waterProgram, "uReflectionScale");
+  if (loc) gl.uniform2f(loc, sx, sy);
+}
   // === OSTALO ===
   gl.uniform1f(waterUniforms.uWaterHeight, 0.0);
   gl.uniform1f(waterUniforms.uNear, nearPlane);

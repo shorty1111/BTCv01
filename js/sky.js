@@ -328,7 +328,7 @@ if (segLen > 0.0) {
     float skyMask    = smoothstep(-0.04, 0.02, dir.y);
     float groundMask = 1.0 - skyMask;
 
-    vec3 groundBase   = vec3(0.005,0.005,0.006) * groundMask * uSunIntensity;
+    vec3 groundBase   = vec3(0.01,0.01,0.01) * groundMask * uSunIntensity;
     float below       = smoothstep(0.0, 0.25, max(0.0, -dir.y));
 
     // === 5. Finalna kompozicija ===

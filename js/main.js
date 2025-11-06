@@ -8,7 +8,6 @@ import {MAX_FPS,DEFAULT_MODEL,BASE_PRICE,VARIANT_GROUPS,BOAT_INFO,SIDEBAR_INFO }
 import {mat4mul,persp,ortho,look,composeTRS,computeBounds,mulMat4Vec4, v3,} from "./math.js";
 import { initUI, renderBoatInfo, showPartInfo, showLoading, hideLoading } from "./ui.js";
 
-
 let sceneChanged = true;
 let pbrUniforms = {};
 let reflectionUniforms = {};
@@ -26,8 +25,7 @@ let lastSunDir = [0, 0, 0];
 const textureCache = {}; // key = url, value = WebGLTexture
 
 let shadowFBO, shadowDepthTex;
-const SHADOW_RES = 4096;
-
+const SHADOW_RES = 2048;
 
 async function preloadAllConfigTextures() {
   const loadTex = async (src) => {
@@ -1489,6 +1487,7 @@ if (shadowDirty) {
   ];
 
   let { lmin, lmax } = computeLightBounds(minBB, maxBB, lightView);
+  
   const FRUSTUM_SCALE = 1.0;
   const cx = (lmin[0] + lmax[0]) * 0.5;
   const cy = (lmin[1] + lmax[1]) * 0.5;
@@ -1499,7 +1498,16 @@ if (shadowDirty) {
 
   lmin = [cx - hx, cy - hy, cz - hz];
   lmax = [cx + hx, cy + hy, cz + hz];
-
+  // 👇 DODAJ DEBUG LOG:
+  const frustumWidth = lmax[0] - lmin[0];
+  const frustumHeight = lmax[1] - lmin[1];
+  const frustumDepth = lmax[2] - lmin[2];
+  const pixelsPerMeter = SHADOW_RES / Math.max(frustumWidth, frustumHeight);
+  
+  console.log("🔆 Shadow frustum:", 
+    `${frustumWidth.toFixed(1)}m × ${frustumHeight.toFixed(1)}m × ${frustumDepth.toFixed(1)}m`,
+    `| Resolution: ${pixelsPerMeter.toFixed(0)} px/m`
+  );
   const lightProj = ortho(lmin[0], lmax[0], lmin[1], lmax[1], -lmax[2], -lmin[2]);
   lightVP = mat4mul(lightProj, lightView);
 
@@ -1546,7 +1554,10 @@ if (showWater) {
   });
 
   gl.useProgram(reflectionColorProgram);
-  
+  gl.uniform4f(
+  gl.getUniformLocation(reflectionColorProgram, "uClipPlane"),
+  0.0, 1.0, 0.0, 0.0    // ravan y=0
+);
   gl.uniform3fv(reflectionUniforms.uSunDir, SUN.dir);
   gl.uniform3fv(reflectionUniforms.uSunColor, SUN.color);
   gl.uniform1f(reflectionUniforms.uSunIntensity, SUN.intensity);
@@ -1597,6 +1608,7 @@ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   
   gl.enable(gl.DEPTH_TEST);
   gl.depthMask(true);
+  
   gl.useProgram(gBufferProgram);
 
   gl.uniformMatrix4fv(gBufferUniforms.uProjection, false, proj);
@@ -2089,6 +2101,7 @@ async function loadGLB(buf) {
       const matIndex = pr.material || 0;
       const mat = (gltf.materials && gltf.materials[matIndex]) || {};
       const pbr = mat.pbrMetallicRoughness || {};
+      const doubleSided = mat.doubleSided || false;
 
       const baseColorFactor = pbr.baseColorFactor || [1, 1, 1, 1];
       const baseColor = new Float32Array(baseColorFactor.slice(0, 3));
@@ -2346,7 +2359,13 @@ async function loadGLB(buf) {
   camera.ry = camera.ryTarget = Math.PI / 20;
   camera.updateView();
 
-
+  // 👇 DODAJ OVO - sačuvaj početno stanje kamere
+  window.initialCameraState = {
+    pan: camera.pan.slice(),
+    dist: camera.distTarget,
+    rx: camera.rxTarget,
+    ry: camera.ryTarget
+  };
 
   ({ proj, view, camWorld } = camera.updateView());
   // Sačekaj da se sve teksture spuste u GPU
@@ -2642,8 +2661,8 @@ async function replaceSelectedWithURL(url, variantName, partName) {
   
   const node = nodesMeta.find((n) => n.name === partName);
   
-  if (node && currentParts[partName]?.name !== variantName) {
-  delete node.cachedBounds;
+if (node) {
+  delete node.cachedBounds; // 👈 UVEK obriši, čak i ako je isti variant
 }
   if (!node) {
     if (!alreadyCached) hideLoading(); // 👈 sakrij SAMO ako si pokazao

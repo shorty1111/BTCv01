@@ -32,7 +32,7 @@ uniform mat4        uReflectionMatrix;
 uniform float       uWaterLevel;
 uniform float       uBottomOffsetM;
 uniform float       uGlobalExposure;
-
+uniform vec2 uReflectionScale; // 👈 faktor za 50% rez
 
 // === PARAMETRI ===
 const float DEPTH_SCALE     = 6.3;
