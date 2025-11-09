@@ -600,14 +600,25 @@ async function loadSavedConfig(index) {
   const cfg = all[index];
   if (!cfg) return alert("Config not found.");
   window.__suppressFocusCamera = true;
-  currentParts = cfg.currentParts || {};
+  const incomingParts = cfg.currentParts || {};
+  if (!window.currentParts) {
+    window.currentParts = {};
+  }
+  const currentPartsRef = window.currentParts;
+
+  for (const key of Object.keys(currentPartsRef)) {
+    if (!(key in incomingParts)) {
+      delete currentPartsRef[key];
+    }
+  }
+  Object.assign(currentPartsRef, incomingParts);
   savedColorsByPart = cfg.savedColorsByPart || {};
   setWeather(cfg.weather || "day");
   // reset UI selekcija
   document.querySelectorAll(".variant-item").forEach(el => el.classList.remove("active"));
   document.querySelectorAll(".color-swatch").forEach(el => el.classList.remove("selected"));
   // 1️⃣ Učitaj standardne delove
-  for (const [part, variant] of Object.entries(currentParts)) {
+  for (const [part, variant] of Object.entries(currentPartsRef)) {
     const node = nodesMeta.find(n => n.name === part);
 if (variant.src) {
   await replaceSelectedWithURL(variant.src, variant.name, part);
@@ -673,25 +684,25 @@ if (variant.selectedColor) {
     showPartInfo(`${variant.name}${variant.selectedColor ? ` (${variant.selectedColor})` : ""}`);
   }
 
-// 2️⃣ Aktiviraj ADDITIONAL (nema src, samo cena)
-for (const [part, variant] of Object.entries(currentParts)) {
-  if (!variant.src) {
-    // označi u UI
-    const addItem = document.querySelector(`.variant-item[data-variant="${variant.name}"]`);
-    if (addItem) {
-      addItem.classList.add("active");
-      // osveži cenu odmah ispod kartice (ako postoji)
-      const footer = addItem.querySelector(".price");
-      if (footer) footer.textContent = variant.price === 0 ? "Included" : `+${variant.price} €`;
-    }
+  // 2️⃣ Aktiviraj ADDITIONAL (nema src, samo cena)
+  for (const [part, variant] of Object.entries(currentPartsRef)) {
+    if (!variant.src) {
+      // označi u UI
+      const addItem = document.querySelector(`.variant-item[data-variant="${variant.name}"]`);
+      if (addItem) {
+        addItem.classList.add("active");
+        // osveži cenu odmah ispod kartice (ako postoji)
+        const footer = addItem.querySelector(".price");
+        if (footer) footer.textContent = variant.price === 0 ? "Included" : `+${variant.price} €`;
+      }
 
-    // ako je taj deo dodatne opreme u nekoj grupi, otvori tu grupu
-    const parentGroup = addItem?.closest(".variant-group");
-    if (parentGroup && !parentGroup.classList.contains("open")) {
-      parentGroup.classList.add("open");
+      // ako je taj deo dodatne opreme u nekoj grupi, otvori tu grupu
+      const parentGroup = addItem?.closest(".variant-group");
+      if (parentGroup && !parentGroup.classList.contains("open")) {
+        parentGroup.classList.add("open");
+      }
     }
   }
-}
   buildPartsTable();
   updateTotalPrice();
   window.__suppressFocusCamera = false;
@@ -944,7 +955,6 @@ export function initUI(ctx) {
   const thumbnails = window.thumbnails;
 
   if (!window.currentParts) window.currentParts = {};
-  const currentParts = window.currentParts;
 
   initDropdown();
   initSavedConfigs();
