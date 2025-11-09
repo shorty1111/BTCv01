@@ -536,14 +536,27 @@ container.querySelectorAll(".del-btn").forEach(btn => {
 
 
 
+// pomoćna funkcija za duboko kloniranje objekata koje čuvamo u localStorage-u
+function deepClone(value) {
+  if (value == null || typeof value !== "object") return value;
+  if (typeof structuredClone === "function") {
+    try {
+      return structuredClone(value);
+    } catch (err) {
+      // fallback ispod
+    }
+  }
+  return JSON.parse(JSON.stringify(value));
+}
+
 // sada bez prompt-a — koristi modal iz HTML-a
 function saveToLocal(name) {
   const all = loadAll();
   const data = {
     name,
     timestamp: Date.now(),
-    currentParts,
-    savedColorsByPart,
+    currentParts: deepClone(currentParts),
+    savedColorsByPart: deepClone(savedColorsByPart),
     weather: SUN.dir[1] > 0.5 ? "day" : "sunset",
     camera: {
       pan: camera.pan,
@@ -594,19 +607,23 @@ async function loadSavedConfig(index) {
   const cfg = all[index];
   if (!cfg) return alert("Config not found.");
   window.__suppressFocusCamera = true;
-  const incomingParts = cfg.currentParts || {};
-  if (!window.currentParts) {
-    window.currentParts = {};
-  }
-  const currentPartsRef = window.currentParts;
+  const loadedParts = deepClone(cfg.currentParts || {});
+  const loadedColors = deepClone(cfg.savedColorsByPart || {});
 
-  for (const key of Object.keys(currentPartsRef)) {
-    if (!(key in incomingParts)) {
-      delete currentPartsRef[key];
-    }
-  }
-  Object.assign(currentPartsRef, incomingParts);
-  savedColorsByPart = cfg.savedColorsByPart || {};
+  if (!window.currentParts) window.currentParts = {};
+  if (!window.savedColorsByPart) window.savedColorsByPart = {};
+
+  const partsTarget = window.currentParts;
+  const colorsTarget = window.savedColorsByPart;
+
+  for (const key of Object.keys(partsTarget)) delete partsTarget[key];
+  for (const key of Object.keys(colorsTarget)) delete colorsTarget[key];
+
+  Object.assign(partsTarget, loadedParts);
+  Object.assign(colorsTarget, loadedColors);
+
+  currentParts = partsTarget;
+  savedColorsByPart = colorsTarget;
   setWeather(cfg.weather || "day");
   // reset UI selekcija
   document.querySelectorAll(".variant-item").forEach(el => el.classList.remove("active"));
