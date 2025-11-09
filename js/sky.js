@@ -32,8 +32,6 @@ export const DEFAULT_SKY = {
   mieStrength: 0.8,
   zenithDesat: 0.12,
   groundScatter: 0.85,
-  cloudCoverage: 0.52,
-  cloudDensity: 0.85,
 };
 
 // ===== Helpers =====
@@ -134,6 +132,7 @@ out vec4 fragColor;
 
 
 // === Sunce & atmosfera ===
+uniform float uTime;
 uniform float uCameraHeight;
 uniform int   uUseTonemap;
 uniform vec3  uSunDir;
@@ -148,7 +147,6 @@ uniform float uGroundScatter, uTurbidity, uSaturation;
 uniform float uHorizonWarmth, uZenithDesat, uHorizonDesat;
 
 uniform float uCloudHeight, uCloudThickness, uCloudSpeed;
-uniform float uCloudCoverage, uCloudDensity;
 uniform float uMilkBandStrength, uMilkBandWidth, uWarmBandStrength, uWarmBandWidth;
 
 // ---------- Helper noise funkcije ----------
@@ -175,17 +173,6 @@ vec3 ACESFilm(vec3 x){
 vec3 applySaturation(vec3 c, float s){
     float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
     return mix(vec3(l), c, s);
-}
-
-float fbm(vec3 p) {
-    float cl = 0.0;
-    float amp = 0.6;
-    for (int o = 0; o < 4; ++o) {
-        cl += noise3d(p) * amp;
-        p *= 2.05;
-        amp *= 0.55;
-    }
-    return cl;
 }
 
 // ========================= MAIN =========================
@@ -241,71 +228,62 @@ void main(){
     float tEnter  = max(min(tTop, tBottom), 0.0);
     float tExit   = max(max(tTop, tBottom), 0.0);
     float segLen  = max(tExit - tEnter, 0.0);
+    float cloudAlpha = 0.0;
+    
+// === volumetric-like clouds with layered depth ===
+if (segLen > 0.0) {
+    float layers = 1.0;
+    float totalDensity = 0.0;
+    vec3 colorAcc = vec3(0.0);
+    vec3 ray = dir * (segLen / layers);
 
-    // === volumetric-like clouds with layered depth ===
-    if (segLen > 0.0) {
-        const int CLOUD_LAYERS = 3;
-        float totalDensity = 0.0;
-        vec3 colorAcc = vec3(0.0);
-        float layerCount = float(CLOUD_LAYERS);
-        vec3 lightDir = normalize(uSunDir);
+    for (float i = 0.0; i < layers; i += 1.0) {
+        vec3 samplePos = dir * (tEnter + segLen * (i / layers));
+        samplePos.xz += uTime * vec2(uCloudSpeed, uCloudSpeed * 0.7);
 
-        for (int layer = 0; layer < CLOUD_LAYERS; ++layer) {
-            float lf = float(layer);
-            float layerFrac = (lf + 0.5) / layerCount;
-            vec3 samplePos = dir * (tEnter + segLen * layerFrac);
+        // parallax – gornji slojevi se pomeraju brže
+        samplePos.xz += i * 10.0;
 
-            // parallax offsets da slojevi imaju dubinu bez animacije
-            vec3 layerOffset;
-            if (layer == 0) layerOffset = vec3(18.0, 6.0, -12.0);
-            else if (layer == 1) layerOffset = vec3(-24.0, -4.0, 20.0);
-            else layerOffset = vec3(32.0, 10.0, 8.0);
-            samplePos += layerOffset;
-
-            float freq = mix(0.0014, 0.0022, layerFrac);
-            float cl = fbm(samplePos * freq);
-            float baseDensity = smoothstep(uCloudCoverage, uCloudCoverage + 0.35, cl);
-            float density = baseDensity * uCloudDensity;
-
-            // jednostavna self-shadow procena – dva uzorka prema suncu
-            float shadow = 1.0;
-            vec3 marchPos = samplePos + lightDir * 45.0;
-            for (int step = 0; step < 2; ++step) {
-                float shadowNoise = fbm(marchPos * freq);
-                float shadowDensity = smoothstep(uCloudCoverage, uCloudCoverage + 0.35, shadowNoise);
-                shadow *= (1.0 - shadowDensity * 0.35);
-                marchPos += lightDir * 70.0;
-            }
-
-            float heightMix = lf / max(layerCount - 1.0, 1.0);
-            vec3 upApprox = normalize(vec3(0.0, 1.0, 0.0));
-            float viewDot = clamp(dot(dir, upApprox), 0.0, 1.0);
-            float sunDot = clamp(dot(lightDir, upApprox), 0.0, 1.0);
-
-            // Henyey–Greenstein approximation for forward scattering highlight
-            float mu = clamp(dot(lightDir, dir), -1.0, 1.0);
-            float g = 0.6;
-            float phase = (1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * mu, 1.5);
-
-            vec3 baseCloud = mix(vec3(0.55, 0.57, 0.6), vec3(0.96), pow(sunDot, 1.5));
-            baseCloud = mix(baseCloud * 0.7, baseCloud, viewDot);
-            baseCloud = mix(baseCloud, vec3(0.9, 0.92, 0.97), 1.0 - heightMix);
-            baseCloud *= mix(vec3(0.75), uSunColor * 0.95, pow(max(sunAlt, 0.0), 0.65));
-
-            vec3 cloudCol = baseCloud;
-            cloudCol += (vec3(1.0, 0.96, 0.92) * phase * 0.02);
-            cloudCol *= shadow;
-
-            totalDensity += density * (1.0 - totalDensity);
-            colorAcc += cloudCol * density * (1.0 - totalDensity);
+        float cl = 0.0, amp = 1.0;
+        vec3 p = samplePos * 0.0015;
+        for (int o = 0; o < 4; ++o) {
+            cl += noise3d(p) * amp;
+            p *= 2.2;
+            amp *= 0.55;
         }
+        cl /= 1.6;
 
-        float fadeHor = smoothstep(0.05, 0.8, dir.y * 15.5);
-        float fadeZen = 1.0 - smoothstep(0.0, 0.9, dir.y);
-        totalDensity *= fadeHor * fadeZen;
+        float density = smoothstep(0.4, 0.8, cl);
+        float heightMix = i / layers;
 
-        base = mix(base, colorAcc, clamp(totalDensity * 0.32, 0.0, 1.0));
+      // --- osnovna senka i belina ---
+      vec3 lightDir = normalize(uSunDir);
+      float shade = max(dot(lightDir, normalize(vec3(0.0,1.0,0.0))), 0.0);
+      vec3 cloudCol = mix(vec3(0.5, 0.52, 0.55), vec3(0.95), shade * 0.8);
+
+      // --- tamniji centar oblaka, svetlije ivice ---
+      float core = smoothstep(0.45, 0.9, cl);        // 0 = ivice, 1 = centar
+      float edge = 1.0 - core;                       // svetle ivice
+      cloudCol = mix(cloudCol * 0.6, cloudCol, edge); // centar tamniji, ivice belje
+
+      // --- lagani highlight prema suncu ---
+      float sunFacing = pow(max(dot(lightDir, vec3(0.0,1.0,0.0)), 0.0), 8.0);
+      cloudCol += vec3(1.0, 0.95, 0.9) * sunFacing * 0.25;
+
+      // --- visinska nijansa ---
+      cloudCol = mix(cloudCol, vec3(0.9, 0.9, 0.95), 1.0 - heightMix);
+      cloudCol *= mix(vec3(0.8), uSunColor * 0.95, pow(max(sunAlt, 0.0), 0.5));
+
+        totalDensity += density * (1.0 - totalDensity);
+        colorAcc += cloudCol * density * (1.0 - totalDensity);
     }
+
+    float fadeHor = smoothstep(0.05, 0.8, dir.y * 15.5);
+    float fadeZen = 1.0 - smoothstep(0.0, 0.9, dir.y);
+    totalDensity *= fadeHor * fadeZen;
+
+    base = mix(base, colorAcc, clamp(totalDensity * 0.3, 0.0, 1.0));
+}
 
 
     // --- sunset horizon warmth (neka ostane)
@@ -378,8 +356,7 @@ void main(){
     "uSunHaloScale","uHorizonSoft","uHorizonLift","uHorizonDesat","uTurbidity",
     "uSaturation","uMilkBandStrength","uMilkBandWidth","uWarmBandStrength",
     "uWarmBandWidth","uHorizonWarmth","uRayleighStrength","uMieStrength",
-    "uZenithDesat","uGroundScatter","uWorldLocked","uModel","uUseTonemap",
-    "uCloudCoverage","uCloudDensity"
+    "uZenithDesat","uGroundScatter","uWorldLocked","uModel","uUseTonemap","uTime"
   ];
   for (const n of names) skyUniforms[n] = gl.getUniformLocation(skyProg, n);
  
@@ -435,8 +412,7 @@ gl.uniform1f(skyUniforms.uGlobalExposure,
 
   // tonemap i vreme
   gl.uniform1i(skyUniforms.uUseTonemap, o.useTonemap ? 1 : 0);
-  gl.uniform1f(skyUniforms.uCloudCoverage, o.cloudCoverage ?? 0.5);
-  gl.uniform1f(skyUniforms.uCloudDensity, o.cloudDensity ?? 0.9);
+  gl.uniform1f(skyUniforms.uTime, o.uTime ?? 0.0);
 }
 
 // ===== Render =====
