@@ -531,3 +531,132 @@ export function bakeSkyToCubemap(
 
   return cubeTex;
 }
+// === PREINTEGRISANI IRRADIANCE MAP ===
+export function bakeIrradianceFromSky(gl, envCube, size = 32) {
+  const vs = `#version 300 es
+  layout(location=0) in vec2 aPos;
+  out vec3 vDir;
+  uniform mat4 uView;
+  uniform mat4 uProj;
+  void main(){
+      vDir = (mat3(uView) * normalize(vec3(aPos, 1.0)));
+      gl_Position = vec4(aPos, 0.0, 1.0);
+  }`;
+
+  const fs = `#version 300 es
+precision highp float;
+in vec3 vDir;
+out vec4 fragColor;
+uniform samplerCube uEnvMap;
+const float PI = 3.14159265359;
+
+void main() {
+    vec3 N = normalize(vDir);
+    vec3 up = vec3(0.0, 1.0, 0.0);
+    vec3 right = normalize(cross(up, N));
+    up = cross(N, right);
+
+    vec3 irradiance = vec3(0.0);
+    const float sampleDelta = 0.1;     // manja vrednost = glađa, tačnija
+    float nrSamples = 0.0;
+
+    for (float phi = 0.0; phi < 2.0 * PI; phi += sampleDelta) {
+        for (float theta = 0.0; theta < 0.5 * PI; theta += sampleDelta) {
+            vec3 tangentSample = vec3(
+                sin(theta) * cos(phi),
+                cos(theta),
+                sin(theta) * sin(phi)
+            );
+            vec3 sampleVec =
+                tangentSample.x * right +
+                tangentSample.y * N +
+                tangentSample.z * up;
+
+            irradiance += texture(uEnvMap, sampleVec).rgb *
+                          cos(theta) * sin(theta);
+            nrSamples++;
+        }
+    }
+
+    // normalize the accumulated energy (Lambert integral)
+    irradiance = PI * irradiance * (1.0 / nrSamples);
+    fragColor = vec4(irradiance, 1.0);
+}`;
+
+  const prog = createShaderProgram(gl, vs, fs);
+  const quad = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  gl.bindVertexArray(null);
+
+  const cube = createCubemap(gl, size, true);
+  const fbo = gl.createFramebuffer();
+  const rbo = gl.createRenderbuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.bindRenderbuffer(gl.RENDERBUFFER, rbo);
+  gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, size, size);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rbo);
+
+  const proj = (function(fovyDeg, aspect, near, far){
+    const f = 1.0 / Math.tan((fovyDeg * Math.PI) / 360.0);
+    const nf = 1.0 / (near - far);
+    const m = new Float32Array(16);
+    m[0]=f/aspect; m[5]=f; m[10]=(far+near)*nf; m[11]=-1; m[14]=2*far*near*nf; m[15]=1;
+    return m;
+  })(90,1,0.1,2000);
+
+  const views = [
+    lookAt([0,0,0],[1,0,0],[0,-1,0]),
+    lookAt([0,0,0],[-1,0,0],[0,-1,0]),
+    lookAt([0,0,0],[0,1,0],[0,0,1]),
+    lookAt([0,0,0],[0,-1,0],[0,0,-1]),
+    lookAt([0,0,0],[0,0,1],[0,-1,0]),
+    lookAt([0,0,0],[0,0,-1],[0,-1,0]),
+  ];
+
+  gl.useProgram(prog);
+  const uView = gl.getUniformLocation(prog, "uView");
+  const uProj = gl.getUniformLocation(prog, "uProj");
+  const uEnvMap = gl.getUniformLocation(prog, "uEnvMap");
+  gl.uniform1i(uEnvMap, 0);
+
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, envCube);
+
+  gl.viewport(0, 0, size, size);
+  gl.bindVertexArray(vao);
+
+  for (let face = 0; face < 6; face++) {
+    gl.uniformMatrix4fv(uView, false, views[face]);
+    gl.uniformMatrix4fv(uProj, false, proj);
+
+    gl.framebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT0,
+      gl.TEXTURE_CUBE_MAP_POSITIVE_X + face,
+      cube,
+      0
+    );
+
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, cube);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
+
+  gl.bindVertexArray(null);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.deleteFramebuffer(fbo);
+  gl.deleteRenderbuffer(rbo);
+
+  return cube;
+}

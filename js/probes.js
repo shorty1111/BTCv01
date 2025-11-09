@@ -12,51 +12,37 @@ const PROBE_RESOLUTION = 128;
 //  1. GENERISANJE PROBE GRID-A
 // ========================================
 
-export function generateProbeGrid(gl, min, max, density = 0.25) {
-  console.log("🔵 Generišem probe grid...");
-  
-  const size = [
-    max[0] - min[0],
-    max[1] - min[1],
-    max[2] - min[2]
-  ];
-  
-  const gridSize = [
-    Math.max(2, Math.ceil(size[0] * density)),
-    Math.max(2, Math.ceil(size[1] * density)),
-    Math.max(2, Math.ceil(size[2] * density))
-  ];
-  
-  const cellSize = [
-    size[0] / (gridSize[0] - 1),
-    size[1] / (gridSize[1] - 1),
-    size[2] / (gridSize[2] - 1)
-  ];
-  
+export function generateProbeGrid(gl, min, max, count = 3) {
+   console.log("🔵 Generišem linearnu probe mrežu...");
+
   const probes = [];
-  for (let z = 0; z < gridSize[2]; z++) {
-    for (let y = 0; y < gridSize[1]; y++) {
-      for (let x = 0; x < gridSize[0]; x++) {
-        probes.push({
-          position: [
-            min[0] + x * cellSize[0],
-            min[1] + y * cellSize[1],
-            min[2] + z * cellSize[2]
-          ],
-          gridIndex: [x, y, z],
-          cubemap: null
-        });
-      }
-    }
+  const step = (max[0] - min[0]) / (count - 1);
+
+  for (let i = 0; i < count; i++) {
+    const x = min[0] + step * i;
+    const y = (min[1] + max[1]) * 0.5;   // po sredini visine broda
+    const z = (min[2] + max[2]) * 0.5;   // po sredini širine broda
+
+    probes.push({
+      position: [x, y, z],
+      gridIndex: [i, 0, 0],
+      cubemap: null,
+    });
   }
-  
-  probeGrid = { probes, gridSize, cellSize, bounds: { min, max } };
-  
-  console.log(`✅ Grid kreiran: ${gridSize[0]}×${gridSize[1]}×${gridSize[2]} = ${probes.length} probe-ova`);
-  console.log(`📏 Razmak: ${cellSize[0].toFixed(2)}m × ${cellSize[1].toFixed(2)}m × ${cellSize[2].toFixed(2)}m`);
-  
+
+  probeGrid = {
+    probes,
+    gridSize: [count, 1, 1],
+    cellSize: [step, 0, 0],
+    bounds: { min, max },
+  };
+
+  console.log(`✅ Linija kreirana: ${count} probe-ova`);
+  console.log(`📏 Razmak po X: ${step.toFixed(2)}m`);
+
   return probeGrid;
 }
+
 
 // ========================================
 //  2. KREIRANJE PROBE FRAMEBUFFER-A
@@ -120,20 +106,29 @@ function bakeProbe(gl, probePos, sceneData, skyParams, drawSceneCallback) {
   gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
   
-  gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
-  gl.activeTexture(gl.TEXTURE0);
-  
-  const proj = persp(90, 1.0, 0.1, 100);
-  
-  // ✅ Y osa SWAPPED:
-const views = [
-  lookAt(probePos, [probePos[0] + 1, probePos[1], probePos[2]], [0, -1, 0]),  // +X 👈 VRATI -1
-  lookAt(probePos, [probePos[0] - 1, probePos[1], probePos[2]], [0, -1, 0]),  // -X 👈 VRATI -1
-  lookAt(probePos, [probePos[0], probePos[1] - 1, probePos[2]], [0, 0, -1]),  // +Y gore 👈 SWAP target
-  lookAt(probePos, [probePos[0], probePos[1] + 1, probePos[2]], [0, 0, 1]),   // -Y dole 👈 SWAP target
-  lookAt(probePos, [probePos[0], probePos[1], probePos[2] + 1], [0, -1, 0]),  // +Z 👈 VRATI -1
-  lookAt(probePos, [probePos[0], probePos[1], probePos[2] - 1], [0, -1, 0])   // -Z 👈 VRATI -1
-];
+  const proj = (function (fovyDeg, aspect, near, far) {
+    const f = 1.0 / Math.tan((fovyDeg * Math.PI) / 360.0);
+    const nf = 1.0 / (near - far);
+    const out = new Float32Array(16);
+    out[0] = f / aspect;
+    out[5] = f;
+    out[10] = (far + near) * nf;
+    out[11] = -1;
+    out[14] = 2 * far * near * nf;
+    out[15] = 0; 
+    return out;
+  })(90, 1, 0.1, 2000);
+
+  // ✅ JEDNOSTAVNIJE: Koristi lookAt na prirodan način
+  const views = [
+    lookAt(probePos, [probePos[0] + 1, probePos[1], probePos[2]], [0, 1, 0]),  // +X right
+    lookAt(probePos, [probePos[0] - 1, probePos[1], probePos[2]], [0, 1, 0]),  // -X left  
+    lookAt(probePos, [probePos[0], probePos[1] + 1, probePos[2]], [0, 0, -1]), // +Y top
+    lookAt(probePos, [probePos[0], probePos[1] - 1, probePos[2]], [0, 0, 1]),  // -Y bottom
+    lookAt(probePos, [probePos[0], probePos[1], probePos[2] + 1], [0, 1, 0]),  // +Z front
+    lookAt(probePos, [probePos[0], probePos[1], probePos[2] - 1], [0, 1, 0])   // -Z back
+  ];
+
   for (let face = 0; face < 6; face++) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, probeFBO);
     gl.viewport(0, 0, PROBE_RESOLUTION, PROBE_RESOLUTION);
@@ -146,13 +141,30 @@ const views = [
       0
     );
     
-    gl.clearColor(0, 0, 0, 1);
+    // ✅ Provjeri FBO status
+    const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+    if (status !== gl.FRAMEBUFFER_COMPLETE) {
+      console.error("❌ FBO nije kompletan:", status);
+      continue;
+    }
+    
+    gl.clearColor(0.1, 0.1, 0.3, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     
     const view = views[face];
     
+    // ✅ NORMALAN CULLING (probaj oba načina)
+    gl.enable(gl.CULL_FACE);
+    gl.cullFace(gl.BACK);  // Prvo probaj BACK
+    gl.frontFace(gl.CCW);
+    
     const { sunDir, sunColor, sunIntensity } = skyParams;
     
+    // Render skybox (bez culling-a)
+    gl.disable(gl.CULL_FACE);
+    gl.disable(gl.DEPTH_TEST);
+    gl.depthMask(false);
+
     if (window.drawSky) {
       window.drawSky(gl, probeFBO, view, proj, sunDir, {
         ...window.DEFAULT_SKY,
@@ -163,17 +175,27 @@ const views = [
         worldLocked: 0,
       });
     }
+
+    // Render scene
+    gl.enable(gl.CULL_FACE);
+    gl.cullFace(gl.BACK);  // Standardni culling
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthMask(true);
     
     if (drawSceneCallback) {
-      drawSceneCallback(gl, proj, view, probePos, sceneData, skyParams);
+      drawSceneCallback(gl, proj, view, probePos, sceneData, skyParams, probeFBO);
     }
+    
+    console.log(`✅ Rendered cubemap face ${face}`);
   }
   
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   
+  // Generiši mipmap-e
   gl.activeTexture(gl.TEXTURE0 + TEXTURE_SLOTS.PROBE_TEMP);
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemap);
   gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+  
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
   gl.activeTexture(gl.TEXTURE0);
   

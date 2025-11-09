@@ -10,9 +10,22 @@ uniform sampler2D gMaterial;
 uniform sampler2D uSceneColor;
 uniform mat4 uProjection;
 uniform vec2 uResolution;
+uniform samplerCube uEnvMap;
+uniform float uCubeMaxMip;
 
+// === GI CONTROL ===
+const float GI_STRENGTH = 1.0;
+const float GI_ENV_MIX = 0.25;
+const float GI_DISTANCE = 1.5;
+const float GI_METAL_BOOST = 1.2;
+const float GI_BASE_BLEND = 0.6;
+const int GI_SAMPLES = 6;
+const float ENV_LOD_BIAS = 0.5;
+const float GI_FALLOFF = 0.6;
+
+// === SSR CONTROL ===
 const float BASE_STEP = 0.08;
-const float THICKNESS = 0.6;
+const float THICKNESS = 0.85;
 const int MAX_STEPS = 45;
 const float MAX_DIST = 70.0;
 
@@ -31,6 +44,52 @@ vec2 getStableHash(vec2 uv) {
     float h1 = fract(sin(dot(cell, vec2(12.9898,78.233))) * 43758.5453);
     float h2 = fract(sin(dot(cell + 13.37, vec2(41.23,95.78))) * 24634.6345);
     return vec2(h1, h2);
+}
+
+vec3 sampleHemisphere(vec3 normal, vec2 random) {
+    float cosTheta = sqrt(random.x);
+    float sinTheta = sqrt(1.0 - random.x);
+    float phi = random.y * 6.2831853;
+
+    vec3 w = normal;
+    vec3 u = normalize(cross(w, abs(w.x) > 0.1 ? vec3(0,1,0) : vec3(1,0,0)));
+    vec3 v = cross(w, u);
+
+    return normalize(u * cos(phi) * sinTheta + v * sin(phi) * sinTheta + w * cosTheta);
+}
+
+vec3 getAmbientGI(vec3 worldPos, vec3 normal, vec2 seed) {
+    vec3 giAccum = vec3(0.0);
+
+    for(int i = 0; i < GI_SAMPLES; i++) {
+        vec2 r = fract(seed + vec2(float(i) * 0.617, float(i) * 0.755));
+        vec3 sampleDir = sampleHemisphere(normal, r);
+
+        vec3 samplePos = worldPos + sampleDir * GI_DISTANCE;
+        vec2 sampleUV = projectToUV(samplePos);
+
+        vec3 sampleColor;
+        float weight = 1.0;
+
+        if(sampleUV.x > 0.0 && sampleUV.x < 1.0 && sampleUV.y > 0.0 && sampleUV.y < 1.0) {
+            vec3 sceneColor = pow(texture(uSceneColor, sampleUV).rgb, vec3(2.2));
+            vec3 envColor = textureLod(uEnvMap, sampleDir, ENV_LOD_BIAS).rgb;
+            float dist = length(samplePos - worldPos);
+            float envMix = smoothstep(0.5, 1.0, dist);
+            sampleColor = mix(sceneColor, envColor, envMix * GI_ENV_MIX);
+        } else {
+            float envLod = ENV_LOD_BIAS + dot(sampleDir, normal);
+            sampleColor = textureLod(uEnvMap, sampleDir, envLod).rgb;
+            weight = 0.8;
+        }
+
+        float dist = length(samplePos - worldPos);
+        float falloff = 1.0 / (1.0 + dist * GI_FALLOFF);
+        giAccum += sampleColor * falloff * weight;
+    }
+
+    giAccum /= float(GI_SAMPLES);
+    return pow(giAccum, vec3(1.0 / 2.2)); // gamma correction back
 }
 
 void main() {
@@ -64,12 +123,9 @@ void main() {
     vec3 B = cross(R, T);
     R = normalize(R + amp * (T * cos(angle) + B * sin(angle)));
 
-    // Adaptive step size based on reflection angle
     float adaptStep = mix(0.03, BASE_STEP, clamp(abs(R.z), 0.0, 1.0));
     vec3 ray = posV + N * mix(0.02, 0.1, 1.0 - NdotV);
     vec3 stepV = R * adaptStep;
-
-    // Roughness-based step count
     int steps = int(mix(10.0, float(MAX_STEPS), 1.0 - roughness));
 
     vec3 hitColor = vec3(0.0);
@@ -81,9 +137,8 @@ void main() {
     for (i = 0; i < steps; i++) {
         lastRayPos = ray;
         ray += stepV;
-        
-        if (ray.z < -MAX_DIST || ray.z > -0.1) break;
 
+        if (ray.z < -MAX_DIST || ray.z > -0.1) break;
         vec2 uv = projectToUV(ray);
         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) break;
 
@@ -94,21 +149,15 @@ void main() {
 
         if (dz < 0.0 && dz > -THICKNESS) {
             if (sceneP.z == 0.0) break;
-            
             for (int j = 0; j < 2; j++) {
                 vec3 midRay = (lastRayPos + ray) * 0.5;
                 vec2 midUV = projectToUV(midRay);
                 if (midUV.x < 0.0 || midUV.x > 1.0 || midUV.y < 0.0 || midUV.y > 1.0) break;
-                
                 vec3 midScene = getPos(midUV);
-                if (midRay.z > midScene.z) {
-                    lastRayPos = midRay;
-                } else {
-                    ray = midRay;
-                    uv = midUV;
-                }
+                if (midRay.z > midScene.z) lastRayPos = midRay;
+                else { ray = midRay; uv = midUV; }
             }
-            
+
             float lod = roughness * 5.0;
             hitColor = textureLod(uSceneColor, uv, lod).rgb;
             hitUV = uv;
@@ -136,6 +185,11 @@ void main() {
     }
 
     vec3 base = texture(uSceneColor, vUV).rgb;
+    vec2 giSeed = getStableHash(vUV * 1.7);
+    vec3 ambientGI = getAmbientGI(posV, N, giSeed);
+
+    float giStrength = GI_STRENGTH * mix(1.0, GI_METAL_BOOST, metallic);
+    vec3 enhancedBase = mix(base, base * (1.0 + ambientGI * giStrength * 0.5), GI_BASE_BLEND);
 
     float gloss = 1.0 - roughness;
     float fresnel = pow(1.0 - NdotV, 5.0);
@@ -150,5 +204,6 @@ void main() {
     float blend = hit * F * gloss * screenFade * metallicBoost * conf;
     float edgeFade = smoothstep(0.0, 0.1, min(min(vUV.x, vUV.y), min(1.0 - vUV.x, 1.0 - vUV.y)));
     blend *= edgeFade;
-    fragColor = vec4(mix(base, hitColor, blend), 1.0);
+
+    fragColor = vec4(mix(enhancedBase, hitColor, blend), 1.0);
 }

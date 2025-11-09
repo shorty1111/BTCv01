@@ -16,6 +16,8 @@ uniform samplerCube uEnvMap;
 uniform sampler2D uBRDFLUT;
 uniform sampler2DShadow uShadowMap;
 
+uniform samplerCube uEnvDiffuse;
+
 uniform float uNormalBias; 
 uniform mat4  uView, uLightVP;
 uniform vec3  uSunDir, uSunColor;
@@ -152,7 +154,7 @@ void main(){
 
 
     float mipDiff =  uCubeMaxMip;          // 8 → meko, difuzno
-    vec3 envDiff = textureLod(uEnvMap, upN, mipDiff).rgb; 
+    vec3 envDiff = texture(uEnvDiffuse, upN).rgb;
 
     float mipSpec = roughPerceptual  * uCubeMaxMip;
     vec3 envSpec = textureLod(uEnvMap, Rw, mipSpec).rgb;
@@ -160,37 +162,7 @@ void main(){
     
     vec3 sunRadiance = uSunColor * uSunIntensity;
     vec3 direct = (diff + specBRDF) * NdotL * sunRadiance * shadow;
-
-    // --- prošireni AO uzorak za fake GI ---
-    // float aoWide = texture(tBentNormalAO, vUV).a;
-    // const float giRadius = 0.30; // povećaj na 60-100 ako hoćeš još šire
-    // aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( giRadius,  0.0)).a;
-    // aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2(-giRadius,  0.0)).a;
-    // aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( 0.0,  giRadius)).a;
-    // aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( 0.0, -giRadius)).a;
-    // aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( giRadius,  giRadius)).a;
-    // aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2(-giRadius,  giRadius)).a;
-    // aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2( giRadius, -giRadius)).a;
-    // aoWide += texture(tBentNormalAO, vUV + uTexelSize * vec2(-giRadius, -giRadius)).a;
-    // aoWide /= 3.65;
-
-    // float giBoost = mix(0.1, 0.3, pow(1.0 - aoWide,2.0));   
-
-
-
     vec3 ambient = envDiff *  ao;
-  
-   
-   
-    // float tintAmt = smoothstep(0.8, -0.2, Rw.y) * 0.25;
-    // vec3 tintColor = baseColor * 0.4;
-    // vec3 groundTint = vec3(0.12, 0.10, 0.08);
-    
-    // envSpec = mix(envSpec, groundTint, tintAmt);
-    // envDiff = mix(envDiff, mix(envDiff, tintColor, tintAmt), tintAmt);
-    
-
-
 
     vec2 brdf = texture(uBRDFLUT, vec2(NdotV, roughPerceptual)).rg; 
     vec3 F_ibl = fresnelSchlickRoughness(NdotV, F0, roughPerceptual);
@@ -202,7 +174,5 @@ void main(){
 
     vec3 color = direct + diffIBL + specIBL;
     color *= uGlobalExposure;
-
-
     fragColor = vec4(vec3(color), 1.0);
 }

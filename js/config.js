@@ -1,4 +1,3 @@
-export const MAX_FPS = 45; // Change this to 30, 60, or 144 depending on performance.
 export const DEFAULT_MODEL = "assets/boat.glb";
 export const BASE_PRICE = 30000; // Base boat price in euros.
 

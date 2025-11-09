@@ -2,93 +2,81 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Less Engine Admin Panel</title>
   <link rel="stylesheet" href="admin.css">
 </head>
 <body>
   <header>
-    <h1>Less Engine Admin Panel</h1>
-    <button id="saveBtn">💾 Save Config</button>
+    <div class="header-left">
+      <h1>Less Engine Admin Panel</h1>
+    </div>
+    <div class="header-buttons">
+      <button id="addClientBtn">➕ Add Client</button>
+      <button id="saveBtn">💾 Save Config</button>
+    </div>
   </header>
 
-  <main id="app"></main>
+  <div class="main-container">
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <h2>👥 Clients</h2>
+      </div>
+      
+      <div class="sidebar-search">
+        <input type="text" id="searchClients" placeholder="🔍 Search clients..." />
+      </div>
 
-  <script type="module">
-    import { BOAT_INFO, VARIANT_GROUPS, SIDEBAR_INFO, BASE_PRICE } from "./config.js";
+      <div class="sidebar-content">
+        <div class="client-count">0 Clients</div>
+        <div id="clientsList" class="clients-list">
+          <!-- Clients will be dynamically added here -->
+        </div>
+      </div>
+    </aside>
 
-    const app = document.getElementById("app");
+    <!-- Main Content -->
+    <main id="mainContent" class="main-content">
+      <!-- Empty State (shown when no client selected) -->
+      <div id="emptyState" class="empty-state">
+        <div class="empty-icon">👤</div>
+        <h2>No Client Selected</h2>
+        <p>Select a client from the sidebar to view and edit their configuration,<br>or add a new client to get started.</p>
+        <button id="emptyAddBtn" class="primary-button">➕ Add Your First Client</button>
+      </div>
 
-    /* === BOAT INFO === */
-    const boatDiv = document.createElement("div");
-    boatDiv.className = "section";
-    boatDiv.innerHTML = `<h2>Boat Info</h2>`;
-    for (const [k, v] of Object.entries(BOAT_INFO)) {
-      boatDiv.innerHTML += `
-        <label>${k}</label>
-        <input type="text" data-section="boat" data-key="${k}" value="${v}">
-      `;
-    }
-    app.appendChild(boatDiv);
+      <!-- Client Details (shown when client selected) -->
+      <div id="clientDetails" class="client-details" style="display: none;">
+        <!-- Content will be dynamically populated -->
+      </div>
+    </main>
+  </div>
 
-    /* === VARIANT GROUPS === */
-    const variantsDiv = document.createElement("div");
-    variantsDiv.className = "section";
-    variantsDiv.innerHTML = `<h2>Variant Groups</h2>`;
-    for (const [groupName, group] of Object.entries(VARIANT_GROUPS)) {
-      const g = document.createElement("div");
-      g.className = "group";
-      g.innerHTML = `<h3>${groupName}</h3>`;
+  <!-- Add Client Modal -->
+  <div id="addClientModal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Add New Client</h2>
+        <button class="close-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <label>Client Name *</label>
+        <input type="text" id="newClientName" placeholder="Enter client name" required />
+        
+        <label>Description</label>
+        <textarea id="newClientDescription" placeholder="Enter client description (optional)"></textarea>
+        
+        <label>Webhook URL</label>
+        <input type="url" id="newClientWebhook" placeholder="https://example.com/webhook" />
+      </div>
+      <div class="modal-footer">
+        <button class="cancel-button">Cancel</button>
+        <button id="confirmAddClient" class="primary-button">Add Client</button>
+      </div>
+    </div>
+  </div>
 
-      for (const [partName, part] of Object.entries(group)) {
-        const p = document.createElement("div");
-        p.className = "part";
-        p.innerHTML = `<h4>${partName}</h4>`;
-        part.models.forEach((m, i) => {
-          const box = document.createElement("div");
-          box.className = "model";
-          box.innerHTML = `
-            <input type="text" data-group="${groupName}" data-part="${partName}" data-idx="${i}" data-field="name" value="${m.name}" placeholder="Name">
-            <input type="text" data-group="${groupName}" data-part="${partName}" data-idx="${i}" data-field="src" value="${m.src ?? ""}" placeholder="Model src">
-            <input type="number" data-group="${groupName}" data-part="${partName}" data-idx="${i}" data-field="price" value="${m.price}" placeholder="Price">
-            <textarea data-group="${groupName}" data-part="${partName}" data-idx="${i}" data-field="description">${m.description ?? ""}</textarea>
-          `;
-          p.appendChild(box);
-        });
-        g.appendChild(p);
-      }
-      variantsDiv.appendChild(g);
-    }
-    app.appendChild(variantsDiv);
-
-    /* === SAVE === */
-    document.getElementById("saveBtn").onclick = () => {
-      const newBoat = { ...BOAT_INFO };
-      document.querySelectorAll('input[data-section="boat"]').forEach(i => {
-        newBoat[i.dataset.key] = i.value;
-      });
-
-      const newVariants = structuredClone(VARIANT_GROUPS);
-      document.querySelectorAll('[data-field]').forEach(el => {
-        const { group, part, idx, field } = el.dataset;
-        if (group && part && idx && field)
-          newVariants[group][part].models[idx][field] = el.value;
-      });
-
-      const output =
-`export const BASE_PRICE = ${BASE_PRICE};
-export const BOAT_INFO = ${JSON.stringify(newBoat, null, 2)};
-export const VARIANT_GROUPS = ${JSON.stringify(newVariants, null, 2)};
-export const SIDEBAR_INFO = ${JSON.stringify(SIDEBAR_INFO, null, 2)};`;
-
-      const blob = new Blob([output], { type: "text/javascript" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "config.js";
-      a.click();
-      URL.revokeObjectURL(url);
-      alert("New config.js exported!");
-    };
-  </script>
+  <script type="module" src="admin.js"></script>
 </body>
 </html>

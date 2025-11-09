@@ -2,9 +2,9 @@ import { createShaderProgram } from "./shader.js";
 import { initWater, drawWater } from "./water.js";
 import { resetBoundTextures } from "./water.js";
 import { initCamera } from "./camera.js";
-import { initSky, drawSky, bakeSkyToCubemap } from "./sky.js";
+import { initSky, drawSky, bakeSkyToCubemap, bakeIrradianceFromSky } from "./sky.js";
 import { DEFAULT_SKY } from "./sky.js";
-import {MAX_FPS,DEFAULT_MODEL,BASE_PRICE,VARIANT_GROUPS,BOAT_INFO,SIDEBAR_INFO } from "./config.js";
+import {DEFAULT_MODEL,BASE_PRICE,VARIANT_GROUPS,BOAT_INFO,SIDEBAR_INFO } from "./config.js";
 import {mat4mul,persp,ortho,look,composeTRS,computeBounds,mulMat4Vec4, v3,} from "./math.js";
 import { initUI, renderBoatInfo, showPartInfo, showLoading, hideLoading } from "./ui.js";
 import { TEXTURE_SLOTS, bindTextureToSlot } from "./texture-slots.js";
@@ -18,7 +18,6 @@ let finalColorTex = null;
 let ssaoUniforms = {};
 let lastView = new Float32Array(16);
 let lastProj = new Float32Array(16);
-
 let shadowDirty = true;
 let ssaoDirty = true;
 let lastViewMatrix = new Float32Array(16);
@@ -102,7 +101,7 @@ function setWeather(presetName) {
   shadowDirty = true;
   updateSun();
 
-  // ✅ OVO JE KLJUČNO - rebake envmap!
+  // rebake HDR env cubemap
   envTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
     ...DEFAULT_SKY,
     sunColor: SUN.color,
@@ -110,16 +109,19 @@ function setWeather(presetName) {
     useTonemap: false,
     hideSun: true,
   });
-  
-  // 🔹 DODAJ OVO - generisaj mipmaps!
+
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
   gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
+
+  // 🔹 rebake irradiance diffuse cube
+  window.envDiffuse = bakeIrradianceFromSky(gl, envTex, 32);
 
   cubeMaxMip = Math.floor(Math.log2(envSize));
   sceneChanged = true;
   render();
 }
+
 
 function refreshLighting() {
   updateSun();
@@ -993,7 +995,7 @@ async function initShaders() {
   const uniformNamesPBR = [
     "uView","uProjection","uLightVP","uCameraPos",
     "uSunDir","uSunColor","uSunIntensity",
-    "uCubeMaxMip","uEnvMap","uBRDFLUT","uShadowMap",
+    "uCubeMaxMip","uEnvMap","uEnvDiffuse","uBRDFLUT","uShadowMap",
     "uResolution","gPosition","gNormal","gAlbedo",
     "gMaterial","ssao","tBentNormalAO","uSceneColor",
     "uLightSize","uShadowMapSize","uNormalBias",
@@ -1066,7 +1068,7 @@ async function initShaders() {
     // === 3. Init PBR konstantnih uniforma ===
     gl.useProgram(program);
     gl.uniform1f(pbrUniforms.uLightSize, 0.00025);
-    window.globalExposure = 1.0; // globalni exposure za sve svetlo
+    window.globalExposure = 1.3; // globalni exposure za sve svetlo
     gl.uniform1f(pbrUniforms.uGlobalExposure, window.globalExposure);
     gl.uniform2f(pbrUniforms.uShadowMapSize, SHADOW_RES, SHADOW_RES);
     gl.uniform1f(pbrUniforms.uNormalBias, 0.005);
@@ -1083,6 +1085,7 @@ async function initShaders() {
     gl.uniform1i(pbrUniforms.uShadowMap, TEXTURE_SLOTS.PBR_SHADOW_MAP);
     gl.uniform1i(pbrUniforms.tBentNormalAO, TEXTURE_SLOTS.PBR_BENT_NORMAL_AO);
     gl.uniform1i(pbrUniforms.uSceneColor, TEXTURE_SLOTS.PBR_SCENE_COLOR);
+    gl.uniform1i(pbrUniforms.uEnvDiffuse, TEXTURE_SLOTS.PBR_ENV_DIFFUSE);
 
     return true;
   } catch (err) {
@@ -1120,7 +1123,13 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
       useTonemap: false,
       hideSun: true,
     });
+    // 🟢 OBAVEZNO dodaj:
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
+    gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
     cubeMaxMip = Math.floor(Math.log2(envSize));
+    
+    window.envDiffuse = bakeIrradianceFromSky(gl, envTex, 32);
 
     generateSSAOKernel();
     generateNoiseTexture();
@@ -1723,6 +1732,7 @@ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     bindTextureToSlot(gl, gMaterial, TEXTURE_SLOTS.PBR_MATERIAL);
     bindTextureToSlot(gl, window.ssaoBlurColor, TEXTURE_SLOTS.PBR_SSAO);
     bindTextureToSlot(gl, envTex, TEXTURE_SLOTS.PBR_ENV_MAP, gl.TEXTURE_CUBE_MAP);
+    bindTextureToSlot(gl, window.envDiffuse, TEXTURE_SLOTS.PBR_ENV_DIFFUSE, gl.TEXTURE_CUBE_MAP);
     bindTextureToSlot(gl, brdfTex, TEXTURE_SLOTS.PBR_BRDF_LUT);
     bindTextureToSlot(gl, shadowDepthTex, TEXTURE_SLOTS.PBR_SHADOW_MAP);
     bindTextureToSlot(gl, window.ssaoBlurColor, TEXTURE_SLOTS.PBR_BENT_NORMAL_AO);
@@ -1995,57 +2005,7 @@ gl.depthFunc(gl.LESS);
 gl.enable(gl.CULL_FACE);
 camera.moved = false;
 }
-function renderSceneForProbe(gl, proj, view, probePos, sceneData, skyParams) {
-  // ✅ 1. Prvo nacrtaj nebo
-  const { sunDir, sunColor, sunIntensity } = skyParams;
-  
-  drawSky(gl, null, view, proj, sunDir, {
-    ...DEFAULT_SKY,
-    sunColor,
-    sunIntensity,
-    useTonemap: false,
-    hideSun: false,
-    worldLocked: 0,
-  });
-  
-  // ✅ 2. Nacrtaj opaque geometriju (BEZ vode, stakla, overlay-a)
-  gl.useProgram(gBufferProgram);
-  gl.enable(gl.DEPTH_TEST);
-  gl.depthMask(true);
-  
-  gl.uniformMatrix4fv(gBufferUniforms.uProjection, false, proj);
-  gl.uniformMatrix4fv(gBufferUniforms.uView, false, view);
-  
-  const { modelVAOs, idxCounts, idxTypes, modelMatrices, modelBaseColors, modelMetallics, modelRoughnesses, modelBaseTextures } = sceneData;
-  
-  for (let i = 0; i < modelVAOs.length; i++) {
-    if (!idxCounts[i]) continue;
-    
-    // Preskoči vodu i transparentne objekte
-    const meshName = nodesMeta[renderToNodeId[i]]?.name?.toLowerCase() || "";
-    if (meshName.includes("water")) continue;
-    if (originalParts[i]?.alphaMode === "BLEND") continue;
-    
-    gl.uniformMatrix4fv(gBufferUniforms.uModel, false, modelMatrices[i]);
-    gl.uniform3fv(gBufferUniforms.uBaseColor, modelBaseColors[i] || [1, 1, 1]);
-    gl.uniform1f(gBufferUniforms.uMetallic, modelMetallics[i] ?? 1.0);
-    gl.uniform1f(gBufferUniforms.uRoughness, modelRoughnesses[i] ?? 1.0);
-    
-    if (modelBaseTextures[i]) {
-      gl.activeTexture(gl.TEXTURE0 + TEXTURE_SLOTS.GBUFFER_BASE_COLOR);
-      gl.bindTexture(gl.TEXTURE_2D, modelBaseTextures[i]);
-      gl.uniform1i(gBufferUniforms.uBaseColorTex, TEXTURE_SLOTS.GBUFFER_BASE_COLOR);
-      gl.uniform1i(gBufferUniforms.uUseBaseColorTex, 1);
-    } else {
-      gl.uniform1i(gBufferUniforms.uUseBaseColorTex, 0);
-    }
-    
-    gl.bindVertexArray(modelVAOs[i]);
-    gl.drawElements(gl.TRIANGLES, idxCounts[i], idxTypes[i], 0);
-  }
-  
-  gl.bindVertexArray(null);
-}
+
 let lastTime = performance.now();
 let frameCount = 0;
 
@@ -2789,39 +2749,39 @@ if (activeColor) {
       }
     }
   } else if (activeColor.type === "texture" && activeColor.texture) {
-const loadTex = async (src) => {
-  if (!src) return null;
+      const loadTex = async (src) => {
+        if (!src) return null;
 
-  // ✅ koristi keš ako već postoji
-  if (textureCache[src]) return textureCache[src];
+        // 🔹 ako već postoji u kešu, koristi to
+        if (textureCache[src]) return textureCache[src];
 
-  try {
-    const res = await fetch(src);
-    const blob = await res.blob();
-    const bmp = await createImageBitmap(blob);
-    
-    // ✅ SAČUVAJ STARO STANJE
-    const oldBinding = gl.getParameter(gl.TEXTURE_BINDING_2D);
-    
-    const tex = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
-    gl.generateMipmap(gl.TEXTURE_2D);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-    
-    // ✅ VRATI STARO STANJE
-    gl.bindTexture(gl.TEXTURE_2D, oldBinding);
-    
-    textureCache[src] = tex;
-    return tex;
-  } catch (err) {
-    console.warn("⚠️ Ne može da učita teksturu:", src, err);
-    return null;
-  }
-};
+        // 🔹 odmah napravi placeholder (sivu teksturu)
+        const tex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        const gray = new Uint8Array([180, 180, 180, 255]); // svetlosiva
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, gray);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        textureCache[src] = tex; // ⚡ sad već postoji u cache
+
+        // 🔹 a sad u pozadini fetchuj pravu sliku
+        try {
+          const res = await fetch(src);
+          const blob = await res.blob();
+          const bmp = await createImageBitmap(blob);
+
+          gl.bindTexture(gl.TEXTURE_2D, tex);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
+          gl.generateMipmap(gl.TEXTURE_2D);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        } catch (err) {
+          console.warn("⚠️ Ne može da učita teksturu:", src, err);
+        }
+
+        return tex;
+      };
+
 
     const [texBase, texNormal, texRough] = await Promise.all([
       loadTex(activeColor.texture),

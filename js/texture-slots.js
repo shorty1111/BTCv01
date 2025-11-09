@@ -7,6 +7,7 @@ export const TEXTURE_SLOTS = {
   PBR_MATERIAL: 3,
   PBR_SSAO: 4,
   PBR_ENV_MAP: 5,
+  PBR_ENV_DIFFUSE: 10,
   PBR_BRDF_LUT: 6,
   PBR_SHADOW_MAP: 7,
   PBR_BENT_NORMAL_AO: 8,
@@ -45,8 +46,6 @@ export const TEXTURE_SLOTS = {
   WATER_REFLECTION: 4,
   WATER_SHADOW_MAP: 8,
   
-  // === REFLECTION PROBE BAKING (koristi slot 15 - bezbedno daleko od ostalih) ===
-  PROBE_TEMP: 15,  // Privremeni slot za probe cubemap tokom baking-a
 };
 
 // Helper funkcija za bind
