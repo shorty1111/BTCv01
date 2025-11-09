@@ -19,15 +19,11 @@ const float MAX_DIST = 70.0;
 vec3 getPos(vec2 uv) { return texture(gPosition, uv).rgb; }
 vec3 getNormal(vec2 uv) { return normalize(texture(gNormal, uv).rgb); }
 
-bool projectToUV(vec3 pV, out vec2 uv) {
+vec2 projectToUV(vec3 pV) {
     vec4 clip = uProjection * vec4(pV, 1.0);
-    if (clip.w <= 0.0) {
-        return false;
-    }
-
     vec2 ndc = clip.xy / clip.w;
-    uv = ndc * 0.5 + 0.5;
-    return all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0)));
+    vec2 uv = ndc * 0.5 + 0.5;
+    return clamp(uv, 0.002, 0.998);
 }
 
 vec2 getStableHash(vec2 uv) {
@@ -68,15 +64,13 @@ void main() {
     vec3 B = cross(R, T);
     R = normalize(R + amp * (T * cos(angle) + B * sin(angle)));
 
-    float angleFactor = clamp(abs(R.z), 0.0, 1.0);
-    float adaptStep = mix(0.02, BASE_STEP, angleFactor);
-    vec3 ray = posV + N * mix(0.02, 0.12, 1.0 - NdotV);
+    // Adaptive step size based on reflection angle
+    float adaptStep = mix(0.03, BASE_STEP, clamp(abs(R.z), 0.0, 1.0));
+    vec3 ray = posV + N * mix(0.02, 0.1, 1.0 - NdotV);
     vec3 stepV = R * adaptStep;
 
     // Roughness-based step count
-    int steps = int(mix(12.0, float(MAX_STEPS), 1.0 - roughness * 0.6));
-
-    float thicknessBase = mix(THICKNESS * 0.5, THICKNESS * 1.6, 1.0 - angleFactor);
+    int steps = int(mix(10.0, float(MAX_STEPS), 1.0 - roughness));
 
     vec3 hitColor = vec3(0.0);
     vec2 hitUV = vec2(0.0);
@@ -90,39 +84,34 @@ void main() {
         
         if (ray.z < -MAX_DIST || ray.z > -0.1) break;
 
-        vec2 uv;
-        if (!projectToUV(ray, uv)) break;
+        vec2 uv = projectToUV(ray);
+        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) break;
 
-        float travel = float(i + 1) * adaptStep;
-        float cone = spread + travel * 0.015;
-        float mip = clamp(log2(cone * 120.0 + 1.0), 0.0, 5.0);
+        float mip = float(i) / float(MAX_STEPS) * 5.0;
         vec3 sceneP = textureLod(gPosition, uv, mip).rgb;
-        float dynamicThickness = thicknessBase + travel * 0.01;
         float dz = ray.z - sceneP.z;
-        if (abs(dz) > dynamicThickness) continue;
+        if (abs(dz) > THICKNESS) continue;
 
-        if (dz < 0.0 && dz > -dynamicThickness) {
+        if (dz < 0.0 && dz > -THICKNESS) {
             if (sceneP.z == 0.0) break;
-
-            vec2 refinedUV = uv;
-            for (int j = 0; j < 3; j++) {
+            
+            for (int j = 0; j < 2; j++) {
                 vec3 midRay = (lastRayPos + ray) * 0.5;
-                vec2 midUV;
-                if (!projectToUV(midRay, midUV)) break;
-
+                vec2 midUV = projectToUV(midRay);
+                if (midUV.x < 0.0 || midUV.x > 1.0 || midUV.y < 0.0 || midUV.y > 1.0) break;
+                
                 vec3 midScene = getPos(midUV);
                 if (midRay.z > midScene.z) {
                     lastRayPos = midRay;
                 } else {
                     ray = midRay;
-                    refinedUV = midUV;
+                    uv = midUV;
                 }
             }
-
+            
             float lod = roughness * 5.0;
-            vec2 clampedUV = clamp(refinedUV, vec2(0.002), vec2(0.998));
-            hitColor = textureLod(uSceneColor, clampedUV, lod).rgb;
-            hitUV = clampedUV;
+            hitColor = textureLod(uSceneColor, uv, lod).rgb;
+            hitUV = uv;
             hit = 1.0;
             break;
         }
