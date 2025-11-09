@@ -154,7 +154,7 @@ void main(){
 
 
     float mipDiff =  uCubeMaxMip;          // 8 → meko, difuzno
-    vec3 envDiff = texture(uEnvDiffuse, upN).rgb;
+    vec3 envDiff = texture(uEnvDiffuse, upN).rgb / 3.141592;
 
     float mipSpec = roughPerceptual  * uCubeMaxMip;
     vec3 envSpec = textureLod(uEnvMap, Rw, mipSpec).rgb;
