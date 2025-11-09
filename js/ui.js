@@ -469,25 +469,14 @@ function initDropdown() {
         // TODO: ovde ubaciš svoj share handler
     });
   }
-    // Save konfiguracija
-    const saveBtn = document.getElementById("saveConfigBtn");
-    if (saveBtn) {
-    saveBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        dropdown.classList.add("hidden");
-
-        // umesto saveConfiguration() pozovi modal direktno
-        const modal = document.getElementById("saveConfigModal");
-        const nameInput = document.getElementById("configNameInput");
-        modal.classList.remove("hidden");
-        nameInput.focus();
-    });
-    }
 
 }
+let saveButtonInitialized = false;
+
 function initSavedConfigs() {
   const container = document.getElementById("savedConfigsContainer");
   const saveBtn = document.getElementById("saveConfigBtn");
+  const dropdown = document.querySelector(".dropdown-menu");
 
   // --- helper za čitanje/validaciju localStorage ---
   function loadAll() {
@@ -574,13 +563,18 @@ const nameInput = document.getElementById("configNameInput");
 const confirmBtn = document.getElementById("confirmSave");
 const cancelBtn = document.getElementById("cancelSave");
 
-// klik na "Save Configuration" otvara modal
-saveBtn.addEventListener("click", (e) => {
-  e.stopPropagation();
-  nameInput.value = "";
-  modal.classList.remove("hidden");
-  nameInput.focus();
-});
+if (saveBtn && !saveButtonInitialized) {
+  saveButtonInitialized = true;
+  saveBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (dropdown) dropdown.classList.add("hidden");
+    if (nameInput) {
+      nameInput.value = "";
+      nameInput.focus();
+    }
+    if (modal) modal.classList.remove("hidden");
+  });
+}
 
 // potvrdi snimanje
 confirmBtn.addEventListener("click", () => {
