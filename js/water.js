@@ -400,7 +400,8 @@ export function drawWater(
   boundTex.fill(null); // resetuj cache da ne preskoči novi reflectionTex
   bindTextureToSlot(gl, waterNormalTex, TEXTURE_SLOTS.WATER_NORMAL);
   safeBindTex(gl, TEXTURE_SLOTS.WATER_ENV_MAP, gl.TEXTURE_CUBE_MAP, envTex);
-  safeBindTex(gl, TEXTURE_SLOTS.WATER_SCENE_DEPTH, gl.TEXTURE_2D, window.finalDepthTex);
+  const depthTexture = sceneDepthTex || window.finalDepthTex;
+  safeBindTex(gl, TEXTURE_SLOTS.WATER_SCENE_DEPTH, gl.TEXTURE_2D, depthTexture);
   safeBindTex(gl, TEXTURE_SLOTS.WATER_SCENE_COLOR, gl.TEXTURE_2D, finalSceneTex);
   safeBindTex(gl, TEXTURE_SLOTS.WATER_REFLECTION, gl.TEXTURE_2D, reflectionTex);
   gl.uniformMatrix4fv(waterUniforms.uReflectionMatrix, false, reflProjView);

@@ -501,19 +501,19 @@ function renderSavedConfigs() {
     const row = document.createElement("div");
     row.className = "saved-item";
     row.innerHTML = `
-      <button class="saved-item" data-i="${i}">
+      <button class="saved-item-btn" data-index="${i}">
         ${cfg.name}
-        <span class="del-btn" data-i="${i}">✕</span>
+        <span class="del-btn" data-index="${i}" aria-label="Delete">&times;</span>
       </button>
     `;
     container.appendChild(row);
   });
 
 // klik na stavku -> load
-container.querySelectorAll(".saved-item").forEach(btn => {
+container.querySelectorAll(".saved-item-btn").forEach(btn => {
   btn.addEventListener("click", async (e) => {
     if (e.target.classList.contains("del-btn")) return;
-    const i = parseInt(e.currentTarget.dataset.i);
+    const i = parseInt(e.currentTarget.dataset.index);
     if (isNaN(i)) return;
     await loadSavedConfig(i);
   });
@@ -523,7 +523,7 @@ container.querySelectorAll(".saved-item").forEach(btn => {
 container.querySelectorAll(".del-btn").forEach(btn => {
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
-    const i = parseInt(e.currentTarget.dataset.i);
+    const i = parseInt(e.currentTarget.dataset.index);
     if (isNaN(i)) return;
     const all = loadAll();
     all.splice(i, 1);
@@ -615,6 +615,7 @@ async function loadSavedConfig(index) {
 
   const partsTarget = window.currentParts;
   const colorsTarget = window.savedColorsByPart;
+  const currentPartsRef = partsTarget;
 
   for (const key of Object.keys(partsTarget)) delete partsTarget[key];
   for (const key of Object.keys(colorsTarget)) delete colorsTarget[key];
@@ -658,25 +659,47 @@ if (variant.selectedColor) {
         }
       }
     } else if (colorData.type === "texture" && colorData.texture) {
-      const img = new Image();
-      await new Promise(res => {
-        img.onload = res;
-        img.src = colorData.texture;
-      });
-      const tex = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-      gl.generateMipmap(gl.TEXTURE_2D);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      const textureLoader = window.loadTextureWithCache;
       const node = nodesMeta.find(n => n.name === part);
-      if (node) {
+      if (!node) continue;
+
+      if (typeof textureLoader === "function") {
+        const [texBase, texNormal, texRough] = await Promise.all([
+          textureLoader(colorData.texture),
+          textureLoader(colorData.normal),
+          textureLoader(colorData.rough),
+        ]);
+
         for (const r of node.renderIdxs) {
-          if (mainMat && r.matName === mainMat) modelBaseTextures[r.idx] = tex;
-          else if (!mainMat && r === node.renderIdxs[0]) modelBaseTextures[r.idx] = tex;
+          const shouldApply = mainMat ? r.matName === mainMat : r === node.renderIdxs[0];
+          if (!shouldApply) continue;
+          modelBaseTextures[r.idx] = texBase;
+          if (originalParts?.[r.idx]) {
+            originalParts[r.idx].baseColorTex = texBase;
+            if (texNormal) originalParts[r.idx].normalTex = texNormal;
+            if (texRough) originalParts[r.idx].roughnessTex = texRough;
+          }
+        }
+      } else {
+        const img = new Image();
+        await new Promise(res => {
+          img.onload = res;
+          img.src = colorData.texture;
+        });
+        const tex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        for (const r of node.renderIdxs) {
+          const shouldApply = mainMat ? r.matName === mainMat : r === node.renderIdxs[0];
+          if (!shouldApply) continue;
+          modelBaseTextures[r.idx] = tex;
         }
       }
     }
+
   }
 }
 
@@ -818,20 +841,22 @@ document
       render();
     });
   });
-
-document.querySelectorAll("#camera-controls button").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    // ako već jeste aktivno — poništi
-    if (btn.classList.contains("active")) {
-      btn.classList.remove("active");
-    } else {
-      // prvo isključi ostale
-      document.querySelectorAll("#camera-controls button").forEach(b => b.classList.remove("active"));
-      // pa aktiviraj samo kliknuto
+function setupExclusiveButtons(selector) {
+  const buttons = document.querySelectorAll(selector);
+  buttons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.classList.contains("active")) {
+        btn.classList.remove("active");
+        return;
+      }
+      buttons.forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
-    }
+    });
   });
-});
+}
+
+setupExclusiveButtons("#camera-controls button[data-view]");
+setupExclusiveButtons("#camera-controls button[data-weather]");
   
   const input = document.getElementById("glbInput");
   const loadingScr = document.getElementById("loading-screen");
@@ -899,37 +924,50 @@ if (hamburger && sidebarMenu && closeSidebar) {
     e.stopPropagation();
     sidebarMenu.classList.remove("open");
   });
-document.addEventListener("click", e => {
-  const clickedInsideSidebar = sidebarMenu.contains(e.target);
-  const clickedHamburger = e.target === hamburger;
-  const clickedContactForm = e.target.closest("#contactForm");
+  document.addEventListener("click", e => {
+    const clickedInsideSidebar = sidebarMenu.contains(e.target);
+    const clickedHamburger = e.target === hamburger;
+    const clickedContactForm = e.target.closest("#contactForm");
 
-  if (
-    sidebarMenu.classList.contains("open") &&
-    !clickedInsideSidebar &&
-    !clickedHamburger &&
-    !clickedContactForm
-  ) {
-    sidebarMenu.classList.remove("open");
-  }
-});
-
+    if (
+      sidebarMenu.classList.contains("open") &&
+      !clickedInsideSidebar &&
+      !clickedHamburger &&
+      !clickedContactForm
+    ) {
+      sidebarMenu.classList.remove("open");
+    }
+  });
 }
 
 
 // === Tooltip hint za boat name ===
-window.addEventListener("DOMContentLoaded", () => {
+function setupBoatTooltip() {
   const header = document.querySelector(".header-left");
   const toggle = document.getElementById("menuToggle");
+  if (!header || !toggle) return;
 
-  if (!header || !toggle) return; // ako se ne nađu, ne radi ništa
-
- header.classList.add("show-tooltip");
-  toggle.addEventListener("click", () => {
+  if (localStorage.getItem("boatTooltipSeen") === "1") {
     header.classList.remove("show-tooltip");
-    localStorage.setItem("boatTooltipSeen", "1");
-  });
-});
+    return;
+  }
+
+  header.classList.add("show-tooltip");
+  toggle.addEventListener(
+    "click",
+    () => {
+      header.classList.remove("show-tooltip");
+      localStorage.setItem("boatTooltipSeen", "1");
+    },
+    { once: true }
+  );
+}
+
+if (document.readyState === "loading") {
+  window.addEventListener("DOMContentLoaded", setupBoatTooltip, { once: true });
+} else {
+  setupBoatTooltip();
+}
 
 input.addEventListener("change", async (e) => {
   const file = e.target.files[0];

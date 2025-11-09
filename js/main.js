@@ -23,31 +23,12 @@ let ssaoDirty = true;
 let lastViewMatrix = new Float32Array(16);
 let lastSunDir = [0, 0, 0];
 const textureCache = {}; // key = url, value = WebGLTexture
+window.textureCache = textureCache;
 
 let shadowFBO, shadowDepthTex;
 const SHADOW_RES = 2048;
 
 async function preloadAllConfigTextures() {
-  const loadTex = async (src) => {
-    if (!src || textureCache[src]) return;
-    try {
-      const res = await fetch(src);
-      const blob = await res.blob();
-      const bmp = await createImageBitmap(blob);
-      const tex = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
-      gl.generateMipmap(gl.TEXTURE_2D);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-      textureCache[src] = tex;
-    } catch (err) {
-      console.warn("⚠️ Nije moglo da učita teksturu:", src, err);
-    }
-  };
-
   const allPaths = [];
   for (const group of Object.values(VARIANT_GROUPS)) {
     for (const part of Object.values(group)) {
@@ -62,7 +43,62 @@ async function preloadAllConfigTextures() {
       }
     }
   }
+
+  const uniquePaths = [...new Set(allPaths.filter(Boolean))];
+  await Promise.all(uniquePaths.map((src) => loadTextureWithCache(src)));
 }
+
+async function loadTextureWithCache(
+  src,
+  {
+    placeholderColor = [180, 180, 180, 255],
+    wrapMode = "repeat",
+  } = {}
+) {
+  if (!src) return null;
+  if (textureCache[src]) return textureCache[src];
+  if (!gl) return null;
+
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  const placeholder = new Uint8Array(placeholderColor);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    1,
+    1,
+    0,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    placeholder
+  );
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  textureCache[src] = tex;
+
+  try {
+    const res = await fetch(src);
+    const blob = await res.blob();
+    const bmp = await createImageBitmap(blob);
+
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    const wrap = wrapMode === "clamp" ? gl.CLAMP_TO_EDGE : gl.REPEAT;
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
+  } catch (err) {
+    console.warn("[textures] Failed to load:", src, err);
+  }
+
+  return tex;
+}
+window.loadTextureWithCache = loadTextureWithCache;
+
+
 
 
 // CENTRALNO SUNCE
@@ -101,31 +137,22 @@ function setWeather(presetName) {
   shadowDirty = true;
   updateSun();
 
-  // rebake HDR env cubemap
-  envTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
-    ...DEFAULT_SKY,
-    sunColor: SUN.color,
-    sunIntensity: SUN.intensity,
-    useTonemap: false,
-    hideSun: true,
-  });
-
-  gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
-  gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
-  gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
-
-  // 🔹 rebake irradiance diffuse cube
-  window.envDiffuse = bakeIrradianceFromSky(gl, envTex, 32);
-
-  cubeMaxMip = Math.floor(Math.log2(envSize));
+  rebuildEnvironmentTextures();
   sceneChanged = true;
   render();
 }
 
 
+
 function refreshLighting() {
   updateSun();
   shadowDirty = true;
+  rebuildEnvironmentTextures();
+}
+
+function rebuildEnvironmentTextures() {
+  const previousEnvTex = envTex;
+  const previousEnvDiffuse = window.envDiffuse;
 
   envTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
     ...DEFAULT_SKY,
@@ -139,9 +166,17 @@ function refreshLighting() {
   gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
 
+  window.envDiffuse = bakeIrradianceFromSky(gl, envTex, 32);
   cubeMaxMip = Math.floor(Math.log2(envSize));
-  sceneChanged = true;
+
+  if (previousEnvTex && previousEnvTex !== envTex) {
+    gl.deleteTexture(previousEnvTex);
+  }
+  if (previousEnvDiffuse && previousEnvDiffuse !== window.envDiffuse) {
+    gl.deleteTexture(previousEnvDiffuse);
+  }
 }
+
 function smoothstep(edge0, edge1, x) {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
@@ -181,6 +216,9 @@ function createSSROutputTarget(w, h) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
 window.pendingTextures = 0;
+function decrementPendingTextures() {
+  window.pendingTextures = Math.max(0, window.pendingTextures - 1);
+}
 let savedColorsByPart = {};
 let reflectionFBO = null;
 let reflectionTex = null;
@@ -454,12 +492,6 @@ if (!gl.getExtension("EXT_color_buffer_float")) {
 }
 gl.getExtension("OES_texture_float_linear");
 
-// OVAJ KOD DODAJ OVDE:
-if (!gl.getExtension("EXT_color_buffer_float")) {
-  alert(
-    "Ovaj browser ne podržava EXT_color_buffer_float.\nGI efekti neće raditi."
-  );
-}
 let sceneDepthTex = null; //  ←  NOVA globalna promenljiva
 
 function createDepthTexture(w, h) {
@@ -476,8 +508,10 @@ function createDepthTexture(w, h) {
 
 function resizeCanvas() {
 
-  const sidebarW = document.getElementById("sidebar").offsetWidth;
-  const headerH = document.querySelector(".global-header").offsetHeight || 0;
+  const sidebarEl = document.getElementById("sidebar");
+  const sidebarW = sidebarEl ? sidebarEl.offsetWidth : 0;
+  const headerEl = document.querySelector(".global-header");
+  const headerH = headerEl ? headerEl.offsetHeight : 0;
 
   const cssW = window.innerWidth - sidebarW;
   const footerH = 77;
@@ -1322,7 +1356,7 @@ async function waitForPendingTextures(timeoutMs = 8000) {
 
     // ⏱️ prekid posle timeouta
     if (performance.now() - start > timeoutMs) {
-      console.warn("⚠️ Texture loading timeout — continuing without all textures.");
+      console.warn("[textures] Texture loading timeout - continuing without pending uploads.");
       window.pendingTextures = 0; // fallback, reset counter
       break;
     }
@@ -2407,7 +2441,12 @@ function loadTextureFromImage(gltf, bin, texIndex) {
     gl.bindTexture(gl.TEXTURE_2D, oldBinding2);
     
     URL.revokeObjectURL(url);
-    window.pendingTextures--;
+    decrementPendingTextures();
+  };
+  image.onerror = (err) => {
+    console.warn("[gltf] Failed to load embedded texture:", imageDef.uri || texIndex, err);
+    URL.revokeObjectURL(url);
+    decrementPendingTextures();
   };
 
   image.src = url;
@@ -2749,55 +2788,45 @@ if (activeColor) {
       }
     }
   } else if (activeColor.type === "texture" && activeColor.texture) {
-      const loadTex = async (src) => {
-        if (!src) return null;
+      const texLoader = loadTextureWithCache;
 
-        // 🔹 ako već postoji u kešu, koristi to
-        if (textureCache[src]) return textureCache[src];
+      if (texLoader) {
+        const [texBase, texNormal, texRough] = await Promise.all([
+          texLoader(activeColor.texture),
+          texLoader(activeColor.normal),
+          texLoader(activeColor.rough),
+        ]);
 
-        // 🔹 odmah napravi placeholder (sivu teksturu)
+        for (const r of node.renderIdxs) {
+          const shouldApply = mainMat ? r.matName === mainMat : r === node.renderIdxs[0];
+          if (!shouldApply) continue;
+          modelBaseTextures[r.idx] = texBase;
+          if (originalParts[r.idx]) {
+            originalParts[r.idx].baseColorTex = texBase;
+            if (texNormal) originalParts[r.idx].normalTex = texNormal;
+            if (texRough) originalParts[r.idx].roughnessTex = texRough;
+          }
+        }
+      } else {
+        const img = new Image();
+        await new Promise(res => {
+          img.onload = res;
+          img.src = activeColor.texture;
+        });
         const tex = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, tex);
-        const gray = new Uint8Array([180, 180, 180, 255]); // svetlosiva
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, gray);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        textureCache[src] = tex; // ⚡ sad već postoji u cache
-
-        // 🔹 a sad u pozadini fetchuj pravu sliku
-        try {
-          const res = await fetch(src);
-          const blob = await res.blob();
-          const bmp = await createImageBitmap(blob);
-
-          gl.bindTexture(gl.TEXTURE_2D, tex);
-          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
-          gl.generateMipmap(gl.TEXTURE_2D);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        } catch (err) {
-          console.warn("⚠️ Ne može da učita teksturu:", src, err);
+        for (const r of node.renderIdxs) {
+          const shouldApply = mainMat ? r.matName === mainMat : r === node.renderIdxs[0];
+          if (!shouldApply) continue;
+          modelBaseTextures[r.idx] = tex;
         }
-
-        return tex;
-      };
-
-
-    const [texBase, texNormal, texRough] = await Promise.all([
-      loadTex(activeColor.texture),
-      loadTex(activeColor.normal),
-      loadTex(activeColor.rough),
-    ]);
-
-    for (const r of node.renderIdxs) {
-      if (!mainMat || r.matName === mainMat) {
-        modelBaseTextures[r.idx] = texBase;
-        originalParts[r.idx].baseColorTex = texBase;
-        if (texNormal) originalParts[r.idx].normalTex = texNormal;
-        if (texRough) originalParts[r.idx].roughnessTex = texRough;
       }
     }
-  }
+
 }
 
 
@@ -2834,31 +2863,38 @@ function refreshThumbnailsInUI() {
   });
 }
 async function preloadAllVariants() {
-  const tasks = [];
-  for (const [groupName, parts] of Object.entries(VARIANT_GROUPS)) {
-    for (const [partName, data] of Object.entries(parts)) {
+  const jobs = [];
+  for (const parts of Object.values(VARIANT_GROUPS)) {
+    for (const data of Object.values(parts)) {
       for (const variant of data.models) {
         if (!variant.src) continue;
         if (cachedVariants[variant.src]) continue;
 
-        const task = (async () => {
+        jobs.push(async () => {
           try {
             const buf = await fetch(variant.src).then((r) => r.arrayBuffer());
             cachedVariants[variant.src] = buf;
-            preparedVariants[variant.src] = await parseGLBToPrepared(
-              buf,
-              variant.src
-            );
-          } catch (e) {
+            preparedVariants[variant.src] = await parseGLBToPrepared(buf, variant.src);
+          } catch (err) {
+            console.warn("[variants] Failed to preload variant:", variant.src, err);
           }
-        })();
-
-        tasks.push(task);
+        });
       }
     }
   }
-  await Promise.all(tasks);
+
+  if (!jobs.length) return;
+  const CONCURRENCY = 3;
+  let jobIndex = 0;
+  const workers = Array.from({ length: Math.min(CONCURRENCY, jobs.length) }, async () => {
+    while (jobIndex < jobs.length) {
+      const current = jobIndex++;
+      await jobs[current]();
+    }
+  });
+  await Promise.all(workers);
 }
+
 async function generateThumbnailForVariant(partName, variant) {
   if (!window.previewGL) {
     const previewCanvas = document.createElement("canvas");
