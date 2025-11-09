@@ -32,26 +32,26 @@ vec3 fresnelSchlick(float c, vec3 F0){ return F0 + (1.0-F0)*pow(1.0-c,5.0); }
 vec3 fresnelSchlickRoughness(float c, vec3 F0, float r){
     return F0 + (max(vec3(1.0-r),F0)-F0)*pow(1.0-c,5.0);
 }
-float geometrySmith(float Nv,float Nl,float r){
-    float k = pow(r+1.0,2.0)/8.0;
-    float Gl = Nl/(Nl*(1.0-k)+k);
-    float Gv = Nv/(Nv*(1.0-k)+k);
-    return Gl*Gv;
+float smithG1(float Ndot, float alpha)
+{
+    float Nd = max(Ndot, 0.0);
+    float a2 = alpha * alpha;
+    float denom = Nd + sqrt(a2 + (1.0 - a2) * Nd * Nd);
+    return (2.0 * Nd) / max(denom, 1e-4);
 }
-float distributionGGX(vec3 N,vec3 H,float r){
-    float a2 = pow(r*r,2.0);
+
+float geometrySmith(float Nv, float Nl, float alpha){
+    return smithG1(Nv, alpha) * smithG1(Nl, alpha);
+}
+float distributionGGX(vec3 N,vec3 H,float alpha){
+    float a2 = alpha * alpha;
     float NdotH = max(dot(N,H),0.0);
     float d = (NdotH*NdotH)*(a2-1.0)+1.0;
     return a2/(3.141592*d*d);
 }
 
-float getShadowView(vec3 Pv, vec3 Nview)
+float getShadowView(vec3 Pw, vec3 Nw)
 {
-    // pretvori view-space poziciju i normalu u world-space
-    mat3 invV3 = transpose(mat3(uView));
-    vec3 Pw = (inverse(uView) * vec4(Pv, 1.0)).xyz;
-    vec3 Nw = normalize(invV3 * Nview);
-
     vec3 L = normalize(uSunDir);
     vec3 offsetPosW = Pw + Nw * uNormalBias;
 
@@ -90,7 +90,7 @@ float getShadowView(vec3 Pv, vec3 Nview)
     float angle = fract(sin(dot(uvw.xy, vec2(12.9898, 78.233))) * 43758.5453) * 6.28318;
     mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
 
-   float radius = mix(1.0, 1.5, pow(1.0 - cosT, 2.0));
+    float radius = mix(1.0, 1.5, pow(1.0 - cosT, 2.0));
 
     float shadow = 0.0;
     for (int i = 0; i < 8; i++) {
@@ -126,8 +126,10 @@ void main(){
     // Matrice / prostori
     mat3 V3     = mat3(uView);
     mat3 invV3  = transpose(V3);
+    mat4 invView = inverse(uView);
     vec3 N      = normalize(normalV);          // view-space normala
     vec3 Nw     = normalize(invV3 * N);        // world-space normala
+    vec3 fragPosW = (invView * vec4(fragPosV, 1.0)).xyz;
     vec3 V      = normalize(-fragPosV);
     vec3 Lv     = normalize(V3 * normalize(uSunDir));
     vec3 H      = normalize(V + Lv);
@@ -139,7 +141,7 @@ void main(){
     vec3 Rw     = invV3 * Rv;
 
     /* --- Direct lighting (koristi pravu normalu) --- */
-    float shadow = getShadowView(fragPosV, N);
+    float shadow = getShadowView(fragPosW, Nw);
     float NdotL  = max(dot(N, Lv), 0.0);
     float NdotV  = max(dot(N, V ), 0.0);
 
@@ -167,7 +169,7 @@ void main(){
     vec2 brdf = texture(uBRDFLUT, vec2(NdotV, roughPerceptual)).rg; 
     vec3 F_ibl = fresnelSchlickRoughness(NdotV, F0, roughPerceptual);
 
-    vec3 kd_ibl = vec3(1.0 - metal);
+    vec3 kd_ibl = (1.0 - F_ibl) * (1.0 - metal);
     vec3 diffIBL = ambient * baseColor * kd_ibl;
     vec3 specIBL = envSpec * (F_ibl * brdf.x + brdf.y);
 
