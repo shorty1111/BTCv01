@@ -118,39 +118,65 @@ function buildVariantSidebar() {
               const mainMat = cfgGroup[partKey]?.mainMat || "";
 
               if (c.type === "texture" && c.texture) {
-                const loadTex = (src) => new Promise((resolve) => {
-                  const img = new Image();
-                  img.src = src;
-                  img.onload = () => {
-                    const tex = gl.createTexture();
-                    gl.bindTexture(gl.TEXTURE_2D, tex);
-                    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-                    gl.generateMipmap(gl.TEXTURE_2D);
-                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-                    resolve(tex);
-                  };
-                });
+                const textureLoader = window.loadTextureWithCache;
 
-                const [texBase, texNormal, texRough] = await Promise.all([
-                  loadTex(c.texture),
-                  loadTex(c.normal),
-                  loadTex(c.rough)
-                ]);
+                if (typeof textureLoader === "function") {
+                  const loadMaybe = (src) => (src ? textureLoader(src) : Promise.resolve(null));
+                  const [texBase, texNormal, texRough] = await Promise.all([
+                    loadMaybe(c.texture),
+                    loadMaybe(c.normal),
+                    loadMaybe(c.rough)
+                  ]);
 
-            for (const r of node.renderIdxs) {
-              if (!mainMat || r.matName === mainMat) {
-                modelBaseTextures[r.idx] = texBase;
-                originalParts[r.idx].baseColorTex = texBase;
-                if (texNormal) originalParts[r.idx].normalTex = texNormal;
-                if (texRough) originalParts[r.idx].roughnessTex = texRough;
-              }
-              }
+                  for (const r of node.renderIdxs) {
+                    if (!mainMat || r.matName === mainMat) {
+                      modelBaseTextures[r.idx] = texBase;
+                      originalParts[r.idx].baseColorTex = texBase;
+                      if (texNormal) originalParts[r.idx].normalTex = texNormal;
+                      if (texRough) originalParts[r.idx].roughnessTex = texRough;
+                    }
+                  }
 
-                sceneChanged = true;
-                render();
+                  sceneChanged = true;
+                  render();
+                } else {
+                  const loadImageTexture = (src) =>
+                    !src
+                      ? Promise.resolve(null)
+                      : new Promise((resolve) => {
+                          const img = new Image();
+                          img.src = src;
+                          img.onload = () => {
+                            const tex = gl.createTexture();
+                            gl.bindTexture(gl.TEXTURE_2D, tex);
+                            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+                            gl.generateMipmap(gl.TEXTURE_2D);
+                            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+                            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+                            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+                            resolve(tex);
+                          };
+                        });
+
+                  const [texBase, texNormal, texRough] = await Promise.all([
+                    loadImageTexture(c.texture),
+                    loadImageTexture(c.normal),
+                    loadImageTexture(c.rough)
+                  ]);
+
+                  for (const r of node.renderIdxs) {
+                    if (!mainMat || r.matName === mainMat) {
+                      modelBaseTextures[r.idx] = texBase;
+                      originalParts[r.idx].baseColorTex = texBase;
+                      if (texNormal) originalParts[r.idx].normalTex = texNormal;
+                      if (texRough) originalParts[r.idx].roughnessTex = texRough;
+                    }
+                  }
+
+                  sceneChanged = true;
+                  render();
+                }
               }
               else if (c.type === "color" && c.color) {
                   for (const r of node.renderIdxs) {
@@ -664,10 +690,11 @@ if (variant.selectedColor) {
       if (!node) continue;
 
       if (typeof textureLoader === "function") {
+        const loadMaybe = (src) => (src ? textureLoader(src) : Promise.resolve(null));
         const [texBase, texNormal, texRough] = await Promise.all([
-          textureLoader(colorData.texture),
-          textureLoader(colorData.normal),
-          textureLoader(colorData.rough),
+          loadMaybe(colorData.texture),
+          loadMaybe(colorData.normal),
+          loadMaybe(colorData.rough),
         ]);
 
         for (const r of node.renderIdxs) {
@@ -681,21 +708,47 @@ if (variant.selectedColor) {
           }
         }
       } else {
-        const img = new Image();
-        await new Promise(res => {
-          img.onload = res;
-          img.src = colorData.texture;
-        });
-        const tex = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, tex);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-        gl.generateMipmap(gl.TEXTURE_2D);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        const loadImageTexture = (src) =>
+          !src
+            ? Promise.resolve(null)
+            : new Promise((res) => {
+                const img = new Image();
+                img.onload = () => res(img);
+                img.src = src;
+              });
+
+        const [imgBase, imgNormal, imgRough] = await Promise.all([
+          loadImageTexture(colorData.texture),
+          loadImageTexture(colorData.normal),
+          loadImageTexture(colorData.rough),
+        ]);
+
+        const uploadImageTexture = (img) => {
+          if (!img) return null;
+          const tex = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, tex);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+          gl.generateMipmap(gl.TEXTURE_2D);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+          return tex;
+        };
+
+        const texBase = uploadImageTexture(imgBase);
+        const texNormal = uploadImageTexture(imgNormal);
+        const texRough = uploadImageTexture(imgRough);
+
         for (const r of node.renderIdxs) {
           const shouldApply = mainMat ? r.matName === mainMat : r === node.renderIdxs[0];
           if (!shouldApply) continue;
-          modelBaseTextures[r.idx] = tex;
+          modelBaseTextures[r.idx] = texBase;
+          if (originalParts?.[r.idx]) {
+            originalParts[r.idx].baseColorTex = texBase;
+            if (texNormal) originalParts[r.idx].normalTex = texNormal;
+            if (texRough) originalParts[r.idx].roughnessTex = texRough;
+          }
         }
       }
     }
