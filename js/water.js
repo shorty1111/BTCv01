@@ -251,7 +251,6 @@ let totalVerts = 0;
 for (const { grid } of ringData) {
   totalVerts += grid.vertices.length / 6; // svaki vertex ima 6 float-ova
 }
-console.log(`[WATER] Ukupno verteksa: ${totalVerts.toLocaleString()}`);
 vao = []; // niz svih ploča
 
 for (const { grid, offset } of ringData) {

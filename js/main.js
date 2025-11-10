@@ -1642,16 +1642,6 @@ if (shadowDirty) {
 
   lmin = [cx - hx, cy - hy, cz - hz];
   lmax = [cx + hx, cy + hy, cz + hz];
-  // 👇 DODAJ DEBUG LOG:
-  const frustumWidth = lmax[0] - lmin[0];
-  const frustumHeight = lmax[1] - lmin[1];
-  const frustumDepth = lmax[2] - lmin[2];
-  const pixelsPerMeter = SHADOW_RES / Math.max(frustumWidth, frustumHeight);
-  
-  console.log("🔆 Shadow frustum:", 
-    `${frustumWidth.toFixed(1)}m × ${frustumHeight.toFixed(1)}m × ${frustumDepth.toFixed(1)}m`,
-    `| Resolution: ${pixelsPerMeter.toFixed(0)} px/m`
-  );
   const lightProj = ortho(lmin[0], lmax[0], lmin[1], lmax[1], -lmax[2], -lmin[2]);
   lightVP = mat4mul(lightProj, lightView);
 
@@ -2425,6 +2415,7 @@ async function loadGLB(buf) {
   let max = [-Infinity, -Infinity, -Infinity];
   boatMin = min;
   boatMax = max;
+  
 
   for (const renderIdx in originalParts) {
     const part = originalParts[renderIdx];
@@ -2449,6 +2440,8 @@ async function loadGLB(buf) {
   ];
   window.sceneBoundingRadius =
     Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2]) * 0.5;
+    window.boatMin = boatMin;
+    window.boatMax = boatMax;
   boatLengthLine = makeLengthLine(min, max);
   window.envBox = {
   min: [
