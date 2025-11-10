@@ -23,6 +23,7 @@ let ssaoDirty = true;
 let lastViewMatrix = new Float32Array(16);
 let lastSunDir = [0, 0, 0];
 const textureCache = {}; // key = url, value = WebGLTexture
+const textureCachePromises = new Map();
 window.textureCache = textureCache;
 
 let shadowFBO, shadowDepthTex;
@@ -57,44 +58,57 @@ async function loadTextureWithCache(
 ) {
   if (!src) return null;
   if (textureCache[src]) return textureCache[src];
+  if (textureCachePromises.has(src)) {
+    return textureCachePromises.get(src);
+  }
   if (!gl) return null;
 
-  const tex = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, tex);
-  const placeholder = new Uint8Array(placeholderColor);
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.RGBA,
-    1,
-    1,
-    0,
-    gl.RGBA,
-    gl.UNSIGNED_BYTE,
-    placeholder
-  );
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  textureCache[src] = tex;
+  window.pendingTextures = (window.pendingTextures || 0) + 1;
 
-  try {
-    const res = await fetch(src);
-    const blob = await res.blob();
-    const bmp = await createImageBitmap(blob);
-
+  const loadPromise = (async () => {
+    const tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
-    gl.generateMipmap(gl.TEXTURE_2D);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    const placeholder = new Uint8Array(placeholderColor);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      1,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      placeholder
+    );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    const wrap = wrapMode === "clamp" ? gl.CLAMP_TO_EDGE : gl.REPEAT;
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
-  } catch (err) {
-    console.warn("[textures] Failed to load:", src, err);
-  }
+    textureCache[src] = tex;
 
-  return tex;
+    try {
+      const res = await fetch(src);
+      const blob = await res.blob();
+      const bmp = await createImageBitmap(blob);
+
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      const wrap = wrapMode === "clamp" ? gl.CLAMP_TO_EDGE : gl.REPEAT;
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
+    } catch (err) {
+      console.warn("[textures] Failed to load:", src, err);
+    } finally {
+      decrementPendingTextures();
+      textureCachePromises.delete(src);
+    }
+
+    return tex;
+  })();
+
+  textureCachePromises.set(src, loadPromise);
+  return loadPromise;
 }
 window.loadTextureWithCache = loadTextureWithCache;
 
@@ -202,7 +216,20 @@ function createToneMapTarget(w, h) {
 let ssrOutputFBO = null;
 let ssrOutputTex = null;
 
+function disposeSSROutputTarget() {
+  if (ssrOutputTex) {
+    gl.deleteTexture(ssrOutputTex);
+    ssrOutputTex = null;
+  }
+  if (ssrOutputFBO) {
+    gl.deleteFramebuffer(ssrOutputFBO);
+    ssrOutputFBO = null;
+  }
+}
+
 function createSSROutputTarget(w, h) {
+  disposeSSROutputTarget();
+
   ssrOutputTex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, ssrOutputTex);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
@@ -296,8 +323,25 @@ function getPreviewProgram(gl) {
   }
   return prog;
 }
+
+function disposeReflectionTarget() {
+  if (reflectionTex) {
+    gl.deleteTexture(reflectionTex);
+    reflectionTex = null;
+  }
+  if (window.reflectionDepthTex) {
+    gl.deleteTexture(window.reflectionDepthTex);
+    window.reflectionDepthTex = null;
+  }
+  if (reflectionFBO) {
+    gl.deleteFramebuffer(reflectionFBO);
+    reflectionFBO = null;
+  }
+}
+
 function createReflectionTarget(gl, width, height) {
-  
+  disposeReflectionTarget();
+
   reflectionTex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, reflectionTex);
   gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,width,height,0,gl.RGBA, gl.HALF_FLOAT,null);
@@ -727,7 +771,32 @@ export async function exportPDF() {
 }
 window.exportPDF = exportPDF;
 
+function disposeGBuffer() {
+  if (gPosition) {
+    gl.deleteTexture(gPosition);
+    gPosition = null;
+  }
+  if (gNormal) {
+    gl.deleteTexture(gNormal);
+    gNormal = null;
+  }
+  if (gAlbedo) {
+    gl.deleteTexture(gAlbedo);
+    gAlbedo = null;
+  }
+  if (gMaterial) {
+    gl.deleteTexture(gMaterial);
+    gMaterial = null;
+  }
+  if (gBuffer) {
+    gl.deleteFramebuffer(gBuffer);
+    gBuffer = null;
+  }
+}
+
 function createGBuffer() {
+  disposeGBuffer();
+
   gBuffer = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, gBuffer);
 
@@ -769,7 +838,29 @@ function createGBuffer() {
   gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.TEXTURE_2D,sceneDepthTex,0);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
+
+function disposeSSAOBuffers() {
+  if (ssaoFBO) {
+    gl.deleteFramebuffer(ssaoFBO);
+    ssaoFBO = null;
+  }
+  if (ssaoColorBuffer) {
+    gl.deleteTexture(ssaoColorBuffer);
+    ssaoColorBuffer = null;
+  }
+  if (window.ssaoBlurFBO) {
+    gl.deleteFramebuffer(window.ssaoBlurFBO);
+    window.ssaoBlurFBO = null;
+  }
+  if (window.ssaoBlurColor) {
+    gl.deleteTexture(window.ssaoBlurColor);
+    window.ssaoBlurColor = null;
+  }
+}
+
 function createSSAOBuffers(w, h) {
+  disposeSSAOBuffers();
+
   const width = w || canvas.width;
   const height = h || canvas.height;
 
@@ -800,7 +891,20 @@ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 let ssrFBO = null;
 let ssrTex = null;
 
+function disposeSSRBuffer() {
+  if (ssrFBO) {
+    gl.deleteFramebuffer(ssrFBO);
+    ssrFBO = null;
+  }
+  if (ssrTex) {
+    gl.deleteTexture(ssrTex);
+    ssrTex = null;
+  }
+}
+
 function createSSRBuffer(w, h) {
+  disposeSSRBuffer();
+
   ssrFBO = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, ssrFBO);
 
