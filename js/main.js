@@ -2222,7 +2222,10 @@ if (taaActive && taaProgram && taaHistoryTextures.length === 2) {
   const readIndex = taaHistoryIndex;
   const writeIndex = 1 - taaHistoryIndex;
   const useHistory = prevViewProjValid && !sceneChangedThisFrame;
-  const blendFactor = useHistory ? (camera.moved ? 0.05 : 0.12) : 0.0;
+  let blendFactor = 0.0;
+  if (useHistory) {
+    blendFactor = camera.moved ? 0.2 : 0.9;
+  }
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, taaHistoryFBOs[writeIndex]);
   gl.viewport(0, 0, canvas.width, canvas.height);
