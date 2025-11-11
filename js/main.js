@@ -5,17 +5,7 @@ import { initCamera } from "./camera.js";
 import { initSky, drawSky, bakeSkyToCubemap, bakeIrradianceFromSky } from "./sky.js";
 import { DEFAULT_SKY } from "./sky.js";
 import {DEFAULT_MODEL,BASE_PRICE,VARIANT_GROUPS,BOAT_INFO,SIDEBAR_INFO } from "./config.js";
-import {
-  mat4mul,
-  persp,
-  ortho,
-  look,
-  composeTRS,
-  computeBounds,
-  mulMat4Vec4,
-  mat4Invert,
-  v3,
-} from "./math.js";
+import {mat4mul,persp,ortho,look,composeTRS,computeBounds,mulMat4Vec4, v3,} from "./math.js";
 import { initUI, renderBoatInfo, showPartInfo, showLoading, hideLoading } from "./ui.js";
 import { TEXTURE_SLOTS, bindTextureToSlot } from "./texture-slots.js";
 
@@ -209,90 +199,6 @@ function smoothstep(edge0, edge1, x) {
 let fxaaProgram = null;
 let toneMapTex = null;
 let toneMapFBO = null;
-
-let taaProgram = null;
-let taaUniforms = {};
-let taaHistoryTextures = [];
-let taaHistoryFBOs = [];
-let taaHistoryIndex = 0;
-let prevViewProj = new Float32Array(16);
-let prevViewProjValid = false;
-let invCurrViewProj = new Float32Array(16);
-let currViewProjMatrix = new Float32Array(16);
-let stableViewProjMatrix = new Float32Array(16);
-let taaHaltonIndex = 0;
-const TAA_SEQUENCE_LENGTH = 8;
-const taaJitter = [0, 0];
-
-function halton(index, base) {
-  let f = 1;
-  let result = 0;
-  let i = index;
-  while (i > 0) {
-    f /= base;
-    result += f * (i % base);
-    i = Math.floor(i / base);
-  }
-  return result;
-}
-
-function nextTAAJitter(width, height) {
-  const sequenceIndex = (taaHaltonIndex % TAA_SEQUENCE_LENGTH) + 1;
-  const jitterX = halton(sequenceIndex, 2) - 0.5;
-  const jitterY = halton(sequenceIndex, 3) - 0.5;
-  taaJitter[0] = (jitterX * 2) / width;
-  taaJitter[1] = (jitterY * 2) / height;
-  taaHaltonIndex = (taaHaltonIndex + 1) % TAA_SEQUENCE_LENGTH;
-  return taaJitter;
-}
-
-function applyJitterToProjection(projection, width, height) {
-  const jitter = nextTAAJitter(width, height);
-  projection[8] += jitter[0];
-  projection[9] += jitter[1];
-}
-
-function disposeTAABuffers() {
-  for (const tex of taaHistoryTextures) {
-    if (tex) gl.deleteTexture(tex);
-  }
-  for (const fbo of taaHistoryFBOs) {
-    if (fbo) gl.deleteFramebuffer(fbo);
-  }
-  taaHistoryTextures = [];
-  taaHistoryFBOs = [];
-  taaHistoryIndex = 0;
-}
-
-function createTAABuffers(w, h) {
-  disposeTAABuffers();
-  for (let i = 0; i < 2; ++i) {
-    const tex = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-    const fbo = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
-
-    taaHistoryTextures.push(tex);
-    taaHistoryFBOs.push(fbo);
-  }
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-  gl.bindTexture(gl.TEXTURE_2D, null);
-  prevViewProjValid = false;
-  taaHaltonIndex = 0;
-  taaHistoryIndex = 0;
-}
-
-function invalidateTAAHistory() {
-  prevViewProjValid = false;
-  taaHaltonIndex = 0;
-}
 
 function createToneMapTarget(w, h) {
   if (toneMapTex) gl.deleteTexture(toneMapTex);
@@ -694,7 +600,6 @@ function resizeCanvas() {
   resetBoundTextures();
   createSSRBuffer(canvas.width, canvas.height);
   createSSROutputTarget(canvas.width, canvas.height);
-  createTAABuffers(canvas.width, canvas.height);
 
   const resMeter = document.getElementById("res-meter");
   if (resMeter) {
@@ -711,7 +616,6 @@ function resizeCanvas() {
   cleanupGLGarbage();
   gl.useProgram(program);
 gl.uniform1i(pbrUniforms.uShadowMap, 7); // 🔁 rebinding novog shadowDepthTex
-  invalidateTAAHistory();
 }
 
 
@@ -1222,24 +1126,6 @@ async function initShaders() {
     const fxaaFS = await loadShader("shaders/fxaa.frag");
     fxaaProgram = createShaderProgram(gl, fxaaVS, fxaaFS);
 
-    const taaFS = await loadShader("shaders/taa.frag");
-    taaProgram = createShaderProgram(gl, quadVertSrc, taaFS);
-    if (taaProgram) {
-      taaUniforms = {
-        uCurrent: gl.getUniformLocation(taaProgram, "uCurrent"),
-        uHistory: gl.getUniformLocation(taaProgram, "uHistory"),
-        uDepth: gl.getUniformLocation(taaProgram, "uDepth"),
-        uCurrViewProj: gl.getUniformLocation(taaProgram, "uCurrViewProj"),
-        uPrevViewProj: gl.getUniformLocation(taaProgram, "uPrevViewProj"),
-        uInvCurrViewProj: gl.getUniformLocation(taaProgram, "uInvCurrViewProj"),
-        uBlendFactor: gl.getUniformLocation(taaProgram, "uBlendFactor"),
-      };
-      gl.useProgram(taaProgram);
-      gl.uniform1i(taaUniforms.uCurrent, 0);
-      gl.uniform1i(taaUniforms.uHistory, 1);
-      gl.uniform1i(taaUniforms.uDepth, 2);
-    }
-
     const pbrFragSrc = await loadShader("../shaders/pbr.frag");
     program = createShaderProgram(gl, quadVertSrc, pbrFragSrc);
 
@@ -1559,7 +1445,6 @@ function cleanupGLGarbage() {
     gAlbedo,
     gMaterial,
     ssaoColorBuffer,
-    ...taaHistoryTextures,
   ];
   for (const tex of texList) {
     if (tex && !gl.isTexture(tex)) {
@@ -1671,33 +1556,12 @@ function render() {
   const timeNow = performance.now() * 0.001; // koristi u SSAO i vodi
   let reflView = null;
   let reflProj = proj;
-  const sceneChangedThisFrame = sceneChanged;
-  const taaActive = !!(taaProgram && taaHistoryTextures.length === 2);
-
   // === 1. Animacija kamere i matrica pogleda ===
     showWater = window.showWater;
   showDimensions = window.showDimensions;
   camera.animateCamera();
-  const camState = camera.updateView();
-  proj = camState.proj;
-  view = camState.view;
-  camWorld = camState.camWorld;
-
-  let projNoJitter = proj;
-  const allowJitter = taaActive && prevViewProjValid && !sceneChangedThisFrame;
-  if (allowJitter) {
-    projNoJitter = new Float32Array(proj);
-    applyJitterToProjection(proj, canvas.width, canvas.height);
-  } else if (taaActive) {
-    taaHaltonIndex = 0;
-  }
-
-  currViewProjMatrix = mat4mul(proj, view);
-  stableViewProjMatrix = taaActive ? mat4mul(projNoJitter, view) : currViewProjMatrix;
-  if (!mat4Invert(invCurrViewProj, currViewProjMatrix)) {
-    prevViewProjValid = false;
-  }
-
+  ({ proj, view, camWorld } = camera.updateView());
+  
   if (camera.moved) ssaoDirty = true;
 
   // === 1A. CLEAR FINALNI FBO NA POČETKU (OBAVEZNO!) ===
@@ -2090,7 +1954,7 @@ if (showWater) {
     // render label na 2D overlay (dužina u metrima)
     const leftPt = [boatMin[0], boatMin[1], boatMax[2]];
     const rightPt = [boatMax[0], boatMin[1], boatMax[2]];
-    const viewProj = stableViewProjMatrix;
+    const viewProj = mat4mul(proj, view);
     const canvasEl = document.getElementById("glCanvas");
     const p1 = projectToScreen(leftPt, viewProj, canvasEl);
     const p2 = projectToScreen(rightPt, viewProj, canvasEl);
@@ -2217,56 +2081,6 @@ gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
 gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-let postColorTex = toneMapTex;
-if (taaActive && taaProgram && taaHistoryTextures.length === 2) {
-  const readIndex = taaHistoryIndex;
-  const writeIndex = 1 - taaHistoryIndex;
-  const useHistory = prevViewProjValid && !sceneChangedThisFrame;
-  let blendFactor = 0.0;
-  if (useHistory) {
-    blendFactor = camera.moved ? 0.2 : 0.9;
-  }
-
-  gl.bindFramebuffer(gl.FRAMEBUFFER, taaHistoryFBOs[writeIndex]);
-  gl.viewport(0, 0, canvas.width, canvas.height);
-  gl.disable(gl.DEPTH_TEST);
-  gl.useProgram(taaProgram);
-
-  gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, toneMapTex);
-  gl.activeTexture(gl.TEXTURE1);
-  gl.bindTexture(
-    gl.TEXTURE_2D,
-    useHistory ? taaHistoryTextures[readIndex] : toneMapTex
-  );
-  gl.activeTexture(gl.TEXTURE2);
-  gl.bindTexture(gl.TEXTURE_2D, window.finalDepthTex);
-
-  gl.uniformMatrix4fv(taaUniforms.uCurrViewProj, false, currViewProjMatrix);
-  gl.uniformMatrix4fv(
-    taaUniforms.uPrevViewProj,
-    false,
-    useHistory ? prevViewProj : currViewProjMatrix
-  );
-  gl.uniformMatrix4fv(taaUniforms.uInvCurrViewProj, false, invCurrViewProj);
-  gl.uniform1f(taaUniforms.uBlendFactor, blendFactor);
-
-  gl.bindVertexArray(quadVAO);
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-  taaHistoryIndex = writeIndex;
-  prevViewProj.set(currViewProjMatrix);
-  prevViewProjValid = true;
-  postColorTex = taaHistoryTextures[taaHistoryIndex];
-  gl.activeTexture(gl.TEXTURE0);
-} else {
-  prevViewProj.set(currViewProjMatrix);
-  prevViewProjValid = false;
-  taaHaltonIndex = 0;
-  gl.activeTexture(gl.TEXTURE0);
-}
-
 // === SSR OVERLAY ===
 gl.bindFramebuffer(gl.FRAMEBUFFER, ssrOutputFBO);
 gl.viewport(0, 0, canvas.width, canvas.height);
@@ -2281,7 +2095,7 @@ gl.useProgram(window.ssrProgram);
 // ✅ NOVE LINIJE (samo binding - uniformi su već postavljeni):
 bindTextureToSlot(gl, gPosition, TEXTURE_SLOTS.SSR_POSITION);
 bindTextureToSlot(gl, gNormal, TEXTURE_SLOTS.SSR_NORMAL);
-bindTextureToSlot(gl, postColorTex, TEXTURE_SLOTS.SSR_SCENE_COLOR);
+bindTextureToSlot(gl, toneMapTex, TEXTURE_SLOTS.SSR_SCENE_COLOR);
 bindTextureToSlot(gl, gMaterial, TEXTURE_SLOTS.SSR_MATERIAL);
 bindTextureToSlot(gl, envTex, TEXTURE_SLOTS.SSR_ENV_MAP, gl.TEXTURE_CUBE_MAP);
 
