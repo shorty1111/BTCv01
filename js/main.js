@@ -271,7 +271,6 @@ let idxTypes = [];
 const TARGET_MSAA_SAMPLES = 4;
 let gBuffer, gPosition, gNormal, gAlbedo, gMaterial;
 let gBufferMSAA = null;
-let gResolveFBO = null;
 let gMSColorBuffers = [];
 let gDepthMS = null;
 let gBufferWidth = 0;
@@ -826,10 +825,6 @@ function disposeGBuffer() {
     gl.deleteFramebuffer(gBufferMSAA);
     gBufferMSAA = null;
   }
-  if (gResolveFBO) {
-    gl.deleteFramebuffer(gResolveFBO);
-    gResolveFBO = null;
-  }
   if (gBuffer) {
     gl.deleteFramebuffer(gBuffer);
     gBuffer = null;
@@ -895,10 +890,6 @@ function createGBuffer(width = canvas.width, height = canvas.height) {
   }
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-  if (!gResolveFBO) {
-    gResolveFBO = gl.createFramebuffer();
-  }
 
   // === Multisample g-buffer (render target za geometriju) ===
   gBufferMSAAEnabled = false;
@@ -988,33 +979,15 @@ function createGBuffer(width = canvas.width, height = canvas.height) {
 }
 
 function resolveGBuffer() {
-  if (!gBufferMSAAEnabled || !gBufferMSAA || !gBuffer || !gResolveFBO) return;
+  if (!gBufferMSAAEnabled || !gBufferMSAA || !gBuffer) return;
   if (!gBufferWidth || !gBufferHeight) return;
 
-  const resolveTargets = [
-    { attachment: gl.COLOR_ATTACHMENT0, texture: gPosition },
-    { attachment: gl.COLOR_ATTACHMENT1, texture: gNormal },
-    { attachment: gl.COLOR_ATTACHMENT2, texture: gAlbedo },
-    { attachment: gl.COLOR_ATTACHMENT3, texture: gMaterial },
-  ];
-
   gl.bindFramebuffer(gl.READ_FRAMEBUFFER, gBufferMSAA);
+  gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, gBuffer);
 
-  for (const target of resolveTargets) {
-    if (!target.texture) continue;
-
-    gl.readBuffer(target.attachment);
-
-    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, gResolveFBO);
-    gl.framebufferTexture2D(
-      gl.DRAW_FRAMEBUFFER,
-      gl.COLOR_ATTACHMENT0,
-      gl.TEXTURE_2D,
-      target.texture,
-      0
-    );
-    gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
-
+  for (const attachment of GBUFFER_ATTACHMENTS) {
+    gl.readBuffer(attachment);
+    gl.drawBuffers([attachment]);
     gl.blitFramebuffer(
       0,
       0,
@@ -1027,26 +1000,9 @@ function resolveGBuffer() {
       gl.COLOR_BUFFER_BIT,
       gl.NEAREST
     );
-
-    gl.framebufferTexture2D(
-      gl.DRAW_FRAMEBUFFER,
-      gl.COLOR_ATTACHMENT0,
-      gl.TEXTURE_2D,
-      null,
-      0
-    );
   }
 
-  gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, gResolveFBO);
-  gl.drawBuffers([gl.NONE]);
-  gl.framebufferTexture2D(
-    gl.DRAW_FRAMEBUFFER,
-    gl.DEPTH_ATTACHMENT,
-    gl.TEXTURE_2D,
-    sceneDepthTex,
-    0
-  );
-
+  gl.drawBuffers(GBUFFER_ATTACHMENTS);
   gl.blitFramebuffer(
     0,
     0,
@@ -1058,14 +1014,6 @@ function resolveGBuffer() {
     gBufferHeight,
     gl.DEPTH_BUFFER_BIT,
     gl.NEAREST
-  );
-
-  gl.framebufferTexture2D(
-    gl.DRAW_FRAMEBUFFER,
-    gl.DEPTH_ATTACHMENT,
-    gl.TEXTURE_2D,
-    null,
-    0
   );
 
   gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
