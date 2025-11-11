@@ -268,7 +268,18 @@ let programGlass;
 let modelVAOs = [];
 let idxCounts = [];
 let idxTypes = [];
+const TARGET_MSAA_SAMPLES = 4;
 let gBuffer, gPosition, gNormal, gAlbedo, gMaterial;
+let gBufferMSAA = null;
+let gMSColorBuffers = [];
+let gDepthMS = null;
+let gBufferWidth = 0;
+let gBufferHeight = 0;
+let gBufferMSAAEnabled = false;
+let gRequestedMSAASamples = TARGET_MSAA_SAMPLES;
+let gActiveMSAASamples = 1;
+let GBUFFER_ATTACHMENTS = null;
+let GBUFFER_MS_FORMATS = null;
 let ssaoFBO, ssaoColorBuffer;
 let ssaoKernel = [];
 let ssaoNoiseTexture;
@@ -536,6 +547,18 @@ if (!gl.getExtension("EXT_color_buffer_float")) {
 }
 gl.getExtension("OES_texture_float_linear");
 
+const maxSupportedSamples = (gl && gl.getParameter(gl.MAX_SAMPLES)) || 1;
+gRequestedMSAASamples = Math.max(1, Math.min(TARGET_MSAA_SAMPLES, maxSupportedSamples));
+gActiveMSAASamples = 1;
+gBufferMSAAEnabled = false;
+GBUFFER_ATTACHMENTS = [
+  gl.COLOR_ATTACHMENT0,
+  gl.COLOR_ATTACHMENT1,
+  gl.COLOR_ATTACHMENT2,
+  gl.COLOR_ATTACHMENT3,
+];
+GBUFFER_MS_FORMATS = [gl.RGBA16F, gl.RGBA16F, gl.RGBA8, gl.RGBA8];
+
 let sceneDepthTex = null; //  ←  NOVA globalna promenljiva
 
 function createDepthTexture(w, h) {
@@ -603,7 +626,10 @@ function resizeCanvas() {
 
   const resMeter = document.getElementById("res-meter");
   if (resMeter) {
-    resMeter.textContent = `Render: ${targetW}x${targetH} → ${realW}x${realH} (SSAA ${ssaa.toFixed(2)}x)`;
+    const msaaInfo = gBufferMSAAEnabled
+      ? `, MSAA ${gActiveMSAASamples}x`
+      : `, MSAA off`;
+    resMeter.textContent = `Render: ${targetW}x${targetH} → ${realW}x${realH} (SSAA ${ssaa.toFixed(2)}x${msaaInfo})`;
   }
 
   if (window.sceneColorTex) {
@@ -787,55 +813,212 @@ function disposeGBuffer() {
     gl.deleteTexture(gMaterial);
     gMaterial = null;
   }
+  for (const rb of gMSColorBuffers) {
+    if (rb) gl.deleteRenderbuffer(rb);
+  }
+  gMSColorBuffers = [];
+  if (gDepthMS) {
+    gl.deleteRenderbuffer(gDepthMS);
+    gDepthMS = null;
+  }
+  if (gBufferMSAA) {
+    gl.deleteFramebuffer(gBufferMSAA);
+    gBufferMSAA = null;
+  }
   if (gBuffer) {
     gl.deleteFramebuffer(gBuffer);
     gBuffer = null;
   }
+  gBufferWidth = 0;
+  gBufferHeight = 0;
+  gBufferMSAAEnabled = false;
+  gActiveMSAASamples = 1;
 }
 
-function createGBuffer() {
+function createGBuffer(width = canvas.width, height = canvas.height) {
   disposeGBuffer();
 
+  gBufferWidth = width;
+  gBufferHeight = height;
+
+  if (!sceneDepthTex) {
+    sceneDepthTex = createDepthTexture(width, height);
+  }
+
+  // === Single-sample resolve textures (koriste se u lighting/SSAO passu) ===
   gBuffer = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, gBuffer);
 
-  // Tekstura za pozicije (u View-space, potrebna za SSAO)
   gPosition = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, gPosition);
-  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,canvas.width,canvas.height,0,gl.RGBA, gl.FLOAT,null);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, width, height, 0, gl.RGBA, gl.FLOAT, null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,gPosition,0 );
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, gPosition, 0);
 
-  // Tekstura za normale (u View-space)
   gNormal = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, gNormal);
-  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,canvas.width,canvas.height,0,gl.RGBA,gl.FLOAT,null);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, width, height, 0, gl.RGBA, gl.FLOAT, null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.framebufferTexture2D( gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D,gNormal, 0);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, gNormal, 0);
 
-  // Tekstura za boju (Albedo)
   gAlbedo = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, gAlbedo);
-  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,canvas.width,canvas.height,0,gl.RGBA, gl.UNSIGNED_BYTE,null);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT2,gl.TEXTURE_2D,gAlbedo,0);
-  // NOVO: 4. Tekstura za materijal (Roughness, Metallic)
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT2, gl.TEXTURE_2D, gAlbedo, 0);
+
   gMaterial = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, gMaterial);
-  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,canvas.width,canvas.height,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT3,gl.TEXTURE_2D, gMaterial,0);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT3, gl.TEXTURE_2D, gMaterial, 0);
 
-  // Kažemo WebGL-u da piše u SVA 4 attachment-a
-  gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1,gl.COLOR_ATTACHMENT2,gl.COLOR_ATTACHMENT3,]);
+  gl.drawBuffers(GBUFFER_ATTACHMENTS);
 
-  // Poveži postojeći depth texture
-  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.TEXTURE_2D,sceneDepthTex,0);
+  if (sceneDepthTex) {
+    gl.framebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.DEPTH_ATTACHMENT,
+      gl.TEXTURE_2D,
+      sceneDepthTex,
+      0
+    );
+  }
+
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+  // === Multisample g-buffer (render target za geometriju) ===
+  gBufferMSAAEnabled = false;
+  gActiveMSAASamples = 1;
+  gMSColorBuffers = [];
+  gDepthMS = null;
+  gBufferMSAA = null;
+
+  let sampleCount = Math.max(1, gRequestedMSAASamples);
+  let created = false;
+
+  while (!created && sampleCount > 1) {
+    const fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+
+    const colorRenderbuffers = [];
+    for (let i = 0; i < GBUFFER_ATTACHMENTS.length; ++i) {
+      const rb = gl.createRenderbuffer();
+      gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
+      gl.renderbufferStorageMultisample(
+        gl.RENDERBUFFER,
+        sampleCount,
+        GBUFFER_MS_FORMATS[i],
+        width,
+        height
+      );
+      gl.framebufferRenderbuffer(
+        gl.FRAMEBUFFER,
+        GBUFFER_ATTACHMENTS[i],
+        gl.RENDERBUFFER,
+        rb
+      );
+      colorRenderbuffers.push(rb);
+    }
+
+    const depthRenderbuffer = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, depthRenderbuffer);
+    gl.renderbufferStorageMultisample(
+      gl.RENDERBUFFER,
+      sampleCount,
+      gl.DEPTH_COMPONENT24,
+      width,
+      height
+    );
+    gl.framebufferRenderbuffer(
+      gl.FRAMEBUFFER,
+      gl.DEPTH_ATTACHMENT,
+      gl.RENDERBUFFER,
+      depthRenderbuffer
+    );
+
+    gl.drawBuffers(GBUFFER_ATTACHMENTS);
+
+    const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+    if (status === gl.FRAMEBUFFER_COMPLETE) {
+      gBufferMSAA = fbo;
+      gMSColorBuffers = colorRenderbuffers;
+      gDepthMS = depthRenderbuffer;
+      gBufferMSAAEnabled = true;
+      gActiveMSAASamples = sampleCount;
+      gRequestedMSAASamples = sampleCount;
+      created = true;
+    } else {
+      colorRenderbuffers.forEach((rb) => gl.deleteRenderbuffer(rb));
+      gl.deleteRenderbuffer(depthRenderbuffer);
+      gl.deleteFramebuffer(fbo);
+      sampleCount = sampleCount > 2 ? Math.floor(sampleCount / 2) : 1;
+      if (sampleCount === 1) {
+        console.warn("[msaa] Multisample g-buffer unsupported at requested quality — falling back to single-sample.");
+      }
+    }
+  }
+
+  if (!gBufferMSAAEnabled) {
+    gBufferMSAA = null;
+    gMSColorBuffers = [];
+    gDepthMS = null;
+    gActiveMSAASamples = 1;
+    if (sampleCount === 1) {
+      gRequestedMSAASamples = 1;
+    }
+  }
+
+  gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+}
+
+function resolveGBuffer() {
+  if (!gBufferMSAAEnabled || !gBufferMSAA || !gBuffer) return;
+  if (!gBufferWidth || !gBufferHeight) return;
+
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, gBufferMSAA);
+  gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, gBuffer);
+
+  for (const attachment of GBUFFER_ATTACHMENTS) {
+    gl.readBuffer(attachment);
+    gl.drawBuffers([attachment]);
+    gl.blitFramebuffer(
+      0,
+      0,
+      gBufferWidth,
+      gBufferHeight,
+      0,
+      0,
+      gBufferWidth,
+      gBufferHeight,
+      gl.COLOR_BUFFER_BIT,
+      gl.NEAREST
+    );
+  }
+
+  gl.drawBuffers(GBUFFER_ATTACHMENTS);
+  gl.blitFramebuffer(
+    0,
+    0,
+    gBufferWidth,
+    gBufferHeight,
+    0,
+    0,
+    gBufferWidth,
+    gBufferHeight,
+    gl.DEPTH_BUFFER_BIT,
+    gl.NEAREST
+  );
+
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+  gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+  gl.readBuffer(gl.BACK);
 }
 
 function disposeSSAOBuffers() {
@@ -1737,7 +1920,8 @@ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
   // === 4. Geometry pass (g-buffer) za opaque objekte ===
   gl.viewport(0, 0, canvas.width, canvas.height);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, gBuffer);
+  const geometryFBO = gBufferMSAAEnabled && gBufferMSAA ? gBufferMSAA : gBuffer;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, geometryFBO);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   
   gl.enable(gl.DEPTH_TEST);
@@ -1788,7 +1972,9 @@ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.bindVertexArray(modelVAOs[i]);
     gl.drawElements(gl.TRIANGLES, idxCounts[i], idxTypes[i], 0);
   }
-  
+
+  resolveGBuffer();
+
 if (ssaoDirty) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, ssaoFBO);
   gl.useProgram(ssaoProgram);
