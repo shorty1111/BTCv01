@@ -671,8 +671,7 @@ export async function exportPDF() {
   const oldView = camera.currentView;
   const oldUseOrtho = camera.useOrtho;
 
-  camera.currentView = "front";
-  camera.useOrtho = true;
+
   ({ proj, view, camWorld } = camera.updateView());
   render();
 
@@ -1032,7 +1031,7 @@ function setMatrices(p) {
 }
 
 function makeLengthLine(min, max) {
-  const y = min[1];
+  const y = 0.5; // umesto min[1]
   const z = max[2];
   const v = [min[0], y, z, max[0], y, z];
   const vao = gl.createVertexArray();
@@ -1045,6 +1044,7 @@ function makeLengthLine(min, max) {
   gl.bindVertexArray(null);
   return { vao, count: 2 };
 }
+
 
 // ✅ Faza 1 — osnovni GL setup
 async function initGL() {
