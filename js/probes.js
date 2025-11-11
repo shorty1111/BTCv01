@@ -172,6 +172,8 @@ function bakeProbe(gl, probePos, sceneData, skyParams, drawSceneCallback) {
         sunIntensity,
         useTonemap: false,
         hideSun: false,
+        cubeMap: window.skyBackgroundTex || window.envTex,
+        globalExposure: window.globalExposure,
         worldLocked: 0,
       });
     }
