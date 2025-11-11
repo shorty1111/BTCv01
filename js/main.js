@@ -8,13 +8,6 @@ import {DEFAULT_MODEL,BASE_PRICE,VARIANT_GROUPS,BOAT_INFO,SIDEBAR_INFO } from ".
 import {mat4mul,persp,ortho,look,composeTRS,computeBounds,mulMat4Vec4, v3,} from "./math.js";
 import { initUI, renderBoatInfo, showPartInfo, showLoading, hideLoading } from "./ui.js";
 import { TEXTURE_SLOTS, bindTextureToSlot } from "./texture-slots.js";
-import {
-  generateAdaptiveProbeGrid,
-  bakeAllProbes,
-  cleanupProbes,
-  getProbeGrid,
-  MAX_SUPPORTED_PROBES,
-} from "./probes.js";
 
 let sceneChanged = true;
 let pbrUniforms = {};
@@ -35,19 +28,6 @@ window.textureCache = textureCache;
 
 let shadowFBO, shadowDepthTex;
 const SHADOW_RES = 2048;
-
-const PROBE_TEXTURE_SLOTS = [
-  TEXTURE_SLOTS.PBR_PROBE0,
-  TEXTURE_SLOTS.PBR_PROBE1,
-  TEXTURE_SLOTS.PBR_PROBE2,
-  TEXTURE_SLOTS.PBR_PROBE3,
-  TEXTURE_SLOTS.PBR_PROBE4,
-];
-const MAX_SHADER_PROBES = Math.min(PROBE_TEXTURE_SLOTS.length, MAX_SUPPORTED_PROBES);
-const probePositionsUniform = new Float32Array(MAX_SHADER_PROBES * 3);
-const probeRadiiUniform = new Float32Array(MAX_SHADER_PROBES);
-let probeBakePromise = null;
-let queuedProbeBounds = null;
 
 async function preloadAllConfigTextures() {
   const allPaths = [];
@@ -174,11 +154,6 @@ function setWeather(presetName) {
   rebuildEnvironmentTextures();
   sceneChanged = true;
   render();
-  if (boatMin && boatMax) {
-    rebuildReflectionProbes({ min: boatMin.slice(), max: boatMax.slice() }).catch((err) =>
-      console.error("[probes] Weather probe bake failed", err)
-    );
-  }
 }
 
 
@@ -1068,258 +1043,7 @@ function makeLengthLine(min, max) {
   gl.enableVertexAttribArray(0);
   gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
   gl.bindVertexArray(null);
-  return { vao, vbo: vb, count: 2 };
-}
-
-function recomputeSceneBounds() {
-  const min = [Infinity, Infinity, Infinity];
-  const max = [-Infinity, -Infinity, -Infinity];
-  const temp = vec4.fromValues(0, 0, 0, 1);
-  const world = vec4.fromValues(0, 0, 0, 1);
-
-  for (const [renderIdxStr, part] of Object.entries(originalParts)) {
-    if (!part || !part.pos) continue;
-    const renderIdx = Number(renderIdxStr);
-    const mat = modelMatrices[renderIdx];
-    if (!mat) continue;
-
-    for (let i = 0; i < part.pos.length; i += 3) {
-      temp[0] = part.pos[i];
-      temp[1] = part.pos[i + 1];
-      temp[2] = part.pos[i + 2];
-      vec4.transformMat4(world, temp, mat);
-
-      min[0] = Math.min(min[0], world[0]);
-      min[1] = Math.min(min[1], world[1]);
-      min[2] = Math.min(min[2], world[2]);
-      max[0] = Math.max(max[0], world[0]);
-      max[1] = Math.max(max[1], world[1]);
-      max[2] = Math.max(max[2], world[2]);
-    }
-  }
-
-  if (!isFinite(min[0]) || !isFinite(max[0])) {
-    return null;
-  }
-
-  boatMin = min;
-  boatMax = max;
-  window.boatMin = boatMin;
-  window.boatMax = boatMax;
-
-  const center = [
-    (min[0] + max[0]) * 0.5,
-    (min[1] + max[1]) * 0.5,
-    (min[2] + max[2]) * 0.5,
-  ];
-  const radius = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2]) * 0.5;
-
-  window.sceneBoundingCenter = center;
-  window.sceneBoundingRadius = radius;
-  window.envBox = {
-    min: [
-      center[0] - radius * 2.0,
-      center[1] - radius * 1.0,
-      center[2] - radius * 2.0,
-    ],
-    max: [
-      center[0] + radius * 2.0,
-      center[1] + radius * 2.0,
-      center[2] + radius * 2.0,
-    ],
-  };
-
-  if (boatLengthLine) {
-    if (boatLengthLine.vbo) gl.deleteBuffer(boatLengthLine.vbo);
-    if (boatLengthLine.vao) gl.deleteVertexArray(boatLengthLine.vao);
-  }
-  boatLengthLine = makeLengthLine(min, max);
-
-  return { min, max };
-}
-
-function buildProbeSceneData() {
-  return {
-    modelVAOs,
-    idxCounts,
-    idxTypes,
-    modelMatrices,
-    modelBaseColors,
-    modelBaseTextures,
-    modelMetallics,
-    modelRoughnesses,
-    originalParts,
-    nodesMeta,
-    renderToNodeId,
-  };
-}
-
-function drawSceneForProbe(glCtx, projMat, viewMat, probePos, sceneData, skyParams) {
-  const {
-    modelVAOs: probeVAOs,
-    idxCounts: probeCounts,
-    idxTypes: probeTypes,
-    modelMatrices: probeModels,
-    modelBaseColors: probeColors,
-    modelBaseTextures: probeTextures,
-    modelMetallics: probeMetallics,
-    modelRoughnesses: probeRoughness,
-    originalParts: probeParts,
-    nodesMeta: probeNodes,
-    renderToNodeId: probeRenderToNode,
-  } = sceneData;
-
-  glCtx.useProgram(reflectionColorProgram);
-  glCtx.uniformMatrix4fv(reflectionUniforms.uProjection, false, projMat);
-  glCtx.uniformMatrix4fv(reflectionUniforms.uView, false, viewMat);
-  glCtx.uniform3fv(reflectionUniforms.uSunDir, skyParams.sunDir);
-  glCtx.uniform3fv(reflectionUniforms.uSunColor, skyParams.sunColor);
-  glCtx.uniform1f(reflectionUniforms.uSunIntensity, skyParams.sunIntensity);
-  glCtx.uniform3fv(reflectionUniforms.uCameraPos, probePos);
-  glCtx.uniform1f(reflectionUniforms.uSpecularStrength, 1.0);
-
-  const clipLoc = reflectionUniforms.uClipPlane || glCtx.getUniformLocation(reflectionColorProgram, "uClipPlane");
-  if (clipLoc) {
-    glCtx.uniform4f(clipLoc, 0.0, 0.0, 0.0, 1.0);
-  }
-
-  const envMap = skyParams.envMap || envTex;
-  glCtx.activeTexture(glCtx.TEXTURE1);
-  glCtx.bindTexture(glCtx.TEXTURE_CUBE_MAP, envMap);
-  glCtx.uniform1i(reflectionUniforms.uEnvMap, 1);
-
-  for (let i = 0; i < probeVAOs.length; ++i) {
-    if (!probeCounts[i]) continue;
-    const part = probeParts[i];
-    if (!part) continue;
-    if (part.alphaMode === "BLEND" || (part.opacity ?? 1) < 0.999) continue;
-
-    const nodeName = probeNodes[probeRenderToNode[i]]?.name?.toLowerCase() || "";
-    if (nodeName.includes("water")) continue;
-
-    glCtx.uniformMatrix4fv(reflectionUniforms.uModel, false, probeModels[i]);
-    glCtx.uniform3fv(reflectionUniforms.uBaseColor, probeColors[i] || [1, 1, 1]);
-    glCtx.uniform1f(reflectionUniforms.uRoughness, probeRoughness[i] ?? 0.35);
-    glCtx.uniform1f(reflectionUniforms.uSpecularStrength, Math.max(0.25, 1.0 - (probeMetallics[i] ?? 0) * 0.5));
-
-    if (probeTextures[i]) {
-      glCtx.activeTexture(glCtx.TEXTURE0);
-      glCtx.bindTexture(glCtx.TEXTURE_2D, probeTextures[i]);
-      glCtx.uniform1i(reflectionUniforms.uBaseColorTex, 0);
-      glCtx.uniform1i(reflectionUniforms.uUseBaseColorTex, 1);
-    } else {
-      glCtx.uniform1i(reflectionUniforms.uUseBaseColorTex, 0);
-    }
-
-    glCtx.bindVertexArray(probeVAOs[i]);
-    glCtx.drawElements(glCtx.TRIANGLES, probeCounts[i], probeTypes[i], 0);
-  }
-
-  glCtx.bindVertexArray(null);
-  glCtx.activeTexture(glCtx.TEXTURE0);
-  glCtx.bindTexture(glCtx.TEXTURE_2D, null);
-}
-
-function applyReflectionProbes() {
-  if (!pbrUniforms.uProbeCount || !pbrUniforms.uProbePositions || !pbrUniforms.uProbeRadii) {
-    return;
-  }
-
-  const grid = getProbeGrid();
-  let count = 0;
-
-  if (grid && Array.isArray(grid.probes)) {
-    const candidates = [];
-    for (const probe of grid.probes) {
-      if (!probe || !probe.cubemap) continue;
-      const dx = probe.position[0] - camWorld[0];
-      const dy = probe.position[1] - camWorld[1];
-      const dz = probe.position[2] - camWorld[2];
-      const dist = Math.hypot(dx, dy, dz);
-      candidates.push({ probe, dist });
-    }
-
-    candidates.sort((a, b) => a.dist - b.dist);
-    count = Math.min(candidates.length, MAX_SHADER_PROBES);
-
-    for (let i = 0; i < count; i++) {
-      const probe = candidates[i].probe;
-      probePositionsUniform.set(probe.position, i * 3);
-      probeRadiiUniform[i] = probe.radius ?? grid.baseRadius ?? 0.0;
-      bindTextureToSlot(gl, probe.cubemap, PROBE_TEXTURE_SLOTS[i], gl.TEXTURE_CUBE_MAP);
-    }
-  }
-
-  for (let i = count; i < MAX_SHADER_PROBES; i++) {
-    probePositionsUniform.set([0, 0, 0], i * 3);
-    probeRadiiUniform[i] = 0;
-    bindTextureToSlot(gl, null, PROBE_TEXTURE_SLOTS[i], gl.TEXTURE_CUBE_MAP);
-  }
-
-  gl.uniform1i(pbrUniforms.uProbeCount, count);
-  gl.uniform3fv(pbrUniforms.uProbePositions, probePositionsUniform);
-  gl.uniform1fv(pbrUniforms.uProbeRadii, probeRadiiUniform);
-}
-
-async function rebuildReflectionProbes(bounds) {
-  if (!gl) return;
-
-  const normalizedBounds = bounds && bounds.min && bounds.max
-    ? { min: bounds.min.slice(), max: bounds.max.slice() }
-    : boatMin && boatMax
-    ? { min: boatMin.slice(), max: boatMax.slice() }
-    : null;
-
-  if (!normalizedBounds) return;
-
-  if (probeBakePromise) {
-    queuedProbeBounds = normalizedBounds;
-    return probeBakePromise;
-  }
-
-  cleanupProbes(gl);
-
-  try {
-    generateAdaptiveProbeGrid(gl, normalizedBounds, {
-      maxProbes: MAX_SHADER_PROBES,
-      padding: { horizontal: 1.4, vertical: 0.9 },
-      radiusPadding: 1.0,
-    });
-  } catch (err) {
-    console.error("[probes] Grid generation failed", err);
-    return;
-  }
-
-  const sceneData = buildProbeSceneData();
-  const skyParams = {
-    sunDir: [...SUN.dir],
-    sunColor: [...SUN.color],
-    sunIntensity: SUN.intensity,
-    envMap: envTex,
-  };
-
-  const progressCallback = (current, total) => {
-    if (current === 1) {
-      console.log(`[probes] Baking ${total} reflection probes...`);
-    }
-    if (current === total) {
-      console.log("[probes] Reflection probe bake completed.");
-    }
-  };
-
-  probeBakePromise = bakeAllProbes(gl, sceneData, skyParams, drawSceneForProbe, progressCallback)
-    .catch((err) => console.error("[probes] Baking failed", err))
-    .finally(() => {
-      probeBakePromise = null;
-      sceneChanged = true;
-      if (queuedProbeBounds) {
-        const next = queuedProbeBounds;
-        queuedProbeBounds = null;
-        rebuildReflectionProbes(next);
-      }
-    });
-
-  return probeBakePromise;
+  return { vao, count: 2 };
 }
 
 // ✅ Faza 1 — osnovni GL setup
@@ -1414,8 +1138,7 @@ async function initShaders() {
     "gMaterial","ssao","tBentNormalAO","uSceneColor",
     "uLightSize","uShadowMapSize","uNormalBias",
     "uBiasBase","uBiasSlope",
-    "uGlobalExposure", "uTexelSize",
-    "uProbeCount", "uProbeStrength"
+    "uGlobalExposure", "uTexelSize" // 👈 dodaj ovo
   ];
     const getLocs = (prog, names) => {
       const out = {};
@@ -1423,12 +1146,6 @@ async function initShaders() {
       return out;
     };
     pbrUniforms = getLocs(program, uniformNamesPBR);
-    pbrUniforms.uProbePositions = gl.getUniformLocation(program, "uProbePositions[0]");
-    pbrUniforms.uProbeRadii = gl.getUniformLocation(program, "uProbeRadii[0]");
-    pbrUniforms.uProbeMaps = [];
-    for (let i = 0; i < MAX_SHADER_PROBES; i++) {
-      pbrUniforms.uProbeMaps.push(gl.getUniformLocation(program, `uProbeMaps[${i}]`));
-    }
 
     const ssaoNames = ["gPosition","gNormal","tNoise","gAlbedo","samples","uProjection","uNoiseScale","uFrame"];
     for (const n of ssaoNames)
@@ -1438,8 +1155,7 @@ async function initShaders() {
     const reflectionNames = [
       "uProjection", "uView", "uModel", "uSunDir", "uSunColor",
       "uSunIntensity", "uCameraPos", "uRoughness", "uSpecularStrength",
-      "uEnvMap", "uBaseColor", "uBaseColorTex", "uUseBaseColorTex",
-      "uClipPlane"
+      "uEnvMap", "uBaseColor", "uBaseColorTex", "uUseBaseColorTex"
     ];
     for (const n of reflectionNames)
       reflectionUniforms[n] = gl.getUniformLocation(reflectionColorProgram, n);
@@ -1508,26 +1224,6 @@ async function initShaders() {
     gl.uniform1i(pbrUniforms.tBentNormalAO, TEXTURE_SLOTS.PBR_BENT_NORMAL_AO);
     gl.uniform1i(pbrUniforms.uSceneColor, TEXTURE_SLOTS.PBR_SCENE_COLOR);
     gl.uniform1i(pbrUniforms.uEnvDiffuse, TEXTURE_SLOTS.PBR_ENV_DIFFUSE);
-    if (pbrUniforms.uProbeStrength) {
-      gl.uniform1f(pbrUniforms.uProbeStrength, 0.85);
-    }
-    if (pbrUniforms.uProbeCount) {
-      gl.uniform1i(pbrUniforms.uProbeCount, 0);
-    }
-    if (pbrUniforms.uProbePositions) {
-      gl.uniform3fv(pbrUniforms.uProbePositions, probePositionsUniform);
-    }
-    if (pbrUniforms.uProbeRadii) {
-      gl.uniform1fv(pbrUniforms.uProbeRadii, probeRadiiUniform);
-    }
-    if (Array.isArray(pbrUniforms.uProbeMaps)) {
-      for (let i = 0; i < pbrUniforms.uProbeMaps.length; i++) {
-        const loc = pbrUniforms.uProbeMaps[i];
-        if (loc !== null && loc !== -1) {
-          gl.uniform1i(loc, PROBE_TEXTURE_SLOTS[i]);
-        }
-      }
-    }
 
     return true;
   } catch (err) {
@@ -1810,7 +1506,7 @@ async function initializeApp() {
       VARIANT_GROUPS, BASE_PRICE, BOAT_INFO, thumbnails, currentParts,
       render, replaceSelectedWithURL, focusCameraOnNode, setWeather,
       proj, view, camWorld, exportPDF, sceneChanged,
-      originalParts, rebuildReflectionProbes   // 👈 dodaj ovu liniju
+      originalParts   // 👈 dodaj ovu liniju
     });
 
     // 🔹 start loop tek kad je sve učitano
@@ -2187,7 +1883,6 @@ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.uniform1f(pbrUniforms.uSunIntensity, SUN.intensity);
     gl.uniform1f(pbrUniforms.uGlobalExposure, window.globalExposure);
     gl.uniform1f(pbrUniforms.uCubeMaxMip, cubeMaxMip);
-    applyReflectionProbes();
     gl.bindVertexArray(quadVAO);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
@@ -2716,32 +2411,71 @@ async function loadGLB(buf) {
   }
 
   /* ---------- Boundinzi i kamera ---------- */
-  const bounds = recomputeSceneBounds();
-  if (bounds) {
-    const { min, max } = bounds;
-    camera.fitToBoundingBox(min, max);
-    camera.rx = camera.rxTarget = Math.PI / 10;
-    camera.ry = camera.ryTarget = Math.PI / 20;
-    camera.updateView();
+  let min = [Infinity, Infinity, Infinity];
+  let max = [-Infinity, -Infinity, -Infinity];
+  boatMin = min;
+  boatMax = max;
+  
 
-    window.initialCameraState = {
-      pan: camera.pan.slice(),
-      dist: camera.distTarget,
-      rx: camera.rxTarget,
-      ry: camera.ryTarget,
-    };
-
-    ({ proj, view, camWorld } = camera.updateView());
+  for (const renderIdx in originalParts) {
+    const part = originalParts[renderIdx];
+    if (!part || !part.pos) continue;
+    const mat = modelMatrices[renderIdx];
+    for (let i = 0; i < part.pos.length; i += 3) {
+      const p = [part.pos[i], part.pos[i + 1], part.pos[i + 2], 1];
+      const w = vec4.transformMat4([], p, mat);
+      min[0] = Math.min(min[0], w[0]);
+      min[1] = Math.min(min[1], w[1]);
+      min[2] = Math.min(min[2], w[2]);
+      max[0] = Math.max(max[0], w[0]);
+      max[1] = Math.max(max[1], w[1]);
+      max[2] = Math.max(max[2], w[2]);
+    }
   }
+
+  window.sceneBoundingCenter = [
+    (min[0] + max[0]) * 0.5,
+    (min[1] + max[1]) * 0.5,
+    (min[2] + max[2]) * 0.5,
+  ];
+  window.sceneBoundingRadius =
+    Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2]) * 0.5;
+    window.boatMin = boatMin;
+    window.boatMax = boatMax;
+  boatLengthLine = makeLengthLine(min, max);
+  window.envBox = {
+  min: [
+    sceneBoundingCenter[0] - sceneBoundingRadius * 2.0,
+    sceneBoundingCenter[1] - sceneBoundingRadius * 1.0,
+    sceneBoundingCenter[2] - sceneBoundingRadius * 2.0,
+  ],
+  max: [
+    sceneBoundingCenter[0] + sceneBoundingRadius * 2.0,
+    sceneBoundingCenter[1] + sceneBoundingRadius * 2.0,
+    sceneBoundingCenter[2] + sceneBoundingRadius * 2.0,
+  ],
+  
+};
+
+
+  camera.fitToBoundingBox(min, max);
+  camera.rx = camera.rxTarget = Math.PI / 10;
+  camera.ry = camera.ryTarget = Math.PI / 20;
+  camera.updateView();
+
+  // 👇 DODAJ OVO - sačuvaj početno stanje kamere
+  window.initialCameraState = {
+    pan: camera.pan.slice(),
+    dist: camera.distTarget,
+    rx: camera.rxTarget,
+    ry: camera.ryTarget
+  };
+
+  ({ proj, view, camWorld } = camera.updateView());
   // Sačekaj da se sve teksture spuste u GPU
   await waitForPendingTextures(8000);
   await new Promise(requestAnimationFrame);
-  if (bounds) {
-    rebuildReflectionProbes(bounds).catch((err) =>
-      console.error("[probes] Initial bake failed", err)
-    );
-  }
-
+  
   }
 
 function loadTextureFromImage(gltf, bin, texIndex) {
@@ -3203,23 +2937,15 @@ if (activeColor) {
   }
 
 
-  const bounds = recomputeSceneBounds();
-
-  refreshLighting();
+refreshLighting();
 
 
-  shadowDirty = true;
-  ssaoDirty = true;
-  sceneChanged = true;
+shadowDirty = true;
+ssaoDirty = true;
+sceneChanged = true;
 
-  render();
-  showPartInfo(variantName);
-
-if (bounds) {
-  rebuildReflectionProbes(bounds).catch((err) =>
-    console.error("[probes] Variant probe bake failed", err)
-  );
-}
+render();
+showPartInfo(variantName);
 }
 
 function refreshThumbnailsInUI() {

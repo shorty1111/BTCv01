@@ -18,13 +18,6 @@ uniform sampler2DShadow uShadowMap;
 
 uniform samplerCube uEnvDiffuse;
 
-#define MAX_PROBES 5
-uniform int uProbeCount;
-uniform samplerCube uProbeMaps[MAX_PROBES];
-uniform vec3 uProbePositions[MAX_PROBES];
-uniform float uProbeRadii[MAX_PROBES];
-uniform float uProbeStrength;
-
 uniform float uNormalBias; 
 uniform mat4  uView, uLightVP;
 uniform vec3  uSunDir, uSunColor;
@@ -167,38 +160,6 @@ void main(){
 
     float mipSpec = roughPerceptual  * uCubeMaxMip;
     vec3 envSpec = textureLod(uEnvMap, Rw, mipSpec).rgb;
-
-    if (uProbeCount > 0 && uProbeStrength > 0.001) {
-        vec3 probeSpec = vec3(0.0);
-        vec3 probeDiff = vec3(0.0);
-        float probeWeight = 0.0;
-
-        for (int i = 0; i < MAX_PROBES; ++i) {
-            if (i >= uProbeCount) break;
-            float radius = uProbeRadii[i];
-            if (radius <= 0.0001) continue;
-
-            float dist = length(fragPosW - uProbePositions[i]);
-            float weight = clamp(1.0 - dist / radius, 0.0, 1.0);
-            weight *= weight;
-            if (weight <= 0.0) continue;
-
-            vec3 specSample = textureLod(uProbeMaps[i], Rw, mipSpec).rgb;
-            vec3 diffSample = textureLod(uProbeMaps[i], Nw, mipDiff).rgb / 3.141592;
-
-            probeSpec += specSample * weight;
-            probeDiff += diffSample * weight;
-            probeWeight += weight;
-        }
-
-        if (probeWeight > 0.0) {
-            float blend = clamp(uProbeStrength * probeWeight, 0.0, 1.0);
-            vec3 avgSpec = probeSpec / probeWeight;
-            vec3 avgDiff = probeDiff / probeWeight;
-            envSpec = mix(envSpec, avgSpec, blend);
-            envDiff = mix(envDiff, avgDiff, blend * 0.7);
-        }
-    }
         
     
     vec3 sunRadiance = uSunColor * uSunIntensity;
