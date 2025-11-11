@@ -1,5 +1,5 @@
-import { persp, look, mat4mul, v3, lookAt } from "./math.js";
-import { TEXTURE_SLOTS, cleanupTextureState } from "./texture-slots.js";
+import { v3, lookAt } from "./math.js";
+import { TEXTURE_SLOTS } from "./texture-slots.js";
 
 // ========== GLOBALNE PROMENLJIVE ==========
 let probeGrid = null;
@@ -8,39 +8,190 @@ let probeFBO = null;
 let probeDepthRB = null;
 const PROBE_RESOLUTION = 128;
 
-// ========================================
-//  1. GENERISANJE PROBE GRID-A
-// ========================================
+export const MAX_SUPPORTED_PROBES = 5;
 
-export function generateProbeGrid(gl, min, max, count = 3) {
-   console.log("🔵 Generišem linearnu probe mrežu...");
+const DEFAULT_GENERATE_OPTIONS = {
+  padding: {
+    horizontal: 1.2,
+    vertical: 0.8,
+  },
+  minSpacing: 1.25,
+  maxSpacing: 5.5,
+  maxPerAxis: 4,
+  maxProbes: MAX_SUPPORTED_PROBES,
+  radiusPadding: 0.75,
+  minRadius: 1.0,
+};
+
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+function resolvePadding(extents, optionsPadding = {}) {
+  const pad = {
+    horizontal:
+      typeof optionsPadding.horizontal === "number"
+        ? optionsPadding.horizontal
+        : typeof optionsPadding === "number"
+        ? optionsPadding
+        : DEFAULT_GENERATE_OPTIONS.padding.horizontal,
+    depth:
+      typeof optionsPadding.depth === "number"
+        ? optionsPadding.depth
+        : typeof optionsPadding.horizontal === "number"
+        ? optionsPadding.horizontal
+        : typeof optionsPadding === "number"
+        ? optionsPadding
+        : DEFAULT_GENERATE_OPTIONS.padding.horizontal,
+    vertical:
+      typeof optionsPadding.vertical === "number"
+        ? optionsPadding.vertical
+        : typeof optionsPadding === "number"
+        ? optionsPadding * 0.6
+        : DEFAULT_GENERATE_OPTIONS.padding.vertical,
+  };
+
+  const longestHorizontal = Math.max(extents[0], extents[2]);
+  const horizontalAuto = Math.max(longestHorizontal * 0.08, DEFAULT_GENERATE_OPTIONS.minSpacing * 0.5);
+  const verticalAuto = Math.max(extents[1] * 0.15, DEFAULT_GENERATE_OPTIONS.minSpacing * 0.25);
+
+  return {
+    x: Math.max(pad.horizontal, horizontalAuto),
+    y: Math.max(pad.vertical, verticalAuto),
+    z: Math.max(pad.depth, horizontalAuto),
+  };
+}
+
+function computeGridCounts(extents, opts) {
+  const longestSpan = Math.max(extents[0], extents[1], extents[2], opts.minSpacing);
+  const baseSpacing = clamp(longestSpan / Math.max(2, opts.maxProbes - 1), opts.minSpacing, opts.maxSpacing);
+
+  const desired = extents.map((extent) => {
+    if (extent <= opts.minSpacing * 0.5) return 1;
+    return clamp(Math.round(extent / baseSpacing) + 1, 1, opts.maxPerAxis);
+  });
+
+  const counts = [1, 1, 1];
+  const axisOrder = [0, 1, 2].sort((a, b) => extents[b] - extents[a]);
+  const totalCount = (arr) => arr[0] * arr[1] * arr[2];
+
+  let improved = true;
+  while (improved) {
+    improved = false;
+    for (const axis of axisOrder) {
+      if (counts[axis] >= desired[axis]) continue;
+      const candidate = counts.slice();
+      candidate[axis] += 1;
+      if (totalCount(candidate) > opts.maxProbes) continue;
+      counts[axis] = candidate[axis];
+      improved = true;
+    }
+  }
+
+  for (const axis of axisOrder) {
+    if (extents[axis] > opts.minSpacing * 1.5 && counts[axis] === 1) {
+      const candidate = counts.slice();
+      candidate[axis] += 1;
+      if (totalCount(candidate) <= opts.maxProbes) {
+        counts[axis] = candidate[axis];
+      }
+    }
+  }
+
+  return counts;
+}
+
+function computeCellSize(extents, counts, opts) {
+  return counts.map((count, axis) => {
+    const extent = extents[axis];
+    if (count <= 1) return Math.max(extent, opts.minSpacing);
+    return extent / (count - 1);
+  });
+}
+
+function computeBaseRadius(extents, cellSize, counts, opts) {
+  const step = [0, 1, 2].map((axis) => (counts[axis] > 1 ? cellSize[axis] : extents[axis]));
+  const diag = Math.hypot(step[0], step[1], step[2]);
+  return Math.max(opts.minRadius, diag * 0.5 + opts.radiusPadding);
+}
+
+export function generateAdaptiveProbeGrid(gl, bounds, options = {}) {
+  if (!bounds || !bounds.min || !bounds.max) {
+    throw new Error("generateAdaptiveProbeGrid expects bounds { min, max }");
+  }
+
+  const opts = {
+    ...DEFAULT_GENERATE_OPTIONS,
+    ...options,
+    padding: options.padding ?? DEFAULT_GENERATE_OPTIONS.padding,
+  };
+  opts.maxProbes = clamp(options.maxProbes ?? opts.maxProbes ?? MAX_SUPPORTED_PROBES, 1, MAX_SUPPORTED_PROBES);
+
+  const min = bounds.min.slice();
+  const max = bounds.max.slice();
+  const extents = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
+
+  const padding = resolvePadding(extents, opts.padding);
+  const paddedMin = [min[0] - padding.x, min[1] - padding.y, min[2] - padding.z];
+  const paddedMax = [max[0] + padding.x, max[1] + padding.y, max[2] + padding.z];
+  const paddedExtents = [
+    paddedMax[0] - paddedMin[0],
+    paddedMax[1] - paddedMin[1],
+    paddedMax[2] - paddedMin[2],
+  ];
+
+  const counts = computeGridCounts(paddedExtents, opts);
+  const cellSize = computeCellSize(paddedExtents, counts, opts);
+  const baseRadius = computeBaseRadius(paddedExtents, cellSize, counts, opts);
 
   const probes = [];
-  const step = (max[0] - min[0]) / (count - 1);
+  for (let z = 0; z < counts[2]; z++) {
+    for (let y = 0; y < counts[1]; y++) {
+      for (let x = 0; x < counts[0]; x++) {
+        const position = [
+          counts[0] === 1 ? (paddedMin[0] + paddedMax[0]) * 0.5 : paddedMin[0] + cellSize[0] * x,
+          counts[1] === 1 ? (paddedMin[1] + paddedMax[1]) * 0.5 : paddedMin[1] + cellSize[1] * y,
+          counts[2] === 1 ? (paddedMin[2] + paddedMax[2]) * 0.5 : paddedMin[2] + cellSize[2] * z,
+        ];
 
-  for (let i = 0; i < count; i++) {
-    const x = min[0] + step * i;
-    const y = (min[1] + max[1]) * 0.5;   // po sredini visine broda
-    const z = (min[2] + max[2]) * 0.5;   // po sredini širine broda
-
-    probes.push({
-      position: [x, y, z],
-      gridIndex: [i, 0, 0],
-      cubemap: null,
-    });
+        probes.push({
+          position,
+          gridIndex: [x, y, z],
+          cubemap: null,
+          radius: baseRadius,
+        });
+      }
+    }
   }
 
   probeGrid = {
     probes,
-    gridSize: [count, 1, 1],
-    cellSize: [step, 0, 0],
-    bounds: { min, max },
+    gridSize: counts,
+    cellSize,
+    bounds: { min: paddedMin, max: paddedMax },
+    options: opts,
+    baseRadius,
+    extents: paddedExtents,
   };
 
-  console.log(`✅ Linija kreirana: ${count} probe-ova`);
-  console.log(`📏 Razmak po X: ${step.toFixed(2)}m`);
+  console.log(
+    `🔵 Generišem adaptivnu probe mrežu ${counts[0]}x${counts[1]}x${counts[2]} (ukupno ${probes.length})`
+  );
+  console.log(
+    `📏 Razmaci: ${cellSize.map((v) => v.toFixed(2)).join("m / ")}m · Radijus pokrivanja ≈ ${baseRadius.toFixed(2)}m`
+  );
 
   return probeGrid;
+}
+
+export function generateProbeGrid(gl, minOrBounds, maybeMax, maybeOptions) {
+  if (Array.isArray(minOrBounds) && Array.isArray(maybeMax)) {
+    const bounds = { min: minOrBounds, max: maybeMax };
+    const opts = typeof maybeOptions === "object" ? maybeOptions : {};
+    if (typeof maybeOptions === "number") opts.maxProbes = maybeOptions;
+    if (typeof opts.count === "number") opts.maxProbes = opts.count;
+    return generateAdaptiveProbeGrid(gl, bounds, opts);
+  }
+
+  return generateAdaptiveProbeGrid(gl, minOrBounds, maybeMax);
 }
 
 
