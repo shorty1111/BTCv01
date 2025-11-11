@@ -91,8 +91,8 @@ void main() {
     vec3 glintColor = glint * uSunColor * uSunIntensity;
 
     vec3 R = normalize(reflect(-V, N));
-    float horizonFade = pow(clamp(1.0 - abs(dot(N, V)), 0.0, 1.0), 0.6);
-    float reflectionFade = mix(0.2, 1.0, horizonFade);
+    float horizonFade = pow(clamp(1.0 - abs(dot(N, V)), 0.0, 1.0), 0.1);
+    float reflectionFade = mix(0.0, 0.8, horizonFade);
 
     vec3 baseColor = mix(uShallowColor, uDeepColor, pow(depthFactor, DEPTH_CURVE)) * uSunColor;
 

@@ -171,7 +171,8 @@ void main(){
 
     vec3 kd_ibl = (1.0 - F_ibl) * (1.0 - metal);
     vec3 diffIBL = ambient * baseColor * kd_ibl;
-    vec3 specIBL = envSpec * (F_ibl * brdf.x + brdf.y);
+    float specOcclusion = clamp(ao + (1.0 - ao) * pow(NdotV, 4.0), 0.0, 1.0);
+    vec3 specIBL = envSpec * (F_ibl * brdf.x + brdf.y) * specOcclusion;
 
 
     vec3 color = direct + diffIBL + specIBL;

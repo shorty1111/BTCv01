@@ -240,8 +240,8 @@ function nextTAAJitter(width, height) {
   const sequenceIndex = (taaHaltonIndex % TAA_SEQUENCE_LENGTH) + 1;
   const jitterX = halton(sequenceIndex, 2) - 0.5;
   const jitterY = halton(sequenceIndex, 3) - 0.5;
-  taaJitter[0] = jitterX / width;
-  taaJitter[1] = jitterY / height;
+  taaJitter[0] = (jitterX * 2) / width;
+  taaJitter[1] = (jitterY * 2) / height;
   taaHaltonIndex = (taaHaltonIndex + 1) % TAA_SEQUENCE_LENGTH;
   return taaJitter;
 }
@@ -767,8 +767,7 @@ export async function exportPDF() {
   const oldView = camera.currentView;
   const oldUseOrtho = camera.useOrtho;
 
-  camera.currentView = "front";
-  camera.useOrtho = true;
+
   ({ proj, view, camWorld } = camera.updateView());
   render();
 
@@ -1128,7 +1127,7 @@ function setMatrices(p) {
 }
 
 function makeLengthLine(min, max) {
-  const y = min[1];
+  const y = 0.5; // umesto min[1]
   const z = max[2];
   const v = [min[0], y, z, max[0], y, z];
   const vao = gl.createVertexArray();
@@ -1141,6 +1140,7 @@ function makeLengthLine(min, max) {
   gl.bindVertexArray(null);
   return { vao, count: 2 };
 }
+
 
 // ✅ Faza 1 — osnovni GL setup
 async function initGL() {
