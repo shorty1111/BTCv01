@@ -167,7 +167,6 @@ function refreshLighting() {
 function rebuildEnvironmentTextures() {
   const previousEnvTex = envTex;
   const previousEnvDiffuse = window.envDiffuse;
-  const previousSkyBackground = skyBackgroundTex;
 
   envTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
     ...DEFAULT_SKY,
@@ -181,32 +180,14 @@ function rebuildEnvironmentTextures() {
   gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
 
-  skyBackgroundTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
-    ...DEFAULT_SKY,
-    sunColor: SUN.color,
-    sunIntensity: SUN.intensity,
-    useTonemap: false,
-    hideSun: false,
-  });
-
-  gl.bindTexture(gl.TEXTURE_CUBE_MAP, skyBackgroundTex);
-  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
-
   window.envDiffuse = bakeIrradianceFromSky(gl, envTex, 32);
   cubeMaxMip = Math.floor(Math.log2(envSize));
-  window.envTex = envTex;
-  window.skyBackgroundTex = skyBackgroundTex;
 
   if (previousEnvTex && previousEnvTex !== envTex) {
     gl.deleteTexture(previousEnvTex);
   }
   if (previousEnvDiffuse && previousEnvDiffuse !== window.envDiffuse) {
     gl.deleteTexture(previousEnvDiffuse);
-  }
-  if (previousSkyBackground && previousSkyBackground !== skyBackgroundTex) {
-    gl.deleteTexture(previousSkyBackground);
   }
 }
 
@@ -276,7 +257,6 @@ window.showDimensions = false;
 let originalGlassByPart = {};
 let transparentMeshes = [];
 let envTex = null;
-let skyBackgroundTex = null;
 let brdfTex = null;
 let realOriginalParts = {}; // permanentno čuvamo početni model (A)
 let previewGL = null;
@@ -545,7 +525,7 @@ if (canvas.__glContext) {
   const loseExt = canvas.__glContext.getExtension("WEBGL_lose_context");
   if (loseExt) loseExt.loseContext();
 }
-const gl = canvas.getContext("webgl2", { alpha: true, antialias: true });
+const gl = canvas.getContext("webgl2", { alpha: true, antialias: false });
 
 canvas.__glContext = gl;
 if (!gl) alert("WebGL2 nije podržan u ovom pregledaču.");
@@ -1281,26 +1261,13 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
       useTonemap: false,
       hideSun: true,
     });
+    // 🟢 OBAVEZNO dodaj:
     gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
     gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
     gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
-
-    skyBackgroundTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
-      ...DEFAULT_SKY,
-      sunColor: SUN.color,
-      sunIntensity: SUN.intensity,
-      useTonemap: false,
-      hideSun: false,
-    });
-    gl.bindTexture(gl.TEXTURE_CUBE_MAP, skyBackgroundTex);
-    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
-
     cubeMaxMip = Math.floor(Math.log2(envSize));
+    
     window.envDiffuse = bakeIrradianceFromSky(gl, envTex, 32);
-    window.envTex = envTex;
-    window.skyBackgroundTex = skyBackgroundTex;
 
     generateSSAOKernel();
     generateNoiseTexture();
@@ -1718,8 +1685,6 @@ if (showWater) {
     sunIntensity: SUN.intensity,
     hideSun: true,
     useTonemap: false,
-    cubeMap: envTex,
-    globalExposure: window.globalExposure,
   });
 
   gl.useProgram(reflectionColorProgram);
@@ -1859,33 +1824,31 @@ if (ssaoDirty) {
   gl.disable(gl.SCISSOR_TEST);
   gl.viewport(0, 0, canvas.width, canvas.height);
 
-// === BLUR SSAO ===
-gl.bindFramebuffer(gl.FRAMEBUFFER, window.ssaoBlurFBO);
-gl.useProgram(window.ssaoBlurProgram);
-gl.activeTexture(gl.TEXTURE0);
-gl.bindTexture(gl.TEXTURE_2D, ssaoColorBuffer);
-gl.uniform1i(window.ssaoBlurUniforms.tSSAO, 0);
-gl.uniform2f(window.ssaoBlurUniforms.uTexelSize, 1.0 / canvas.width, 1.0 / canvas.height);
-gl.bindVertexArray(quadVAO);
-gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  // === BLUR SSAO ===
+  gl.bindFramebuffer(gl.FRAMEBUFFER, window.ssaoBlurFBO);
+  gl.useProgram(window.ssaoBlurProgram);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, ssaoColorBuffer);
+  gl.uniform1i(window.ssaoBlurUniforms.tSSAO, 0);
+  gl.uniform2f(window.ssaoBlurUniforms.uTexelSize, 1.0 / canvas.width, 1.0 / canvas.height);
+  gl.bindVertexArray(quadVAO);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
 
-  ssaoDirty = false;
-}
+    ssaoDirty = false;
+  }
 
 
     // --- Proceduralno nebo ---
-  gl.bindFramebuffer(gl.FRAMEBUFFER, finalFBO);
-  gl.viewport(0, 0, canvas.width, canvas.height);
-  drawSky(gl, finalFBO, view, proj, SUN.dir, {
-    ...DEFAULT_SKY,
-    sunColor: SUN.color,
-    sunIntensity: SUN.intensity,
-    useTonemap: false,
-    cubeMap: skyBackgroundTex,
-    globalExposure: window.globalExposure,
-  });
+    gl.bindFramebuffer(gl.FRAMEBUFFER, finalFBO);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    drawSky(gl, finalFBO, view, proj, SUN.dir, {
+      ...DEFAULT_SKY,
+      sunColor: SUN.color,
+      sunIntensity: SUN.intensity,
+      useTonemap: false,
+    });
 
       // --- Lighting pass (PBR shading) ---
     gl.useProgram(program);

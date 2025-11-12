@@ -3,37 +3,35 @@ import { createShaderProgram } from "./shader.js";
 
 // ===== State =====
 let skyProg = null;
-let skyboxProg = null;
 let skyVAO = null;
 let skyIdxCount = 0;
 let skyUniforms = {}; // ⚙️ NOVO
-let skyboxUniforms = {};
 
 // ===== Default sky params (bez SUN — njega prosleđuje main.js) =====
 export const DEFAULT_SKY = {
-  zenith: [0.08, 0.18, 0.42],
-  horizon: [0.82, 0.9, 1.05],
-  ground: [0.016, 0.014, 0.014],
-  sunsetHorizon: [1.05, 0.42, 0.16],
-  sunsetZenith: [0.24, 0.29, 0.6],
+  zenith: [0.12, 0.25, 0.6],
+  horizon: [0.8, 0.9, 1.0],
+  ground: [0.012, 0.01, 0.01],
+  sunsetHorizon: [1.0, 0.35, 0.1],
+  sunsetZenith: [0.18, 0.23, 0.55],
   worldLocked: 1,
   model: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-  turbidity: 1.05,
-  sunSizeDeg: 1.45,
-  sunHaloScale: 0.32,
-  horizonSoft: 0.22,
-  horizonLift: -0.015,
-  saturation: 1.18,
-  horizonDesat: 0.08,
-  horizonWarmth: 1.45,
-  milkBandStrength: 0.08,
-  milkBandWidth: 0.18,
-  warmBandStrength: 0.18,
-  warmBandWidth: 0.22,
-  rayleighStrength: 1.95,
-  mieStrength: 0.9,
-  zenithDesat: 0.1,
-  groundScatter: 0.78,
+  turbidity: 0.9,
+  sunSizeDeg: 1.53,
+  sunHaloScale: 0.25,
+  horizonSoft: 0.18,
+  horizonLift: -0.02,
+  saturation: 1.1,
+  horizonDesat: 0.05,
+  horizonWarmth: 1.35,
+  milkBandStrength: 0.0,
+  milkBandWidth: 0.12,
+  warmBandStrength: 0.1,
+  warmBandWidth: 0.15,
+  rayleighStrength: 1.8,
+  mieStrength: 0.8,
+  zenithDesat: 0.12,
+  groundScatter: 0.85,
 };
 
 // ===== Helpers =====
@@ -148,6 +146,12 @@ uniform float uRayleighStrength, uMieStrength;
 uniform float uGroundScatter, uTurbidity, uSaturation;
 uniform float uHorizonWarmth, uZenithDesat, uHorizonDesat;
 
+uniform vec3 uZenith;
+uniform vec3 uHorizon;
+uniform vec3 uGround;
+uniform vec3 uSunsetZenith;
+uniform vec3 uSunsetHorizon;
+
 uniform float uCloudHeight, uCloudThickness, uCloudSpeed;
 uniform float uMilkBandStrength, uMilkBandWidth, uWarmBandStrength, uWarmBandWidth;
 
@@ -190,14 +194,12 @@ void main(){
 
     // === 1. Dynamic sky colors by sunAlt ===
 
-      vec3 dayZenith   = vec3(0.22, 0.38, 0.65);   // dublje plavo, manje zeleno
-      vec3 dayHorizon  = vec3(0.95, 0.8, 0.65);    // topli bež ton
-
-      vec3 sunsetZenith   = vec3(0.38, 0.28, 0.65);  // ljubičasto-cijan prelaz
-      vec3 sunsetHorizon  = vec3(1.1, 0.45, 0.18);   // zlatno-narandžasto
-
-      vec3 nightZenith   = vec3(0.02, 0.03, 0.08);
-      vec3 nightHorizon  = vec3(0.05, 0.06, 0.1);
+    vec3 dayZenith   = uZenith;
+    vec3 dayHorizon  = uHorizon;
+    vec3 sunsetZenith   = uSunsetZenith;
+    vec3 sunsetHorizon  = uSunsetHorizon;
+    vec3 nightZenith   = mix(uGround, uZenith, 0.2);
+    vec3 nightHorizon  = mix(uGround, uHorizon, 0.3);
 
     // Koliko je sunset aktivan (0 dan, 1 sunset)
     float sunsetAmt = smoothstep(0.0, 0.15, clamp(0.2 - sunAlt, 0.0, 0.2));
@@ -358,46 +360,10 @@ if (segLen > 0.0) {
     "uSunHaloScale","uHorizonSoft","uHorizonLift","uHorizonDesat","uTurbidity",
     "uSaturation","uMilkBandStrength","uMilkBandWidth","uWarmBandStrength",
     "uWarmBandWidth","uHorizonWarmth","uRayleighStrength","uMieStrength",
-    "uZenithDesat","uGroundScatter","uWorldLocked","uModel","uUseTonemap","uTime"
+    "uZenithDesat","uGroundScatter","uWorldLocked","uModel","uUseTonemap","uTime","uZenith","uHorizon","uGround","uSunsetZenith","uSunsetHorizon",
   ];
   for (const n of names) skyUniforms[n] = gl.getUniformLocation(skyProg, n);
-
-  const skyboxVS = `#version 300 es
-layout(location=0) in vec3 aPos;
-uniform mat4 uView;
-uniform mat4 uProj;
-out vec3 vDir;
-void main(){
-    mat4 viewNoTrans = uView;
-    viewNoTrans[3] = vec4(0.0, 0.0, 0.0, viewNoTrans[3].w);
-    vec3 dir = transpose(mat3(viewNoTrans)) * aPos;
-    vDir = normalize(dir);
-    vec4 pos = uProj * vec4(aPos, 1.0);
-    pos.z = pos.w;
-    gl_Position = pos;
-}`;
-
-  const skyboxFS = `#version 300 es
-precision highp float;
-in vec3 vDir;
-out vec4 fragColor;
-uniform samplerCube uSkyMap;
-uniform float uExposure;
-
-void main(){
-    vec3 dir = normalize(vDir);
-    vec3 hdr = texture(uSkyMap, dir).rgb * uExposure;
-    fragColor = vec4(hdr, 1.0);
-}`;
-
-  skyboxProg = createShaderProgram(gl, skyboxVS, skyboxFS);
-  skyboxUniforms = {
-    uView: gl.getUniformLocation(skyboxProg, "uView"),
-    uProj: gl.getUniformLocation(skyboxProg, "uProj"),
-    uSkyMap: gl.getUniformLocation(skyboxProg, "uSkyMap"),
-    uExposure: gl.getUniformLocation(skyboxProg, "uExposure"),
-  };
-
+ 
 }
 
 
@@ -443,6 +409,11 @@ gl.uniform1f(skyUniforms.uGlobalExposure,
   gl.uniform1f(skyUniforms.uMieStrength, o.mieStrength);
   gl.uniform1f(skyUniforms.uZenithDesat, o.zenithDesat);
   gl.uniform1f(skyUniforms.uGroundScatter, o.groundScatter);
+  gl.uniform3fv(skyUniforms.uZenith, o.zenith);
+gl.uniform3fv(skyUniforms.uHorizon, o.horizon);
+gl.uniform3fv(skyUniforms.uGround, o.ground);
+gl.uniform3fv(skyUniforms.uSunsetZenith, o.sunsetZenith);
+gl.uniform3fv(skyUniforms.uSunsetHorizon, o.sunsetHorizon);
 
   // world i model matrica
   gl.uniform1i(skyUniforms.uWorldLocked, o.worldLocked ? 1 : 0);
@@ -476,53 +447,10 @@ export function drawSkyGeneric(gl, view, proj, sunDir, opts) {
   gl.enable(gl.CULL_FACE);
 }
 
-function drawSkyboxGeneric(gl, view, proj, cubeMap, exposure) {
-  if (!skyboxProg || !cubeMap) return;
-
-  gl.disable(gl.CULL_FACE);
-  gl.disable(gl.DEPTH_TEST);
-  gl.depthMask(false);
-
-  gl.useProgram(skyboxProg);
-  gl.uniformMatrix4fv(skyboxUniforms.uView, false, view);
-  gl.uniformMatrix4fv(skyboxUniforms.uProj, false, proj);
-  gl.uniform1f(skyboxUniforms.uExposure, exposure);
-  gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubeMap);
-  gl.uniform1i(skyboxUniforms.uSkyMap, 0);
-
-  gl.frontFace(gl.CCW);
-  gl.bindVertexArray(skyVAO);
-  gl.drawElements(gl.TRIANGLES, skyIdxCount, gl.UNSIGNED_SHORT, 0);
-  gl.bindVertexArray(null);
-
-  gl.depthMask(true);
-  gl.enable(gl.DEPTH_TEST);
-  gl.enable(gl.CULL_FACE);
-}
-
-function resolveCubeMap(opts) {
-  if (opts && opts.cubeMap) return opts.cubeMap;
-  if (typeof window === "undefined") return null;
-  if (opts && opts.hideSun) {
-    return window.envTex || window.skyBackgroundTex || null;
-  }
-  return window.skyBackgroundTex || window.envTex || null;
-}
-
-export function drawSky(gl, framebuffer, view, proj, sunDir, opts = {}) {
-  const cube = resolveCubeMap(opts);
-  if (!cube) return;
-
-  const fallbackExposure =
-    typeof window !== "undefined" && window.globalExposure != null
-      ? window.globalExposure
-      : 1.0;
-  const exposure = opts.globalExposure ?? opts.exposure ?? fallbackExposure;
-
+export function drawSky(gl, framebuffer, view, proj, sunDir, opts) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
   gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-  drawSkyboxGeneric(gl, view, proj, cube, exposure);
+  drawSkyGeneric(gl, view, proj, sunDir, { ...opts });
 }
 
 export function bakeSkyToCubemap(
@@ -740,9 +668,4 @@ void main() {
   gl.deleteRenderbuffer(rbo);
 
   return cube;
-}
-
-if (typeof window !== "undefined") {
-  window.DEFAULT_SKY = DEFAULT_SKY;
-  window.drawSky = drawSky;
 }
