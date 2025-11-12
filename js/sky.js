@@ -9,29 +9,31 @@ let skyUniforms = {}; // ⚙️ NOVO
 
 // ===== Default sky params (bez SUN — njega prosleđuje main.js) =====
 export const DEFAULT_SKY = {
-  zenith: [0.12, 0.25, 0.6],
-  horizon: [0.8, 0.9, 1.0],
+  zenith: [0.08, 0.16, 0.35],
+  horizon: [0.65, 0.75, 0.85],
   ground: [0.012, 0.01, 0.01],
-  sunsetHorizon: [1.0, 0.35, 0.1],
-  sunsetZenith: [0.18, 0.23, 0.55],
+  sunsetHorizon: [1.05, 0.42, 0.16],
+  sunsetZenith: [0.2, 0.26, 0.6],
   worldLocked: 1,
   model: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-  turbidity: 0.9,
-  sunSizeDeg: 1.53,
-  sunHaloScale: 0.25,
-  horizonSoft: 0.18,
-  horizonLift: -0.02,
-  saturation: 1.1,
-  horizonDesat: 0.05,
-  horizonWarmth: 1.35,
-  milkBandStrength: 0.0,
+  sunColor: [1.0, 0.97, 0.94],
+  sunIntensity: 1.0,
+  turbidity: 2.2,
+  sunSizeDeg: 0.53,
+  sunHaloScale: 0.35,
+  horizonSoft: 0.45,
+  horizonLift: -0.03,
+  saturation: 1.05,
+  horizonDesat: 0.08,
+  horizonWarmth: 1.1,
+  milkBandStrength: 0.02,
   milkBandWidth: 0.12,
-  warmBandStrength: 0.1,
-  warmBandWidth: 0.15,
-  rayleighStrength: 1.8,
-  mieStrength: 0.8,
-  zenithDesat: 0.12,
-  groundScatter: 0.85,
+  warmBandStrength: 0.08,
+  warmBandWidth: 0.2,
+  rayleighStrength: 1.0,
+  mieStrength: 1.0,
+  zenithDesat: 0.05,
+  groundScatter: 0.6,
 };
 
 // ===== Helpers =====
@@ -171,6 +173,32 @@ float noise3d(vec3 p){
     return n;
 }
 
+const float PI = 3.14159265359;
+const mat3 XYZ_TO_RGB = mat3(
+    3.2406, -1.5372, -0.4986,
+   -0.9689,  1.8758,  0.0415,
+    0.0557, -0.2040,  1.0570
+);
+
+float saturate(float x){
+    return clamp(x, 0.0, 1.0);
+}
+
+float perezDistribution(float A, float B, float C, float D, float E, float theta, float gamma){
+    float cosTheta = cos(theta);
+    float numerator = 1.0 + A * exp(B / max(cosTheta, 0.01));
+    float component = 1.0 + C * exp(D * gamma) + E * cos(gamma) * cos(gamma);
+    return numerator * component;
+}
+
+vec3 xyYToRGB(float x, float y, float Y){
+    float denom = max(y, 1e-4);
+    float X = (Y / denom) * x;
+    float Z = (Y / denom) * (1.0 - x - y);
+    vec3 XYZ = vec3(X, Y, Z);
+    return XYZ_TO_RGB * XYZ;
+}
+
 // ---------- Ton-mapping & saturacija ----------
 vec3 ACESFilm(vec3 x){
     const float a=2.51, b=0.03, c=2.43, d=0.59, e=0.14;
@@ -183,46 +211,90 @@ vec3 applySaturation(vec3 c, float s){
 
 // ========================= MAIN =========================
 void main(){
-    // wavelength-based Rayleigh tint
-    vec3 waveLambda = vec3(680e-9, 550e-9, 440e-9); // R, G, B u metrima
-    vec3 rayleighColor = pow(waveLambda, vec3(-4.0));
-    rayleighColor /= max(max(rayleighColor.r, rayleighColor.g), rayleighColor.b);
-
-    vec3  dir   = normalize(vDir);
-    vec3  sunV  = normalize(uSunDir);
+    vec3 dir = normalize(vDir);
+    vec3 sunV = normalize(uSunDir);
     float sunAlt = clamp(sunV.y, -1.0, 1.0);
 
-    // === 1. Dynamic sky colors by sunAlt ===
+    float tCoord = clamp(dir.y * 0.5 + 0.5 + uHorizonLift, 0.0, 1.0);
+    float h = 1.0 - tCoord;
+    float hS = smoothstep(0.0, 1.0, pow(h, 1.0 + uHorizonSoft));
 
-    vec3 dayZenith   = uZenith;
-    vec3 dayHorizon  = uHorizon;
-    vec3 sunsetZenith   = uSunsetZenith;
-    vec3 sunsetHorizon  = uSunsetHorizon;
+    float theta = acos(clamp(dir.y, -1.0, 1.0));
+    float thetaS = acos(clamp(sunV.y, -1.0, 1.0));
+    float gamma = acos(clamp(dot(dir, sunV), -1.0, 1.0));
+    float T = max(uTurbidity, 1.0);
+
+    float chi = (4.0 / 9.0 - T / 120.0) * (PI - 2.0 * thetaS);
+    float tanChi = tan(chi);
+    tanChi = clamp(tanChi, -1024.0, 1024.0);
+    float Yz = (4.0453 * T - 4.9710) * tanChi - 0.2155 * T + 2.4192;
+    Yz = max(Yz, 0.0);
+
+    float theta2 = thetaS * thetaS;
+    float theta3 = theta2 * thetaS;
+    float T2 = T * T;
+
+    float xz = T2 * (0.00165 * theta3 - 0.00374 * theta2 + 0.00208 * thetaS)
+             + T  * (-0.02902 * theta3 + 0.06377 * theta2 - 0.03202 * thetaS + 0.00394)
+             + (0.11693 * theta3 - 0.21196 * theta2 + 0.06052 * thetaS + 0.25885);
+    float yz = T2 * (0.00275 * theta3 - 0.00610 * theta2 + 0.00316 * thetaS)
+             + T  * (-0.04214 * theta3 + 0.08970 * theta2 - 0.04153 * thetaS + 0.00515)
+             + (0.15346 * theta3 - 0.26756 * theta2 + 0.06670 * thetaS + 0.26688);
+
+    float A_Y = 0.1787 * T - 1.4630;
+    float B_Y = -0.3554 * T + 0.4275;
+    float C_Y = -0.0227 * T + 5.3251;
+    float D_Y = 0.1206 * T - 2.5771;
+    float E_Y = -0.0669 * T + 0.3703;
+
+    float A_x = -0.0193 * T - 0.2592;
+    float B_x = -0.0665 * T + 0.0008;
+    float C_x = -0.0004 * T + 0.2125;
+    float D_x = -0.0641 * T - 0.8989;
+    float E_x = -0.0033 * T + 0.0452;
+
+    float A_yc = -0.0167 * T - 0.2608;
+    float B_yc = -0.0950 * T + 0.0092;
+    float C_yc = -0.0079 * T + 0.2102;
+    float D_yc = -0.0441 * T - 1.6537;
+    float E_yc = -0.0109 * T + 0.0529;
+
+    float perezY = perezDistribution(A_Y, B_Y, C_Y, D_Y, E_Y, theta, gamma);
+    float perezYSun = perezDistribution(A_Y, B_Y, C_Y, D_Y, E_Y, 0.0, thetaS);
+    float Y = Yz * perezY / max(perezYSun, 1e-3);
+
+    float perezX = perezDistribution(A_x, B_x, C_x, D_x, E_x, theta, gamma);
+    float perezXSun = perezDistribution(A_x, B_x, C_x, D_x, E_x, 0.0, thetaS);
+    float x = xz * perezX / max(perezXSun, 1e-3);
+
+    float perezYc = perezDistribution(A_yc, B_yc, C_yc, D_yc, E_yc, theta, gamma);
+    float perezYcSun = perezDistribution(A_yc, B_yc, C_yc, D_yc, E_yc, 0.0, thetaS);
+    float y = yz * perezYc / max(perezYcSun, 1e-3);
+
+    vec3 base = max(xyYToRGB(x, y, max(Y, 0.0)), vec3(0.0));
+    base *= uRayleighStrength;
+
+    float sunsetAmt = smoothstep(0.0, 0.15, clamp(0.2 - sunAlt, 0.0, 0.2));
+    vec3 sunsetTint = mix(vec3(1.0), vec3(1.0, 0.6, 0.25), sunsetAmt);
+    base *= mix(vec3(1.0), sunsetTint, 0.35);
+
     vec3 nightZenith   = mix(uGround, uZenith, 0.2);
     vec3 nightHorizon  = mix(uGround, uHorizon, 0.3);
+    vec3 artisticBlend = mix(uZenith, uHorizon, hS);
+    vec3 manualSunset  = mix(uSunsetZenith, uSunsetHorizon, hS);
+    float dayFactor = saturate(sunAlt * 0.6 + 0.5);
+    base = mix(base, artisticBlend, 0.08 * dayFactor);
+    base = mix(base, manualSunset, sunsetAmt * 0.12);
 
-    // Koliko je sunset aktivan (0 dan, 1 sunset)
-    float sunsetAmt = smoothstep(0.0, 0.15, clamp(0.2 - sunAlt, 0.0, 0.2));
-    // Koliko je noć aktivna (0 dan, 1 noć)
+    float horizonScatter = pow(clamp(1.0 - dir.y, 0.0, 1.0), 1.5);
+    base = mix(base, base + uGround * 0.3, horizonScatter * uGroundScatter);
+    base = applySaturation(base, uSaturation);
+    vec3 horizonDesat = mix(base, applySaturation(base, 0.5), uHorizonDesat);
+    base = mix(base, horizonDesat, pow(1.0 - tCoord, 1.4));
+    base = mix(base, applySaturation(base, 0.9), uZenithDesat);
+    base = mix(base, vec3(0.035, 0.03, 0.03), clamp(uTurbidity * (1.0 - tCoord), 0.0, 1.0));
+
     float nightAmt = clamp(-sunAlt * 10.0, 0.0, 1.0);
-
-    // Gradijenti po visini
-    float t   = clamp(dir.y*0.5 + 0.5 + uHorizonLift, 0.0, 1.0);
-    float h   = 1.0 - t;
-    float hS  = smoothstep(0.0, 1.0, pow(h, 1.0 + uHorizonSoft));
-
-    // Pravi blend
-    vec3 curZenith   = mix(dayZenith,   sunsetZenith,  sunsetAmt);
-    vec3 curHorizon  = mix(dayHorizon,  sunsetHorizon, sunsetAmt);
-
-    // Night blend
-    curZenith  = mix(curZenith,  nightZenith,  nightAmt);
-    curHorizon = mix(curHorizon, nightHorizon, nightAmt);
-
-    vec3 base = mix(curZenith, curHorizon, hS);
-    float air = exp(-pow(dir.y * 1.2, 2.0));
-    base = mix(base, vec3(1.0, 0.85, 0.75), air * 0.15);
-
 
     // === 2. Procedural clouds, halo, sunset boost ===
     // (ostaje kao ranije – možeš da ga pojačaš po želji)
@@ -302,13 +374,6 @@ if (segLen > 0.0) {
     float warmBand = exp(-pow(abs(dir.y)/max(uWarmBandWidth,0.001), 2.0));
     base += uWarmBandStrength * warmBand * vec3(1.0, 0.58, 0.15);
 
-    base  = applySaturation(base, uSaturation);
-    base  = mix(base, applySaturation(base, 0.9), uZenithDesat);
-    base *= mix(0.7, 1.0, uRayleighStrength);
-    base = mix(base, vec3(0.035, 0.03, 0.03), clamp(uTurbidity*(1.0-hS), 0.0, 1.0));
-
-
-
     // === 3. Sun disk & Mie halo ===
     float cosToSun = dot(dir, sunV);
     float sunSize  = radians(uSunSizeDeg);
@@ -326,7 +391,8 @@ if (segLen > 0.0) {
     float mie = (1.0 - g*g) / pow(1.0 + g*g - 2.0*g*cosToSun, 1.5);
     mie *= 0.025 * (1.0 + 3.0*(1.0 - sunAlt)) * uSunHaloScale * uMieStrength;
     float halo = exp(-pow(ang / (sunSize * 6.0), 1.3));
-  sunLight += uSunColor * halo * uSunIntensity * 0.05;
+    sunLight += uSunColor * mie * uSunIntensity * 0.02;
+    sunLight += uSunColor * halo * uSunIntensity * 0.05;
 
     // === 4. Ground & bounce ===
     float skyMask    = smoothstep(-0.04, 0.02, dir.y);
@@ -342,7 +408,8 @@ if (segLen > 0.0) {
                 groundBase;
 
     // Fade celo nebo kad je noć (noć je nightAmt)
-    color = mix(color, nightZenith * 0.5, nightAmt*0.85);
+    vec3 nightColor = mix(nightZenith, nightHorizon, hS) * 0.5;
+    color = mix(color, nightColor, nightAmt*0.85);
 
     // linear HDR output (ACES tonemap ide kasnije u glavnom passu)
     vec3 hdrColor = color * uGlobalExposure;
