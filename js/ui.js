@@ -1,7 +1,7 @@
 export function renderBoatInfo(infoObj) {
   const container = document.getElementById("boat-info");
   container.innerHTML = `
-    <h3>Informacije o brodu</h3>
+    <h3>Boat Info</h3>
     <table class="info-table">
       <tbody>
         ${Object.entries(infoObj)

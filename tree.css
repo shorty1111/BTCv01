@@ -1148,6 +1148,25 @@ canvas,
   pointer-events: none;
   box-shadow: var(--shadow-soft);
 }
+#drawcall-meter {
+  position: fixed;
+  top: 120px;
+  right: 400px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--blur-medium);
+  -webkit-backdrop-filter: var(--blur-medium);
+  color: var(--primary);
+  padding: 6px 14px;
+  font-family: "JetBrains Mono", "Courier New", monospace;
+  font-size: 14px;
+  font-weight: bold;
+  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+  z-index: 9999;
+  pointer-events: none;
+  box-shadow: var(--shadow-soft);
+  white-space: nowrap;
+}
 #res-meter {
   position: fixed;
   top: 80px;

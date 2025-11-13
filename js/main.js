@@ -526,6 +526,48 @@ if (canvas.__glContext) {
   if (loseExt) loseExt.loseContext();
 }
 const gl = canvas.getContext("webgl2", { alpha: true, antialias: false });
+const drawStats = {
+  frame: 0,
+  drawCalls: 0,
+  perPass: {},
+  currentPass: "frame",
+};
+
+window.drawStats = drawStats;
+
+function beginFrameDrawStats() {
+  drawStats.frame += 1;
+  drawStats.drawCalls = 0;
+  drawStats.perPass = {};
+  drawStats.currentPass = "frame";
+}
+
+function beginDrawPass(name) {
+  drawStats.currentPass = name;
+  if (!(name in drawStats.perPass)) {
+    drawStats.perPass[name] = 0;
+  }
+}
+
+function registerDrawCall() {
+  drawStats.drawCalls += 1;
+  const pass = drawStats.currentPass;
+  if (pass) {
+    drawStats.perPass[pass] = (drawStats.perPass[pass] || 0) + 1;
+  }
+}
+
+const originalDrawElements = gl.drawElements.bind(gl);
+gl.drawElements = function patchedDrawElements(...args) {
+  registerDrawCall();
+  return originalDrawElements(...args);
+};
+
+const originalDrawArrays = gl.drawArrays.bind(gl);
+gl.drawArrays = function patchedDrawArrays(...args) {
+  registerDrawCall();
+  return originalDrawArrays(...args);
+};
 
 canvas.__glContext = gl;
 if (!gl) alert("WebGL2 nije podržan u ovom pregledaču.");
@@ -548,7 +590,7 @@ function createDepthTexture(w, h) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   return tex;
 }
-  let ssaa = 1.3;
+  let ssaa = 1.2;
 
 function resizeCanvas() {
 
@@ -564,14 +606,14 @@ function resizeCanvas() {
   let maxRenderW;
   const isMobile = /Mobi|Android|iPhone|iPad|Tablet/i.test(navigator.userAgent);
   if (isMobile) {
-    maxRenderW = Math.min(cssW * 1.0, 1080);
+    maxRenderW = Math.min(cssW * 1.0, 2048);
   } else {
     maxRenderW = cssW;
   }
 
   let targetW = Math.min(cssW, maxRenderW);
   let targetH = Math.round(targetW / aspect);
-  const dpr = 1.0;
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.0);
   const realW = Math.round(targetW * ssaa * dpr);
   const realH = Math.round(targetH * ssaa * dpr);
 
@@ -604,6 +646,7 @@ function resizeCanvas() {
   const resMeter = document.getElementById("res-meter");
   if (resMeter) {
     resMeter.textContent = `Render: ${targetW}x${targetH} → ${realW}x${realH} (SSAA ${ssaa.toFixed(2)}x)`;
+    resMeter.classList.remove("hidden");
   }
 
   if (window.sceneColorTex) {
@@ -1553,6 +1596,7 @@ function computeLightBounds(min, max, lightView) {
 }
 
 function render() {
+  beginFrameDrawStats();
   const timeNow = performance.now() * 0.001; // koristi u SSAO i vodi
   let reflView = null;
   let reflProj = proj;
@@ -1601,6 +1645,7 @@ if (Math.abs(SUN.dir[0] - lastSunDir[0]) > 0.0001 ||
 
 // 2️⃣ Ako treba — izračunaj shadow mapu, inače preskoči
 if (shadowDirty) {
+  beginDrawPass("shadow-map");
   gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFBO);
   gl.viewport(0, 0, SHADOW_RES, SHADOW_RES);
   gl.clear(gl.DEPTH_BUFFER_BIT);
@@ -1666,6 +1711,7 @@ let reflCam = null;
 
 // ✅ UVEK izračunaj reflView
 if (showWater) {
+  beginDrawPass("reflection");
   reflCam = getReflectedCamera(camWorld, camera.pan, [0, 1, 0]);
   reflView = reflCam.view;
   reflProj = proj;
@@ -1742,7 +1788,7 @@ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   
   gl.enable(gl.DEPTH_TEST);
   gl.depthMask(true);
-  
+  beginDrawPass("g-buffer");
   gl.useProgram(gBufferProgram);
 
   gl.uniformMatrix4fv(gBufferUniforms.uProjection, false, proj);
@@ -1790,6 +1836,7 @@ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
   
 if (ssaoDirty) {
+  beginDrawPass("ssao");
   gl.bindFramebuffer(gl.FRAMEBUFFER, ssaoFBO);
   gl.useProgram(ssaoProgram);
 
@@ -1825,6 +1872,7 @@ if (ssaoDirty) {
   gl.viewport(0, 0, canvas.width, canvas.height);
 
   // === BLUR SSAO ===
+  beginDrawPass("ssao-blur");
   gl.bindFramebuffer(gl.FRAMEBUFFER, window.ssaoBlurFBO);
   gl.useProgram(window.ssaoBlurProgram);
   gl.activeTexture(gl.TEXTURE0);
@@ -1843,6 +1891,7 @@ if (ssaoDirty) {
     // --- Proceduralno nebo ---
     gl.bindFramebuffer(gl.FRAMEBUFFER, finalFBO);
     gl.viewport(0, 0, canvas.width, canvas.height);
+    beginDrawPass("sky");
     drawSky(gl, finalFBO, view, proj, SUN.dir, {
       ...DEFAULT_SKY,
       sunColor: SUN.color,
@@ -1851,6 +1900,7 @@ if (ssaoDirty) {
     });
 
       // --- Lighting pass (PBR shading) ---
+    beginDrawPass("lighting");
     gl.useProgram(program);
 
     // --- Teksture ---
@@ -1905,6 +1955,7 @@ if (ssaoDirty) {
     sceneChanged = false; // ✅ reset
   }
 if (showWater) {
+  beginDrawPass("water");
   // NEMOJ PONOVO bindFramebuffer(finalFBO)! (VEĆ SI U njemu)
   gl.viewport(0, 0, canvas.width, canvas.height);
   gl.enable(gl.DEPTH_TEST);
@@ -1944,6 +1995,7 @@ if (showWater) {
 
   // === 11. Overlay / dimenzije (ako su uključene) ===
   if (showDimensions && boatLengthLine && boatMin && boatMax) {
+    beginDrawPass("dimensions");
     gl.useProgram(lineProgram);
     setMatrices(lineProgram);
     gl.uniform3fv(gl.getUniformLocation(lineProgram, "uColor"), [1, 1, 1]);
@@ -2034,6 +2086,7 @@ gl.uniform1i(glassUniforms.uEnvMap, 0);
 gl.uniform3fv(glassUniforms.uCameraPos, camWorld);
 
 // PASS 1: BACK-FACES PRVI
+beginDrawPass("transparent-backfaces");
 gl.cullFace(gl.FRONT);
 
 for (const m of transparentMeshes) {
@@ -2049,6 +2102,7 @@ for (const m of transparentMeshes) {
 }
 
 // PASS 2: FRONT-FACES POSLE
+beginDrawPass("transparent-frontfaces");
 gl.cullFace(gl.BACK);
 for (const m of transparentMeshes) {
   if (m.opacity > 0.95) continue;
@@ -2069,6 +2123,7 @@ gl.depthFunc(gl.LESS);
 gl.cullFace(gl.BACK);
 
 // --- tonemap ---
+beginDrawPass("tonemap");
 gl.bindFramebuffer(gl.FRAMEBUFFER, toneMapFBO);
 gl.viewport(0, 0, canvas.width, canvas.height);
 gl.useProgram(acesProgram);
@@ -2082,6 +2137,7 @@ gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
 // === SSR OVERLAY ===
+beginDrawPass("ssr");
 gl.bindFramebuffer(gl.FRAMEBUFFER, ssrOutputFBO);
 gl.viewport(0, 0, canvas.width, canvas.height);
 gl.clearColor(0, 0, 0, 1);
@@ -2111,7 +2167,7 @@ gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 gl.disable(gl.BLEND);
 gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 // --- FXAA ---
-
+beginDrawPass("fxaa");
 gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 gl.viewport(0, 0, canvas.width, canvas.height);
 gl.useProgram(fxaaProgram);
@@ -2131,6 +2187,18 @@ gl.disable(gl.BLEND);
 gl.depthMask(true);
 gl.depthFunc(gl.LESS);
 gl.enable(gl.CULL_FACE);
+const drawCallsValue = document.getElementById("drawcalls-value");
+if (drawCallsValue) {
+  drawCallsValue.textContent = String(drawStats.drawCalls);
+}
+const drawMeter = document.getElementById("drawcall-meter");
+if (drawMeter) {
+  const breakdown = Object.entries(drawStats.perPass)
+    .map(([name, value]) => `${name}: ${value}`)
+    .join("\n");
+  drawMeter.title = breakdown;
+  drawMeter.classList.remove("hidden");
+}
 camera.moved = false;
 }
 
@@ -2148,7 +2216,11 @@ function renderLoop(now) {
     lastTime = now;
 
     const perfDiv = document.getElementById("fps-value");
-    if (perfDiv) perfDiv.textContent = fps;
+     if (perfDiv) {
+      perfDiv.textContent = fps;
+      const fpsMeter = document.getElementById("fps-meter");
+      if (fpsMeter) fpsMeter.classList.remove("hidden");
+    }
   }
 
   requestAnimationFrame(renderLoop);
