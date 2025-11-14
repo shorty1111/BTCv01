@@ -6,7 +6,7 @@ uniform mat4  uProjection, uView, uModel;
 uniform float uTime;
 uniform vec3  uBoatPos;
 uniform vec3  uCameraPos;
-uniform vec2  uGridOffset;
+
 
 /* talasi iz JS-a */
 uniform int   uWaveCount;
@@ -91,7 +91,8 @@ void main(){
     float mask=clamp(aWaveMask,0.0,1.0);
 
     vec3 localPos=(uModel*vec4(aPos,1.0)).xyz;
-    vec3 basePos=localPos+vec3(uGridOffset.x,0.0,uGridOffset.y);
+    vec2 gridOffset = aInstanceData.xy;
+    vec3 basePos = localPos + vec3(gridOffset.x, 0.0, gridOffset.y);
 
     // udaljenost kamere od vertiksa (world-space)
     float distCam=distance(uCameraPos.xz,basePos.xz);

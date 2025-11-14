@@ -65,12 +65,13 @@ void main() {
     R = normalize(R + amp * (T * cos(angle) + B * sin(angle)));
 
     // Adaptive step size based on reflection angle
-    float adaptStep = mix(0.03, BASE_STEP, clamp(abs(R.z), 0.0, 1.0));
+    float adaptStep = mix(0.08, BASE_STEP, clamp(abs(R.z), 0.0, 1.0));
     vec3 ray = posV + N * mix(0.02, 0.1, 1.0 - NdotV);
     vec3 stepV = R * adaptStep;
 
     // Roughness-based step count
-    int steps = int(mix(10.0, float(MAX_STEPS), 1.0 - roughness));
+    float zoomFactor = clamp(abs(posV.z) / 30.0, 0.3, 1.0);
+    int steps = int(mix(5.0, float(MAX_STEPS), zoomFactor));
 
     vec3 hitColor = vec3(0.0);
     vec2 hitUV = vec2(0.0);
@@ -143,7 +144,7 @@ void main() {
     float F = F0 + (1.0 - F0) * fresnel;
 
     vec2 screenCenter = hitUV * 2.0 - 1.0;
-    float screenFade = 1.0 - pow(max(abs(screenCenter.x), abs(screenCenter.y)), 1.5);
+    float screenFade = 1.0 - pow(max(abs(screenCenter.x), abs(screenCenter.y)), 1.0);
     float metallicBoost = mix(1.0, 1.5, metallic);
 
     float conf = 1.0 - float(i) / float(MAX_STEPS);

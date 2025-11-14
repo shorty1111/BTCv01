@@ -17,11 +17,12 @@ const WATER_CONFIG = {
   centerSize: 100.0,  // fizička veličina centralnog patcha
   centerDiv: 120,     // gustina centralnog patcha (vertexi po ivici)
   ringCount: 12,       // koliko "prstenova" mreže oko centralnog
-  ringDivFalloff: 0.5 // koliko % opada gustina (0.5 = 50%)
 };
 
+let lodMeshes = [];
+let lodInstances = [];
+let LOD_DIVS = [];
 let waterProgram = null;
-let vao = null;
 let waterNormalTex = null;
 
 // --- OPTIMIZOVANO BINDOVANJE TEKSTURA ---
@@ -244,26 +245,34 @@ const waveUniforms = [
 
 for (const name of waveUniforms) {
   waterUniforms[name] = gl.getUniformLocation(waterProgram, name);
-}
-const ringData = createWaterRings(WATER_CONFIG);
-// izračunaj ukupan broj verteksa
-let totalVerts = 0;
-for (const { grid } of ringData) {
-  totalVerts += grid.vertices.length / 6; // svaki vertex ima 6 float-ova
-}
-vao = []; // niz svih ploča
+}// === LOD WATER SYSTEM ===
 
-for (const { grid, offset } of ringData) {
-  const vaoObj = gl.createVertexArray();
-  gl.bindVertexArray(vaoObj);
+// parametri
+const falloff = 0.5;   // 60% manje vertexa po prstenu
+const maxLOD = WATER_CONFIG.ringCount;
 
+// priprema
+lodMeshes = [];
+lodInstances = [];
+
+// LOD petlja – jedan LOD = jedan dist nivo
+for (let lod = 0; lod <= maxLOD; lod++) {
+
+  // gustoća verteksa za ovaj ring:
+  const div = Math.max(
+    4,
+    Math.floor(WATER_CONFIG.centerDiv * Math.pow(falloff, lod))
+  );
+  LOD_DIVS[lod] = div;
+  const grid = createWaterGrid(WATER_CONFIG.centerSize, div);
+
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+
+  // VBO
   const vbo = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
   gl.bufferData(gl.ARRAY_BUFFER, grid.vertices, gl.STATIC_DRAW);
-
-  const ebo = gl.createBuffer();
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo);
-  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, grid.indices, gl.STATIC_DRAW);
 
   const stride = 6 * 4;
   gl.enableVertexAttribArray(0);
@@ -273,12 +282,49 @@ for (const { grid, offset } of ringData) {
   gl.enableVertexAttribArray(2);
   gl.vertexAttribPointer(2, 1, gl.FLOAT, false, stride, 5 * 4);
 
-vao.push({
-  vao: vaoObj,
-  count: grid.indices.length,
-  offset: offset,
-  indexType: (grid.indices instanceof Uint32Array) ? 32 : 16,
-});
+  // EBO
+  const ebo = gl.createBuffer();
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, grid.indices, gl.STATIC_DRAW);
+
+  // === INSTANCE BUFFER ZA OVAJ LOD ===
+  const inst = [];
+  const step = WATER_CONFIG.centerSize;
+
+  for (let z = -WATER_CONFIG.ringCount; z <= WATER_CONFIG.ringCount; z++) {
+    for (let x = -WATER_CONFIG.ringCount; x <= WATER_CONFIG.ringCount; x++) {
+
+      const dist = Math.max(Math.abs(x), Math.abs(z));
+
+      // svaki dist je jedan LOD
+      if (dist !== lod) continue;
+
+      inst.push(
+        x * step,
+        z * step,
+        1.0,
+        1.0
+      );
+    }
+  }
+
+  const instVBO = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, instVBO);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(inst), gl.STATIC_DRAW);
+
+  gl.enableVertexAttribArray(3);
+  gl.vertexAttribPointer(3, 4, gl.FLOAT, false, 4 * 4, 0);
+  gl.vertexAttribDivisor(3, 1);
+
+  gl.bindVertexArray(null);
+
+  lodMeshes.push({
+    vao,
+    count: grid.indices.length,
+    type: (grid.indices instanceof Uint32Array ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT)
+  });
+
+  lodInstances.push(inst.length / 4);
 }
 
 gl.bindVertexArray(null);
@@ -305,6 +351,36 @@ gl.bindVertexArray(null);
   gl.uniform1f(waterUniforms.uCubeMaxMip, 8.0);
   gl.uniform3fv(waterUniforms.uShallowColor, [0.2, 0.85, 0.7]);
   gl.uniform3fv(waterUniforms.uDeepColor, [0.02, 0.035, 0.05]);
+  // === DEBUG: ISPIS UKUPNOG BROJA VERTOVA ===
+(function debugWaterVerts() {
+  let totalVerts = 0;
+
+  for (let i = 0; i < lodMeshes.length; i++) {
+    const lod = lodMeshes[i];
+
+    // broj verteksa u jednom grid-u = count vert array / stride 6*4 bytes
+    // ali mi znamo direktno: (div+1)*(div+1)
+    const div = LOD_DIVS[i];
+    const vertsPerGrid = (div + 1) * (div + 1);
+
+    const grids = lodInstances[i]; // broj instanci tog LOD-a
+
+    const vertsLOD = vertsPerGrid * grids;
+
+    console.log(
+      `%cLOD${i}: div=${div}, instanci=${grids}, vertsPerGrid=${vertsPerGrid}, totalLODVerts=${vertsLOD}`,
+      "color:#4ad;"
+    );
+
+    totalVerts += vertsLOD;
+  }
+
+  console.log(
+    "%cUKUPAN BROJ VERTOVA VODE (sve instance + LOD): " + totalVerts,
+    "color:#f80;font-size:15px;font-weight:bold;"
+  );
+})();
+
 }
 
 // === helper za učitavanje 2D teksture ===
@@ -427,13 +503,27 @@ if (window.reflectionSize) {
   // === CRTANJE VODE ===
   gl.enable(gl.CULL_FACE);
   gl.cullFace(gl.FRONT); // možeš menjati na BACK po potrebi
-for (const ring of vao) {
-  gl.uniform2fv(waterUniforms.uGridOffset, ring.offset);
-  gl.bindVertexArray(ring.vao);
+for (let i = 0; i < lodMeshes.length; i++) {
+  const m = lodMeshes[i];
+  const instCount = lodInstances[i];
 
-  const indexType = (ring.indexType === 32) ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT;
-  gl.drawElements(gl.TRIANGLES, ring.count, indexType, 0);
+  if (instCount === 0) continue;
+
+  gl.bindVertexArray(m.vao);
+
+  gl.drawElementsInstanced(
+    gl.TRIANGLES,
+    m.count,
+    m.type,
+    0,
+    instCount
+  );
 }
+
+gl.bindVertexArray(null);
+
+
+gl.bindVertexArray(null);
   // === VRATI STANJE ===
   gl.disable(gl.CULL_FACE);
   gl.disable(gl.BLEND);

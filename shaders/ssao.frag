@@ -10,14 +10,14 @@ uniform sampler2D gNormal;
 uniform sampler2D tNoise;
 uniform mat4 uView;
 uniform mat4 uProjection;
-uniform vec3 samples[64];
+uniform vec3 samples[48];
 uniform vec4 uViewportRect; // x = umin.x, y = umin.y, z = width, w = height
 uniform float uFrame;
 uniform vec2  uNoiseScale;
 
 #define KERNEL_SIZE 64
 const float bias     = 0.025;
-const float powerAO  = 1.8;
+const float powerAO  = 1.5;
 
 /* ---------- main ---------- */
 void main() {
@@ -35,10 +35,10 @@ void main() {
 
     // --- Camera-depth adaptacija ---
     float camDepth = -fragPos.z;
-    float depthFactor = clamp(camDepth / 3.0, 0.0, 1.0);
-    float radius = mix(0.1, 1.0, depthFactor);
-    float adapt  = mix(1.0, 1.0, clamp(camDepth / 3.0, 0.0, 1.0));
-    int sampleCount = int(mix(48.0, 64.0, depthFactor));
+    float depthFactor = clamp(camDepth / 10.0, 0.0, 1.0);
+    float radius = mix(1.0,1.5, depthFactor);
+    float adapt  = mix(1.0, 1.0, clamp(camDepth / 10.0, 0.0, 1.0));
+    int sampleCount = int(mix(32.0, 48.0, depthFactor));
 
     float occlusion = 0.0;
 

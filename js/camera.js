@@ -182,6 +182,12 @@ export function initCamera(canvas) {
   }, { passive: false });
 
 canvas.addEventListener("touchmove", (e) => {
+    // ❗ FIX: Ako si pincha'o i ostao 1 prst, NIKAKO nemoj da rotiraš
+  if (e.touches.length === 1 && pinchLastDist !== null) {
+    touchDragging = false;
+    pinchLastDist = null;
+    return;
+  }
   if (e.touches.length === 1 && touchDragging) {
     const dx = e.touches[0].clientX - touchLastX;
     const dy = e.touches[0].clientY - touchLastY;
@@ -228,14 +234,20 @@ canvas.addEventListener("touchmove", (e) => {
   e.preventDefault();
 }, { passive: false });
 
-  canvas.addEventListener("touchend", (e) => {
+canvas.addEventListener("touchend", (e) => {
     if (e.touches.length === 0) {
       touchDragging = false;
       pinchLastDist = null;
       touchPanLastMid = null;
     }
+    if (e.touches.length === 1) {
+      // ❗ Ako si iz pinch zoom-a izašao u jedan prst → blokiraj rotate
+      touchDragging = false;
+      pinchLastDist = null;
+    }
     e.preventDefault();
-  }, { passive: false });
+}, { passive: false });
+
 
   // === RETURN API ===
   return {
