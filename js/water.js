@@ -350,7 +350,7 @@ gl.bindVertexArray(null);
   gl.uniform1f(waterUniforms.uBottomOffsetM, 4.0);
   gl.uniform1f(waterUniforms.uCubeMaxMip, 8.0);
   gl.uniform3fv(waterUniforms.uShallowColor, [0.2, 0.85, 0.7]);
-  gl.uniform3fv(waterUniforms.uDeepColor, [0.02, 0.035, 0.05]);
+  gl.uniform3fv(waterUniforms.uDeepColor, [0.01, 0.02, 0.03]);
   // === DEBUG: ISPIS UKUPNOG BROJA VERTOVA ===
 (function debugWaterVerts() {
   let totalVerts = 0;

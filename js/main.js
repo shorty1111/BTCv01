@@ -27,7 +27,7 @@ const textureCachePromises = new Map();
 window.textureCache = textureCache;
 
 let shadowFBO, shadowDepthTex;
-const SHADOW_RES = 2048;
+const SHADOW_RES = 4096;
 
 async function preloadAllConfigTextures() {
   const allPaths = [];
@@ -132,7 +132,7 @@ function updateSun() {
   ];
 
   const fade = Math.pow(Math.max(alt, 0.0), 0.4);
-  SUN.intensity = 1.0 * fade; 
+  SUN.intensity = 1.30 * fade; 
 
   if (alt < 0.0) {
     const glow = smoothstep(-0.3, 0.0, alt);
@@ -590,7 +590,7 @@ function createDepthTexture(w, h) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   return tex;
 }
-  let ssaa = 1.2;
+  let ssaa = 1.3;
 
 function resizeCanvas() {
 

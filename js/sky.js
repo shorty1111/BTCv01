@@ -7,6 +7,47 @@ let skyVAO = null;
 let skyIdxCount = 0;
 let skyUniforms = {}; // ⚙️ NOVO
 
+export const STUDIO_SKY = {
+  // mekani studio gradijent
+  zenith: [0.85, 0.85, 0.88],     // svetlije gore
+  horizon: [0.78, 0.78, 0.80],    // malo tamnije na horizontu
+  ground: [0.72, 0.72, 0.74],     // neutralno sivo
+
+  sunsetZenith: [0.85, 0.85, 0.88],
+  sunsetHorizon: [0.78, 0.78, 0.80],
+
+  worldLocked: 1,
+  model: [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1],
+
+  // SUNCE TOTALNO UGASENO
+  sunColor: [1,1,1],
+  hideSun: true,
+
+  // atmosferski efekti = 0
+  turbidity: 0.0,
+  sunSizeDeg: 0.0,
+  sunHaloScale: 0.0,
+  horizonSoft: 0.0,
+  horizonLift: 0.0,
+  saturation: 1.0,
+  horizonDesat: 0.0,
+  horizonWarmth: 0.0,
+
+  // bez oblaka
+  milkBandStrength: 0.0,
+  warmBandStrength: 0.0,
+
+  // bez Rayleigh/Mie
+  rayleighStrength: 0.0,
+  mieStrength: 0.0,
+
+  zenithDesat: 0.0,
+  groundScatter: 0.0,
+
+  globalExposure: 1.0,
+};
+
+
 // ===== Default sky params (bez SUN — njega prosleđuje main.js) =====
 export const DEFAULT_SKY = {
   zenith: [0.12, 0.25, 0.6],
@@ -332,7 +373,7 @@ if (segLen > 0.0) {
     float skyMask    = smoothstep(-0.04, 0.02, dir.y);
     float groundMask = 1.0 - skyMask;
 
-    vec3 groundBase   = vec3(0.01,0.01,0.01) * groundMask * uSunIntensity;
+    vec3 groundBase = uGround * groundMask;  
     float below       = smoothstep(0.0, 0.25, max(0.0, -dir.y));
 
     // === 5. Finalna kompozicija ===

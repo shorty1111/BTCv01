@@ -15,7 +15,7 @@ in vec3 vTBN_N;
 out vec4 fragColor;
 
 // === UNIFORMI ===
-uniform samplerCube uEnvTex;
+// uniform samplerCube uEnvTex;
 uniform sampler2D   uReflectionTex;
 uniform sampler2D   waterNormalTex;
 uniform float       uTime;
@@ -33,14 +33,14 @@ uniform float       uBottomOffsetM;
 uniform float       uGlobalExposure;
 
 // === PARAMETRI ===
-const float DEPTH_SCALE     = 6.3;
+const float DEPTH_SCALE     = 4.20;
 const float DEPTH_CURVE     = 0.2;
 const float SSS_STRENGTH    = 100.0;
-const float SSS_WRAP        = 1.3;
+const float SSS_WRAP        = 1.2;
 const vec3  SSS_FALLOFF     = vec3(0.0431, 0.0667, 0.0667);
 const float CREST_INTENSITY = 0.01;
 const float CREST_BLEND     = 0.01;
-const float DEPTH_CONTRAST  = 1.9;
+
 
 vec2 getPlanarReflectionUV(vec3 worldPos) {
     vec4 rc = uReflectionMatrix * vec4(worldPos, 1.0);
@@ -121,9 +121,9 @@ void main() {
     vec3 crestColor = mix(baseColor, crestTint, crest * CREST_INTENSITY);
     float sunHeight = clamp(dot(uSunDir, vec3(0.0, 1.0, 0.0)), 0.0, 1.0);
     baseColor = mix(baseColor, crestColor, CREST_BLEND);
-    baseColor *= mix(0.3, 1.0, sunHeight);
+    baseColor *= mix(0.8, 1.0, sunHeight);
 
-    baseColor = mix(baseColor, baseColor * vec3(0.25, 0.3, 0.35), depthFactor * DEPTH_CONTRAST);
+
 
     vec3 refracted = mix(baseColor, baseColor + sssLight, 0.8);
 
@@ -131,7 +131,7 @@ void main() {
     float lowAngleMix = pow(1.0 - NdotV, 2.0);
     vec3 color = mix(refracted, planarReflection, fresnel * mix(1.0, 0.5, lowAngleMix));
 
-    color += sunSpecular + glintColor;
+    color += sunSpecular+glintColor; //+glintColor
  
     fragColor = vec4(vec3(color), 1.0);
 }

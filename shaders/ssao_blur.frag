@@ -11,7 +11,7 @@ void main() {
     float ao = 0.0;
 
     // centar
-    ao += texture(tSSAO, vUV).a * 0.4;
+    ao += texture(tSSAO, vUV).a * 0.2;
 
     // 4 dijagonale
     ao += texture(tSSAO, vUV + uTexelSize * vec2(1.0, 1.0)).a * 0.15;
@@ -19,5 +19,5 @@ void main() {
     ao += texture(tSSAO, vUV + uTexelSize * vec2(1.0, -1.0)).a * 0.15;
     ao += texture(tSSAO, vUV + uTexelSize * vec2(-1.0, -1.0)).a * 0.15;
 
-    fragColor = vec4(vec3(1.0), ao);
+    fragColor = vec4(0.0, 0.0, 0.0, ao);
 }

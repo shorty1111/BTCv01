@@ -1469,3 +1469,7 @@ html, body {
 .thumb[src*="part_placeholder"] {
   transform: scale(0.5);
 }
+body.studio-mode .btn-weather {
+    opacity: 0.3;
+    pointer-events: none;
+}
