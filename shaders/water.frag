@@ -91,8 +91,6 @@ void main() {
     vec3 glintColor = glint * uSunColor * uSunIntensity;
 
     vec3 R = normalize(reflect(-V, N));
-    float horizonFade = pow(clamp(1.0 - abs(dot(N, V)), 0.0, 1.0), 0.1);
-    float reflectionFade = mix(0.0, 0.8, horizonFade);
 
     vec3 baseColor = mix(uShallowColor, uDeepColor, pow(depthFactor, DEPTH_CURVE)) * uSunColor;
 
@@ -106,8 +104,7 @@ void main() {
     reflUV = clamp(reflUV + distortion, 0.001, 0.999);
 
     vec3 planarReflection = texture(uReflectionTex, reflUV).rgb;
-    vec3 envRefl = textureLod(uEnvTex, R, uRoughness).rgb;
-    envRefl = mix(envRefl, planarReflection, reflectionFade);
+
 
     float backLit   = clamp((dot(-L, N) + SSS_WRAP) / (1.0 + SSS_WRAP), 0.0, 1.0);
     backLit         = smoothstep(0.4, 0.98, backLit);
@@ -129,13 +126,12 @@ void main() {
     baseColor = mix(baseColor, baseColor * vec3(0.25, 0.3, 0.35), depthFactor * DEPTH_CONTRAST);
 
     vec3 refracted = mix(baseColor, baseColor + sssLight, 0.8);
-    vec3 reflected = envRefl * uSpecularStrength * reflectionFade;
+
 
     float lowAngleMix = pow(1.0 - NdotV, 2.0);
-    vec3 color = mix(refracted, reflected, fresnel * mix(1.0, 0.5, lowAngleMix));
+    vec3 color = mix(refracted, planarReflection, fresnel * mix(1.0, 0.5, lowAngleMix));
 
     color += sunSpecular + glintColor;
-    color *= uGlobalExposure;
-
-    fragColor = vec4(color, 1.0);
+ 
+    fragColor = vec4(vec3(color), 1.0);
 }

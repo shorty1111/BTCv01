@@ -1249,7 +1249,7 @@ async function initShaders() {
     // === 3. Init PBR konstantnih uniforma ===
     gl.useProgram(program);
     gl.uniform1f(pbrUniforms.uLightSize, 0.00025);
-    window.globalExposure = 1.3; // globalni exposure za sve svetlo
+    window.globalExposure = 1.0; // globalni exposure za sve svetlo
     gl.uniform1f(pbrUniforms.uGlobalExposure, window.globalExposure);
     gl.uniform2f(pbrUniforms.uShadowMapSize, SHADOW_RES, SHADOW_RES);
     gl.uniform1f(pbrUniforms.uNormalBias, 0.005);
