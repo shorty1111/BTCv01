@@ -38,8 +38,8 @@ const float DEPTH_CURVE     = 0.1;
 const float SSS_STRENGTH    = 100.0;
 const float SSS_WRAP        = 1.2;
 const vec3  SSS_FALLOFF     = vec3(0.0431, 0.0667, 0.0667);
-const float CREST_INTENSITY = 0.01;
-const float CREST_BLEND     = 0.01;
+const float CREST_INTENSITY = 0.03;
+const float CREST_BLEND     = 0.03;
 
 
 vec2 getPlanarReflectionUV(vec3 worldPos) {
@@ -60,21 +60,23 @@ void main() {
     float depthM      = abs((vWorldPos.y - uWaterLevel) - uBottomOffsetM);
     float depthFactor = clamp(depthM / DEPTH_SCALE, 0.0, 1.0);
 
+  // === NORMALS (čistije, stabilnije) ===
     vec2 scroll1 = vec2(0.02,  0.05) * uTime;
-    vec2 scroll2 = vec2(-0.015, 0.01) * uTime;
-    vec2 scroll3 = vec2(0.07, -0.03) * uTime * 0.5;
+    vec2 scroll2 = vec2(-0.015, 0.01) * uTime * 0.8;
 
-    vec3 n1 = texture(waterNormalTex, vUV * 2.0 + scroll1).xyz * 2.0 - 1.0;
-    vec3 n2 = texture(waterNormalTex, vUV * 0.8 + scroll2).xyz * 2.0 - 1.0;
-    vec3 n3 = texture(waterNormalTex, vUV * 6.5 + scroll3).xyz * 2.0 - 1.0;
-    vec3 tangentNormal = normalize((n1 * 0.5 + n2 * 0.6 + n3 * 0.3) / 1.4);
+    vec3 n1 = texture(waterNormalTex, vUV * 1.6 + scroll1).xyz * 2.0 - 1.0;
+    vec3 n2 = texture(waterNormalTex, vUV * 0.7 + scroll2).xyz * 2.0 - 1.0;
 
-    float depthEffect = clamp(depthM / (DEPTH_SCALE * 3.0), 0.0, 1.0);
-    tangentNormal.xy *= mix(1.0, 0.7, depthEffect);
+    // simple + stable
+    vec3 tangentNormal = normalize(n1 + 0.5 * n2);
 
+    // flatten with depth
+    float depthEffect = depthFactor;
+    tangentNormal.xy *= mix(1.0, 0.75, depthEffect);
+
+    // TBN
     mat3 TBN = mat3(normalize(vTBN_T), normalize(vTBN_B), normalize(vTBN_N));
     vec3 N = normalize(TBN * tangentNormal);
-
     vec3 V = normalize(uCameraPos - vWorldPos);
     vec3 L = normalize(uSunDir);
     float NdotV = clamp(dot(N, V), 0.0, 1.0);
@@ -123,10 +125,7 @@ void main() {
     baseColor = mix(baseColor, crestColor, CREST_BLEND);
     baseColor *= mix(0.8, 1.0, sunHeight);
 
-
-
     vec3 refracted = mix(baseColor, baseColor + sssLight, 0.8);
-
 
     float lowAngleMix = pow(1.0 - NdotV, 2.0);
     vec3 color = mix(refracted, planarReflection, fresnel * mix(1.0, 0.5, lowAngleMix));

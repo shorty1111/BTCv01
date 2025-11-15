@@ -14,7 +14,7 @@ uniform vec2 uResolution;
 const float BASE_STEP = 0.08;
 const float THICKNESS = 0.6;
 const int MAX_STEPS = 40;
-const float MAX_DIST = 70.0;
+const float MAX_DIST = 40.0;
 
 vec3 getPos(vec2 uv) { return texture(gPosition, uv).rgb; }
 vec3 getNormal(vec2 uv) { return normalize(texture(gNormal, uv).rgb); }
@@ -32,6 +32,8 @@ vec2 getStableHash(vec2 uv) {
     float h2 = fract(sin(dot(cell + 13.37, vec2(41.23,95.78))) * 24634.6345);
     return vec2(h1, h2);
 }
+
+float saturate(float v) { return clamp(v, 0.0, 1.0); }
 
 void main() {
     vec3 posV = getPos(vUV);
@@ -64,14 +66,15 @@ void main() {
     vec3 B = cross(R, T);
     R = normalize(R + amp * (T * cos(angle) + B * sin(angle)));
 
-    // Adaptive step size based on reflection angle
-    float adaptStep = mix(0.08, BASE_STEP, clamp(abs(R.z), 0.0, 1.0));
-    vec3 ray = posV + N * mix(0.02, 0.1, 1.0 - NdotV);
+    float thickness = mix(THICKNESS * 0.35, THICKNESS, saturate(1.0 - roughness * 0.8));
+    float jitter = (hash.x - 0.5) * BASE_STEP;
+    float adaptStep = mix(0.05, BASE_STEP, saturate(abs(R.z)));
+    vec3 ray = posV + N * mix(0.02, 0.1, 1.0 - NdotV) + R * jitter;
     vec3 stepV = R * adaptStep;
 
-    // Roughness-based step count
     float zoomFactor = clamp(abs(posV.z) / 30.0, 0.3, 1.0);
-    int steps = int(mix(5.0, float(MAX_STEPS), zoomFactor));
+    float roughnessFactor = mix(1.0, 0.4, roughness);
+    int steps = int(mix(5.0, float(MAX_STEPS), zoomFactor * roughnessFactor));
 
     vec3 hitColor = vec3(0.0);
     vec2 hitUV = vec2(0.0);
@@ -91,9 +94,9 @@ void main() {
         float mip = float(i) / float(MAX_STEPS) * 5.0;
         vec3 sceneP = textureLod(gPosition, uv, mip).rgb;
         float dz = ray.z - sceneP.z;
-        if (abs(dz) > THICKNESS) continue;
+        if (abs(dz) > thickness) continue;
 
-        if (dz < 0.0 && dz > -THICKNESS) {
+        if (dz < 0.0 && dz > -thickness) {
             if (sceneP.z == 0.0) break;
             
             for (int j = 0; j < 2; j++) {
@@ -147,9 +150,10 @@ void main() {
     float screenFade = 1.0 - pow(max(abs(screenCenter.x), abs(screenCenter.y)), 1.0);
     float metallicBoost = mix(1.0, 1.5, metallic);
 
-    float conf = 1.0 - float(i) / float(MAX_STEPS);
+    float conf = 1.0 - float(i) / float(max(steps, 1));
     float blend = hit * F * gloss * screenFade * metallicBoost * conf;
     float edgeFade = smoothstep(0.0, 0.1, min(min(vUV.x, vUV.y), min(1.0 - vUV.x, 1.0 - vUV.y)));
     blend *= edgeFade;
-    fragColor = vec4(mix(base, hitColor, blend), 1.0);
+    vec3 reflected = mix(base, hitColor, blend);
+    fragColor = vec4(reflected, 1.0);
 }

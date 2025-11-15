@@ -590,7 +590,7 @@ function createDepthTexture(w, h) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   return tex;
 }
-  let ssaa = 1.3;
+  let ssaa = 1.2;
 
 function resizeCanvas() {
 
