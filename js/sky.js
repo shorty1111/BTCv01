@@ -7,52 +7,13 @@ let skyVAO = null;
 let skyIdxCount = 0;
 let skyUniforms = {}; // ⚙️ NOVO
 
-export const STUDIO_SKY = {
-  // mekani studio gradijent
-  zenith: [0.85, 0.85, 0.88],     // svetlije gore
-  horizon: [0.78, 0.78, 0.80],    // malo tamnije na horizontu
-  ground: [0.72, 0.72, 0.74],     // neutralno sivo
-
-  sunsetZenith: [0.85, 0.85, 0.88],
-  sunsetHorizon: [0.78, 0.78, 0.80],
-
-  worldLocked: 1,
-  model: [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1],
-
-  // SUNCE TOTALNO UGASENO
-  sunColor: [1,1,1],
-  hideSun: true,
-
-  // atmosferski efekti = 0
-  turbidity: 0.0,
-  sunSizeDeg: 0.0,
-  sunHaloScale: 0.0,
-  horizonSoft: 0.0,
-  horizonLift: 0.0,
-  saturation: 1.0,
-  horizonDesat: 0.0,
-  horizonWarmth: 0.0,
-
-  // bez oblaka
-  milkBandStrength: 0.0,
-  warmBandStrength: 0.0,
-
-  // bez Rayleigh/Mie
-  rayleighStrength: 0.0,
-  mieStrength: 0.0,
-
-  zenithDesat: 0.0,
-  groundScatter: 0.0,
-
-  globalExposure: 1.0,
-};
 
 
 // ===== Default sky params (bez SUN — njega prosleđuje main.js) =====
 export const DEFAULT_SKY = {
   zenith: [0.12, 0.25, 0.6],
   horizon: [0.8, 0.9, 1.0],
-  ground: [0.012, 0.01, 0.01],
+  ground: [0.02, 0.02, 0.02],
   sunsetHorizon: [1.0, 0.35, 0.1],
   sunsetZenith: [0.18, 0.23, 0.55],
   worldLocked: 1,
@@ -62,15 +23,15 @@ export const DEFAULT_SKY = {
   sunHaloScale: 0.25,
   horizonSoft: 0.18,
   horizonLift: -0.02,
-  saturation: 1.1,
+  saturation: 0.9,
   horizonDesat: 0.05,
   horizonWarmth: 1.35,
   milkBandStrength: 0.0,
   milkBandWidth: 0.12,
-  warmBandStrength: 0.1,
+  warmBandStrength: 0.3,
   warmBandWidth: 0.15,
-  rayleighStrength: 1.8,
-  mieStrength: 0.8,
+rayleighStrength: 1.3,
+mieStrength: 0.1,
   zenithDesat: 0.12,
   groundScatter: 0.85,
 };
@@ -224,14 +185,20 @@ vec3 applySaturation(vec3 c, float s){
 
 // ========================= MAIN =========================
 void main(){
-    // wavelength-based Rayleigh tint
-    vec3 waveLambda = vec3(680e-9, 550e-9, 440e-9); // R, G, B u metrima
-    vec3 rayleighColor = pow(waveLambda, vec3(-4.0));
-    rayleighColor /= max(max(rayleighColor.r, rayleighColor.g), rayleighColor.b);
+// real Rayleigh scattering coefficients (NASA)
+vec3 rayleighColor = vec3(5.8e-6, 13.5e-6, 33.1e-6);
+rayleighColor /= max(max(rayleighColor.r, rayleighColor.g), rayleighColor.b);
 
     vec3  dir   = normalize(vDir);
     vec3  sunV  = normalize(uSunDir);
     float sunAlt = clamp(sunV.y, -1.0, 1.0);
+    // === PHYSICAL DAY → SUNSET → NIGHT FACTORS ===
+
+// sunset transition (twilight)
+float sunsetAmt = smoothstep(-0.15, 0.05, sunAlt) * (1.0 - smoothstep(0.05, 0.25, sunAlt));
+
+// night factor
+float nightAmt  = smoothstep(-0.1, -0.3, sunAlt);
 
     // === 1. Dynamic sky colors by sunAlt ===
 
@@ -242,10 +209,7 @@ void main(){
     vec3 nightZenith   = mix(uGround, uZenith, 0.2);
     vec3 nightHorizon  = mix(uGround, uHorizon, 0.3);
 
-    // Koliko je sunset aktivan (0 dan, 1 sunset)
-    float sunsetAmt = smoothstep(0.0, 0.15, clamp(0.2 - sunAlt, 0.0, 0.2));
-    // Koliko je noć aktivna (0 dan, 1 noć)
-    float nightAmt = clamp(-sunAlt * 10.0, 0.0, 1.0);
+
 
     // Gradijenti po visini
     float t   = clamp(dir.y*0.5 + 0.5 + uHorizonLift, 0.0, 1.0);
@@ -262,7 +226,6 @@ void main(){
 
     vec3 base = mix(curZenith, curHorizon, hS);
     float air = exp(-pow(dir.y * 1.2, 2.0));
-    base = mix(base, vec3(1.0, 0.85, 0.75), air * 0.15);
 
 
     // === 2. Procedural clouds, halo, sunset boost ===
@@ -332,7 +295,7 @@ if (segLen > 0.0) {
 
 
     // --- sunset horizon warmth (neka ostane)
-    float warm = pow(clamp(1.0 - sunAlt, 0.0, 1.0), 2.0) * hS * uHorizonWarmth;
+    float warm = sunsetAmt * hS * uHorizonWarmth;
     vec3 sunsetWarm = vec3(1.0, 0.55, 0.25);
     base = mix(base, sunsetWarm, clamp(warm, 0.0, 0.65));
 
@@ -345,7 +308,7 @@ if (segLen > 0.0) {
 
     base  = applySaturation(base, uSaturation);
     base  = mix(base, applySaturation(base, 0.9), uZenithDesat);
-    base *= mix(0.7, 1.0, uRayleighStrength);
+
     base = mix(base, vec3(0.035, 0.03, 0.03), clamp(uTurbidity*(1.0-hS), 0.0, 1.0));
 
 
@@ -354,20 +317,33 @@ if (segLen > 0.0) {
     float cosToSun = dot(dir, sunV);
     float sunSize  = radians(uSunSizeDeg);
     float ang      = acos(cosToSun);
-    float disk = exp(-pow(ang/(sunSize*0.9), 2.0));
-    float limb = exp(-pow(ang/(sunSize*2.2), 2.0)); // uže, izraženije
-    vec3  sunLight = uSunColor * (disk*uSunIntensity + limb*(uSunIntensity*0.18));
+
+    // PHYSICAL SUN DISK (soft edge + limb darkening)
+    float mu = cosToSun;
+    float sunRadius = sunSize; 
+    float core = smoothstep(cos(sunRadius), cos(sunRadius * 0.5), mu);
+
+    // limb darkening (simple solar LD model)
+    float limbFactor = 0.65 + 0.35 * pow(max(mu,0.0), 0.8);
+
+    vec3 sunLight = uSunColor * uSunIntensity * core * limbFactor;
 
     // ako je uHideSun == 1, izbaci disk i halo
     if (bool(uHideSun)) {
         sunLight = vec3(0.0);
     }
 
-    float g = 0.8;
-    float mie = (1.0 - g*g) / pow(1.0 + g*g - 2.0*g*cosToSun, 1.5);
-    mie *= 0.025 * (1.0 + 3.0*(1.0 - sunAlt)) * uSunHaloScale * uMieStrength;
-    float halo = exp(-pow(ang / (sunSize * 6.0), 1.3));
-  sunLight += uSunColor * halo * uSunIntensity * 0.05;
+// Physical Mie halo (Henyey–Greenstein)
+float g = 0.76;
+float mieP = (1.0 - g*g) / pow(1.0 + g*g - 2.0*g*cosToSun, 1.5);
+
+// wide halo for aesthetics, fades with sunAlt exactly as before
+float haloP = exp(-pow(ang / (sunSize * 6.0), 1.25));
+
+sunLight += uSunColor *
+            (mieP * 0.02 + haloP * 0.03) *
+            uSunIntensity * uSunHaloScale * uMieStrength *
+            clamp(1.0 - nightAmt, 0.0, 1.0);
 
     // === 4. Ground & bounce ===
     float skyMask    = smoothstep(-0.04, 0.02, dir.y);
@@ -582,7 +558,7 @@ export function bakeSkyToCubemap(
   return cubeTex;
 }
 // === PREINTEGRISANI IRRADIANCE MAP ===
-export function bakeIrradianceFromSky(gl, envCube, size = 32) {
+export function bakeIrradianceFromSky(gl, envCube, size = 256) {
   const vs = `#version 300 es
   layout(location=0) in vec2 aPos;
   out vec3 vDir;
@@ -607,7 +583,7 @@ void main() {
     up = cross(N, right);
 
     vec3 irradiance = vec3(0.0);
-    const float sampleDelta = 0.1;     // manja vrednost = glađa, tačnija
+    const float sampleDelta = 0.08;   
     float nrSamples = 0.0;
 
     for (float phi = 0.0; phi < 2.0 * PI; phi += sampleDelta) {

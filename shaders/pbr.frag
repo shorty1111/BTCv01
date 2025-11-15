@@ -135,7 +135,7 @@ void main(){
     vec3 H      = normalize(V + Lv);
     
     vec3 upN = normalize(invV3 * N);
-    upN = mix(upN, vec3(upN.x, abs(upN.y), upN.z), 0.5); // smanji uticaj grounda
+     upN = mix(upN, vec3(upN.x, abs(upN.y), upN.z), 0.5); // smanji uticaj grounda
 
     vec3 Rv     = reflect(-V, N);
     vec3 Rw     = invV3 * Rv;
@@ -154,8 +154,6 @@ void main(){
     vec3 kd   = (1.0 - F) * (1.0 - metal);
     vec3 diff = kd * (baseColor / 3.141592) * ao;
 
-
-    float mipDiff =  uCubeMaxMip;          // 8 → meko, difuzno
     vec3 envDiff = texture(uEnvDiffuse, upN).rgb;
 
     float mipSpec = roughPerceptual  * uCubeMaxMip;

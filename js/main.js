@@ -27,7 +27,7 @@ const textureCachePromises = new Map();
 window.textureCache = textureCache;
 
 let shadowFBO, shadowDepthTex;
-const SHADOW_RES = 4096;
+const SHADOW_RES = 2048;
 
 async function preloadAllConfigTextures() {
   const allPaths = [];
@@ -124,7 +124,7 @@ function updateSun() {
   const alt = Math.max(-1.0, Math.min(1.0, SUN.dir[1]));
   const dayColor = [1.0, 0.97, 0.94];
   const sunsetColor = [1.0, 0.35, 0.1];
-  const tColor = smoothstep(0.0, 0.6, alt);
+  const tColor = smoothstep(0.0, 1.0, alt);
   SUN.color = [
     sunsetColor[0] + (dayColor[0] - sunsetColor[0]) * tColor,
     sunsetColor[1] + (dayColor[1] - sunsetColor[1]) * tColor,
@@ -132,7 +132,7 @@ function updateSun() {
   ];
 
   const fade = Math.pow(Math.max(alt, 0.0), 0.4);
-  SUN.intensity = 1.30 * fade; 
+  SUN.intensity = 1.3 * fade; 
 
   if (alt < 0.0) {
     const glow = smoothstep(-0.3, 0.0, alt);

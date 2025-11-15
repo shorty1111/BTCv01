@@ -13,7 +13,7 @@ uniform vec2 uResolution;
 
 const float BASE_STEP = 0.08;
 const float THICKNESS = 0.6;
-const int MAX_STEPS = 45;
+const int MAX_STEPS = 40;
 const float MAX_DIST = 70.0;
 
 vec3 getPos(vec2 uv) { return texture(gPosition, uv).rgb; }

@@ -34,7 +34,7 @@ uniform float       uGlobalExposure;
 
 // === PARAMETRI ===
 const float DEPTH_SCALE     = 4.20;
-const float DEPTH_CURVE     = 0.2;
+const float DEPTH_CURVE     = 0.1;
 const float SSS_STRENGTH    = 100.0;
 const float SSS_WRAP        = 1.2;
 const vec3  SSS_FALLOFF     = vec3(0.0431, 0.0667, 0.0667);
