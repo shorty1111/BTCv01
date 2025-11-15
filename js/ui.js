@@ -28,9 +28,115 @@ export function hideLoading() {
   };
   loadingScr.addEventListener("transitionend", onEnd);
 }
+const hotspotButtons = new Map();
+const partFirstItems = new Map();
+let hotspotLayer = null;
+let hotspotLoopActive = false;
+
+function ensureHotspotLayer() {
+  if (!hotspotLayer) {
+    hotspotLayer = document.getElementById("variantHotspotLayer");
+  }
+  return hotspotLayer;
+}
+
+function registerPartHotspot(partKey, data, groupName, groupDiv) {
+  const layer = ensureHotspotLayer();
+  if (!layer || hotspotButtons.has(partKey)) return;
+  const btn = document.createElement("button");
+  btn.className = "variant-hotspot";
+  btn.dataset.part = partKey;
+  btn.textContent = data.hotspotLabel || data.label || groupName || partKey;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    focusHotspotPart(partKey, groupDiv);
+  });
+  layer.appendChild(btn);
+  hotspotButtons.set(partKey, { button: btn, group: groupDiv });
+}
+
+function focusHotspotPart(partKey, groupDiv) {
+  const entry = hotspotButtons.get(partKey);
+  if (!entry) return;
+  document.querySelectorAll(".variant-group").forEach((g) => {
+    if (g !== groupDiv) {
+      if (g.classList.contains("open")) revealGroupHotspots(g);
+      g.classList.remove("open");
+    }
+  });
+  groupDiv.classList.add("open");
+  const firstItem = partFirstItems.get(partKey);
+  if (firstItem) {
+    firstItem.scrollIntoView({ behavior: "smooth", block: "center" });
+    firstItem.classList.add("active");
+  }
+  const node = nodesMeta.find((n) => n.name === partKey);
+  if (node) {
+    focusCameraOnNode(node);
+    render();
+  }
+  entry.button.classList.add("hidden");
+}
+
+function hideHotspot(partKey) {
+  const entry = hotspotButtons.get(partKey);
+  if (entry) entry.button.classList.add("hidden");
+}
+
+function showHotspot(partKey) {
+  const entry = hotspotButtons.get(partKey);
+  if (entry) {
+    entry.button.classList.remove("hidden");
+    positionHotspot(partKey);
+  }
+}
+
+function revealGroupHotspots(groupEl) {
+  if (!groupEl?.dataset?.parts) return;
+  groupEl.dataset.parts
+    .split(",")
+    .filter(Boolean)
+    .forEach((part) => showHotspot(part));
+}
+
+function startHotspotLoop() {
+  if (hotspotLoopActive) return;
+  hotspotLoopActive = true;
+  const step = () => {
+    updateHotspotPositions();
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+function positionHotspot(partKey) {
+  const projector = window.getPartScreenPosition;
+  if (typeof projector !== "function") return;
+  const entry = hotspotButtons.get(partKey);
+  if (!entry) return;
+  const { button } = entry;
+  const pos = projector(partKey);
+  if (!pos) {
+    button.classList.add("offscreen");
+    return;
+  }
+  button.classList.remove("offscreen");
+  button.style.left = `${pos.x}px`;
+  button.style.top = `${pos.y}px`;
+}
+
+function updateHotspotPositions() {
+  hotspotButtons.forEach((_value, partKey) => positionHotspot(partKey));
+}
+window.updateHotspotPositions = updateHotspotPositions;
+
 function buildVariantSidebar() {
   const sidebar = document.getElementById("variantSidebar");
   sidebar.innerHTML = "";
+  partFirstItems.clear();
+  hotspotButtons.clear();
+  const layer = ensureHotspotLayer();
+  if (layer) layer.innerHTML = "";
 
   const intro = document.createElement("div");
   intro.className = "variant-intro";
@@ -48,16 +154,24 @@ function buildVariantSidebar() {
     header.textContent = groupName;
     header.addEventListener("click", () => {
       document.querySelectorAll(".variant-group").forEach((g) => {
-        if (g !== groupDiv) g.classList.remove("open");
+        if (g !== groupDiv) {
+          if (g.classList.contains("open")) revealGroupHotspots(g);
+          g.classList.remove("open");
+        }
       });
+      const wasOpen = groupDiv.classList.contains("open");
       groupDiv.classList.toggle("open");
+      if (wasOpen) revealGroupHotspots(groupDiv);
     });
 
     groupDiv.appendChild(header);
     const itemsDiv = document.createElement("div");
     itemsDiv.className = "variant-items";
+    const groupPartKeys = [];
 
     for (const [partKey, data] of Object.entries(parts)) {
+      groupPartKeys.push(partKey);
+      registerPartHotspot(partKey, data, groupName, groupDiv);
       const variants = data.models;
 
       variants.forEach((variant) => {
@@ -83,6 +197,9 @@ function buildVariantSidebar() {
 
 
         itemEl.appendChild(thumbWrapper);
+        if (!partFirstItems.has(partKey)) {
+          partFirstItems.set(partKey, itemEl);
+        }
 
         const body = document.createElement("div");
         body.className = "variant-body";
@@ -247,6 +364,7 @@ function buildVariantSidebar() {
       itemEl.addEventListener("click", (e) => {
         // ako klik potiče sa dugmeta za opis, ignoriši
         if (e.target.closest(".desc-toggle")) return;
+        hideHotspot(partKey);
         const isEquipmentOnly = !variant.src && !data.mainMat;
       if (isEquipmentOnly) {
         // 🚫 Ako je "Included" u additional grupi → ignoriši klik
@@ -316,8 +434,10 @@ if (variantData.colors && variantData.colors.length > 0) {
     }
 
     groupDiv.appendChild(itemsDiv);
+    groupDiv.dataset.parts = groupPartKeys.join(",");
     sidebar.appendChild(groupDiv);
   }
+  startHotspotLoop();
 }
 function buildPartsTable() {
   const tbody = document.querySelector("#partsTable tbody");

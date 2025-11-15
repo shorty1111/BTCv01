@@ -112,7 +112,6 @@ void main(){
     vec3 baseColor = texture(gAlbedo, vUV).rgb;
     
     vec4 m         = texture(gMaterial, vUV);
-    // ✅ DODAJ OVO:
     float roughPerceptual = clamp(m.r, 0.04, 1.0);  // perceptual roughness iz teksture
     float rough = roughPerceptual * roughPerceptual; // alpha roughness za GGX
     float metal = clamp(m.g, 0.0, 1.0);
@@ -157,7 +156,7 @@ void main(){
     vec3 envDiff = texture(uEnvDiffuse, upN).rgb;
 
     float mipSpec = roughPerceptual  * uCubeMaxMip;
-    vec3 envSpec = textureLod(uEnvMap, Rw, mipSpec).rgb ;
+    vec3 envSpec = textureLod(uEnvMap, Rw, mipSpec).rgb * ao;
         
     
     vec3 sunRadiance = uSunColor * uSunIntensity;

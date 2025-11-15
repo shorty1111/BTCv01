@@ -22,6 +22,12 @@ let shadowDirty = true;
 let ssaoDirty = true;
 let lastViewMatrix = new Float32Array(16);
 let lastSunDir = [0, 0, 0];
+const currentViewMatrix = new Float32Array(16);
+const currentProjMatrix = new Float32Array(16);
+let currentViewProjMatrix = null;
+window.currentViewMatrix = currentViewMatrix;
+window.currentProjMatrix = currentProjMatrix;
+window.currentViewProjMatrix = currentViewProjMatrix;
 const textureCache = {}; // key = url, value = WebGLTexture
 const textureCachePromises = new Map();
 window.textureCache = textureCache;
@@ -407,25 +413,49 @@ function createFinalColorTarget(w, h) {
 
 function focusCameraOnNode(node) {
   if (!node) return;
-  camera.useOrtho = false; // 🔥 prebaci nazad u perspektivu
-  
-  if (node.cachedBounds) {
-    camera.pan = node.cachedBounds.center;
-    camera.distTarget = node.cachedBounds.dist;  
-    return;
+  camera.useOrtho = false; // dY"? prebaci nazad u perspektivu
+  const bounds = ensureNodeBounds(node);
+  if (!bounds || !bounds.center) return;
+
+  camera.pan = bounds.center.slice();
+  let targetDist = bounds.dist;
+  if (!targetDist) {
+    const size = bounds.size || (bounds.radius ? bounds.radius * 2 : 1);
+    const fovY = Math.PI / 4;
+    const newDist = size / (2 * Math.tan(fovY / 2));
+    window.currentBoundingRadius = bounds.radius || size * 0.5;
+    targetDist = newDist * 0.7;
+    const minDist = newDist * 0.2;
+    const maxDist = newDist * 3.0;
+    targetDist = Math.min(Math.max(targetDist, minDist), maxDist);
+    bounds.dist = targetDist;
+  }
+  camera.distTarget = targetDist;
+  camera.rxTarget = Math.PI / 6;       // dY"1 koristi target
+  camera.ryTarget = 0;
+}
+
+function ensureNodeBounds(node) {
+  if (!node) return null;
+  if (node.cachedBounds && node.cachedBounds.center) {
+    return node.cachedBounds;
   }
 
   let min = [Infinity, Infinity, Infinity];
   let max = [-Infinity, -Infinity, -Infinity];
+  let hasGeometry = false;
 
-  for (const r of node.renderIdxs) {
+  for (const r of node.renderIdxs || []) {
     if (!r.matName || r.matName.toLowerCase().includes("dummy")) continue;
 
     const orig = originalParts[r.idx];
     if (!orig || !orig.pos) continue;
 
     const modelMat = modelMatrices[r.idx] || orig.modelMatrix;
+    if (!modelMat) continue;
+
     for (let i = 0; i < orig.pos.length; i += 3) {
+      hasGeometry = true;
       const p = [orig.pos[i], orig.pos[i + 1], orig.pos[i + 2], 1];
       const w = vec4.transformMat4([], p, modelMat);
       min[0] = Math.min(min[0], w[0]);
@@ -437,23 +467,54 @@ function focusCameraOnNode(node) {
     }
   }
 
+  if (!hasGeometry) return node.cachedBounds || null;
+
   const center = [
     (min[0] + max[0]) / 2,
     (min[1] + max[1]) / 2,
     (min[2] + max[2]) / 2,
   ];
   const size = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2]);
-  const fovY = Math.PI / 4;
-  const newDist = size / (2 * Math.tan(fovY / 2));
-  window.currentBoundingRadius = size / 2;
-  camera.pan = center;
-  camera.distTarget = newDist * 0.7;   // 🔹 koristi target, ne direktno
-  camera.rxTarget = Math.PI / 6;       // 🔹 koristi target
-  camera.ryTarget = 0;
-  const minDist = newDist * 0.2;
-  const maxDist = newDist * 3.0;
-  camera.distTarget = Math.min(Math.max(camera.distTarget, minDist), maxDist);
-  node.cachedBounds = { center, dist: camera.distTarget };
+  const radius = Math.max(size * 0.5, 0.1);
+
+  node.cachedBounds = {
+    ...(node.cachedBounds || {}),
+    center,
+    size,
+    radius,
+  };
+  return node.cachedBounds;
+}
+
+function getPartWorldInfo(partNameOrNode) {
+  const node =
+    typeof partNameOrNode === "string"
+      ? nodesMeta.find((n) => n.name === partNameOrNode)
+      : partNameOrNode;
+  if (!node) return null;
+  const bounds = ensureNodeBounds(node);
+  if (!bounds) return null;
+  return {
+    center: bounds.center.slice(),
+    radius: bounds.radius,
+  };
+}
+
+function getPartScreenPosition(partKey) {
+  if (!window.currentViewProjMatrix) return null;
+  const info = getPartWorldInfo(partKey);
+  if (!info) return null;
+  const canvasEl = document.getElementById("glCanvas");
+  if (!canvasEl) return null;
+  const projected = projectToScreen(info.center, window.currentViewProjMatrix, canvasEl);
+  if (!projected.visible) return null;
+  const rect = canvasEl.getBoundingClientRect();
+  const scaleX = rect.width / canvasEl.width;
+  const scaleY = rect.height / canvasEl.height;
+  return {
+    x: rect.left + projected.x * scaleX,
+    y: rect.top + projected.y * scaleY,
+  };
 }
 
 function createPreviewProgram(gl2) {
@@ -1549,7 +1610,9 @@ async function initializeApp() {
       VARIANT_GROUPS, BASE_PRICE, BOAT_INFO, thumbnails, currentParts,
       render, replaceSelectedWithURL, focusCameraOnNode, setWeather,
       proj, view, camWorld, exportPDF, sceneChanged,
-      originalParts   // 👈 dodaj ovu liniju
+      originalParts,   // 👈 dodaj ovu liniju
+      getPartWorldInfo,
+      getPartScreenPosition
     });
 
     // 🔹 start loop tek kad je sve učitano
@@ -1605,7 +1668,14 @@ function render() {
   showDimensions = window.showDimensions;
   camera.animateCamera();
   ({ proj, view, camWorld } = camera.updateView());
-  
+  currentViewMatrix.set(view);
+  currentProjMatrix.set(proj);
+  currentViewProjMatrix = mat4mul(currentProjMatrix, currentViewMatrix);
+  window.currentViewProjMatrix = currentViewProjMatrix;
+  if (typeof window.updateHotspotPositions === "function") {
+    window.updateHotspotPositions();
+  }
+
   if (camera.moved) ssaoDirty = true;
 
   // === 1A. CLEAR FINALNI FBO NA POČETKU (OBAVEZNO!) ===

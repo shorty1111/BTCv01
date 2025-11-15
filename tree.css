@@ -683,6 +683,8 @@ canvas,
   background: var(--card);
   border-right: 1px solid var(--card-border);
   overflow: hidden;            /* sprečava da total iseče ivicu */
+  position: relative;
+  z-index: 500;
 }
 /* =========================
    VARIANT GROUPS - 0 STYLE
@@ -1472,4 +1474,45 @@ html, body {
 body.studio-mode .btn-weather {
     opacity: 0.3;
     pointer-events: none;
+}
+
+.variant-hotspot-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 150;
+}
+
+.variant-hotspot {
+  position: absolute;
+  transform: translate(-50%, -120%);
+  background: rgba(10, 10, 10, 0.85);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  pointer-events: auto;
+  cursor: pointer;
+  box-shadow: var(--shadow-soft);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  backdrop-filter: blur(6px);
+
+}
+
+.variant-hotspot:hover {
+  transform: translate(-50%, -120%) scale(1.05);
+}
+
+.variant-hotspot.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.variant-hotspot.offscreen {
+  opacity: 0;
+  pointer-events: none;
 }
