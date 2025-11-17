@@ -1,13 +1,11 @@
 import { BOAT_INFO, VARIANT_GROUPS, SIDEBAR_INFO, BASE_PRICE } from "./config.js";
 
-// === Glavni kontejner iz HTML-a ===
 const app = document.createElement("div");
 app.id = "app";
 const mainContent = document.getElementById("mainContent");
-mainContent.innerHTML = ""; // očisti prethodni sadržaj
+mainContent.innerHTML = "";
 mainContent.appendChild(app);
 
-/* === Clients Section === */
 const clientsSection = document.createElement("div");
 clientsSection.className = "section";
 
@@ -21,25 +19,26 @@ clientsSection.appendChild(title);
 clientsSection.appendChild(clientsContainer);
 app.appendChild(clientsSection);
 
-/* === Tabs Navigation === */
 const tabsBar = document.createElement("div");
 tabsBar.className = "clients-nav";
 clientsSection.insertBefore(tabsBar, clientsContainer);
 
-/* === Add Client Button === */
-document.getElementById("addClientBtn").onclick = () => addClientForm();
+const addClientButton = document.getElementById("addClientBtn");
+if (addClientButton) {
+  addClientButton.onclick = () => addClientForm();
+}
 
-/* === Refresh Tabs === */
+document.getElementById("saveBtn").onclick = handleSave;
+
 function refreshTabs() {
   tabsBar.innerHTML = "";
   const cards = document.querySelectorAll(".client-card");
-
   cards.forEach((card, idx) => {
     const name = card.querySelector(".client-name").value || `Client ${idx + 1}`;
     const btn = document.createElement("button");
     btn.textContent = name;
     btn.onclick = () => {
-      document.querySelectorAll(".client-body").forEach(b => (b.style.display = "none"));
+      document.querySelectorAll(".client-body").forEach(body => (body.style.display = "none"));
       document.querySelectorAll(".client-card .toggleBtn").forEach(t => (t.textContent = "▼"));
       card.querySelector(".client-body").style.display = "block";
       card.querySelector(".toggleBtn").textContent = "▲";
@@ -50,7 +49,6 @@ function refreshTabs() {
   });
 }
 
-/* === Sidebar Clients === */
 function renderSidebarClients() {
   const list = document.getElementById("clientsList");
   const count = document.querySelector(".client-count");
@@ -75,8 +73,8 @@ function renderSidebarClients() {
       <div class="client-item-name">${name}</div>
     `;
     item.onclick = () => {
-      document.querySelectorAll(".client-body").forEach(b => (b.style.display = "none"));
-      document.querySelectorAll(".toggleBtn").forEach(t => (t.textContent = "▼"));
+      document.querySelectorAll(".client-body").forEach(body => (body.style.display = "none"));
+      document.querySelectorAll(".client-card .toggleBtn").forEach(t => (t.textContent = "▼"));
       const cardBody = card.querySelector(".client-body");
       cardBody.style.display = "block";
       card.querySelector(".toggleBtn").textContent = "▲";
@@ -85,18 +83,18 @@ function renderSidebarClients() {
   });
 }
 
-/* === Add Client Form === */
 function addClientForm(data = {}) {
   const clientDiv = document.createElement("div");
   clientDiv.className = "client-card";
 
-  // Header
+  const clientName = data.name ?? `Client ${clientsContainer.children.length + 1}`;
+  const boatInfo = data.boatInfo ?? structuredClone(BOAT_INFO);
+  const variantGroups = normalizeVariantGroups(data.variantGroups ?? VARIANT_GROUPS);
+
   clientDiv.innerHTML = `
     <div class="client-header">
       <div class="client-header-left">
-        <input type="text" placeholder="Client Name" value="${
-          data.name ?? "Client " + (clientsContainer.children.length + 1)
-        }" class="client-name">
+        <input type="text" placeholder="Client Name" value="${clientName}" class="client-name">
       </div>
       <div class="client-header-right">
         <button class="toggleBtn">▼</button>
@@ -109,56 +107,41 @@ function addClientForm(data = {}) {
   body.className = "client-body";
   body.style.display = "none";
 
-  // === Boat Info ===
   const boatDiv = document.createElement("div");
-  boatDiv.className = "section inner";
-  boatDiv.innerHTML = `<h3>Boat Info</h3>`;
-  for (const [k, v] of Object.entries(BOAT_INFO)) {
-    const val = data.name ? v : "";
-    boatDiv.innerHTML += `
-      <label>${k}</label>
-      <input type="text" data-key="${k}" value="${val}">
-    `;
-  }
+  boatDiv.className = "section inner boat-info";
+  boatDiv.innerHTML = `<div class="section-header"><h3>Boat Info</h3></div>`;
+  Object.entries(boatInfo).forEach(([key, value]) => {
+    const wrapper = document.createElement("label");
+    wrapper.textContent = key;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.dataset.section = "boat";
+    input.dataset.key = key;
+    input.value = value ?? "";
+    wrapper.appendChild(input);
+    boatDiv.appendChild(wrapper);
+  });
 
-  // === Variant Groups ===
-  const variantsDiv = document.createElement("div");
-  variantsDiv.className = "section inner";
-  variantsDiv.innerHTML = `<h3>Variant Groups</h3>`;
+  const variantsWrapper = document.createElement("div");
+  variantsWrapper.className = "section inner";
+  variantsWrapper.innerHTML = `
+    <div class="section-header">
+      <h3>Variant Groups</h3>
+      <button type="button" class="ghost-button add-group">➕ Add Variant Group</button>
+    </div>
+  `;
 
-  for (const [groupName, group] of Object.entries(VARIANT_GROUPS)) {
-    const g = document.createElement("div");
-    g.className = "group";
-    g.innerHTML = `<h3>${groupName}</h3>`;
+  const groupsContainer = document.createElement("div");
+  groupsContainer.className = "variant-groups";
+  variantGroups.forEach(group => groupsContainer.appendChild(createVariantGroup(group)));
+  variantsWrapper.appendChild(groupsContainer);
 
-    for (const [partName, part] of Object.entries(group)) {
-      const p = document.createElement("div");
-      p.className = "part";
-      p.innerHTML = `<h4>${partName}</h4>`;
-
-      part.models.forEach((m, i) => {
-        const valName = data.name ? m.name : "";
-        const valSrc = data.name ? m.src ?? "" : "";
-        const valPrice = data.name ? m.price ?? "" : "";
-        const valDesc = data.name ? m.description ?? "" : "";
-
-        const box = document.createElement("div");
-        box.className = "model";
-        box.innerHTML = `
-          <input type="text" data-group="${groupName}" data-part="${partName}" data-idx="${i}" data-field="name" value="${valName}" placeholder="Name">
-          <input type="text" data-group="${groupName}" data-part="${partName}" data-idx="${i}" data-field="src" value="${valSrc}" placeholder="Model src">
-          <input type="number" data-group="${groupName}" data-part="${partName}" data-idx="${i}" data-field="price" value="${valPrice}" placeholder="Price">
-          <textarea data-group="${groupName}" data-part="${partName}" data-idx="${i}" data-field="description" placeholder="Description">${valDesc}</textarea>
-        `;
-        p.appendChild(box);
-      });
-      g.appendChild(p);
-    }
-    variantsDiv.appendChild(g);
-  }
+  variantsWrapper.querySelector(".add-group").onclick = () => {
+    groupsContainer.appendChild(createVariantGroup());
+  };
 
   body.appendChild(boatDiv);
-  body.appendChild(variantsDiv);
+  body.appendChild(variantsWrapper);
   clientDiv.appendChild(body);
   clientsContainer.appendChild(clientDiv);
 
@@ -166,7 +149,6 @@ function addClientForm(data = {}) {
   const removeBtn = clientDiv.querySelector(".removeBtn");
   const nameInput = clientDiv.querySelector(".client-name");
 
-  // === Event handling ===
   toggleBtn.onclick = () => {
     const isOpen = body.style.display === "block";
     body.style.display = isOpen ? "none" : "block";
@@ -179,13 +161,11 @@ function addClientForm(data = {}) {
     renderSidebarClients();
   };
 
-  // ⬇️ NEW — realtime ime update
   nameInput.addEventListener("input", () => {
     refreshTabs();
     renderSidebarClients();
   });
 
-  // auto open first client
   if (clientsContainer.children.length === 1) {
     body.style.display = "block";
     toggleBtn.textContent = "▲";
@@ -195,36 +175,288 @@ function addClientForm(data = {}) {
   renderSidebarClients();
 }
 
-/* === Auto-create first client === */
-addClientForm({ name: "Client 1" });
+function createVariantGroup(groupData = {}) {
+  const groupDiv = document.createElement("div");
+  groupDiv.className = "variant-group";
 
-/* === Save Button === */
-document.getElementById("saveBtn").onclick = () => {
-  const newBoat = { ...BOAT_INFO };
-  document.querySelectorAll('input[data-section="boat"]').forEach(i => {
-    newBoat[i.dataset.key] = i.value;
+  groupDiv.innerHTML = `
+    <div class="variant-group-header">
+      <div>
+        <label>Group Name</label>
+        <input type="text" class="variant-group-name" value="${groupData.name ?? ""}" placeholder="e.g. Seats, Hull, Additional Equipment">
+      </div>
+      <button type="button" class="ghost-button danger remove-group">Remove Group</button>
+    </div>
+  `;
+
+  const partsContainer = document.createElement("div");
+  partsContainer.className = "variant-parts";
+
+  (groupData.parts ?? []).forEach(part => partsContainer.appendChild(createVariantPart(part)));
+
+  const addPartBtn = document.createElement("button");
+  addPartBtn.type = "button";
+  addPartBtn.className = "ghost-button add-part";
+  addPartBtn.textContent = "➕ Add Mesh / Part";
+  addPartBtn.onclick = () => partsContainer.appendChild(createVariantPart());
+
+  groupDiv.appendChild(partsContainer);
+  groupDiv.appendChild(addPartBtn);
+
+  groupDiv.querySelector(".remove-group").onclick = () => {
+    groupDiv.remove();
+  };
+
+  if ((groupData.parts ?? []).length === 0) {
+    partsContainer.appendChild(createVariantPart());
+  }
+
+  return groupDiv;
+}
+
+function createVariantPart(partData = {}) {
+  const partDiv = document.createElement("div");
+  partDiv.className = "variant-part";
+
+  partDiv.innerHTML = `
+    <div class="variant-part-header">
+      <div>
+        <label>Mesh / Part Key</label>
+        <input type="text" class="variant-part-name" value="${partData.key ?? ""}" placeholder="e.g. BT_Base_03_A">
+      </div>
+      <div>
+        <label>Main Material</label>
+        <input type="text" class="variant-part-material" value="${partData.mainMat ?? ""}" placeholder="Material ID">
+      </div>
+      <button type="button" class="ghost-button danger remove-part">Remove Part</button>
+    </div>
+  `;
+
+  const itemsContainer = document.createElement("div");
+  itemsContainer.className = "variant-items";
+  (partData.models ?? []).forEach(model => itemsContainer.appendChild(createVariantItem(model)));
+
+  const addItemBtn = document.createElement("button");
+  addItemBtn.type = "button";
+  addItemBtn.className = "ghost-button add-variant-item";
+  addItemBtn.textContent = "➕ Add Variant Item";
+  addItemBtn.onclick = () => itemsContainer.appendChild(createVariantItem());
+
+  partDiv.appendChild(itemsContainer);
+  partDiv.appendChild(addItemBtn);
+
+  partDiv.querySelector(".remove-part").onclick = () => partDiv.remove();
+
+  if ((partData.models ?? []).length === 0) {
+    itemsContainer.appendChild(createVariantItem());
+  }
+
+  return partDiv;
+}
+
+function createVariantItem(itemData = {}) {
+  const itemDiv = document.createElement("div");
+  itemDiv.className = "variant-item";
+
+  itemDiv.innerHTML = `
+    <div class="field-grid">
+      <label>Item Name<input type="text" class="variant-item-name" value="${itemData.name ?? ""}" placeholder="Display name"></label>
+      <label>GLB / Model Source<input type="text" class="variant-item-src" value="${itemData.src ?? ""}" placeholder="variants/your-file.glb"></label>
+      <label>Price (EUR)<input type="number" class="variant-item-price" value="${itemData.price ?? 0}" min="0"></label>
+    </div>
+    <label>Description<textarea class="variant-item-description" rows="3" placeholder="Describe this option">${itemData.description ?? ""}</textarea></label>
+    <div class="material-options">
+      <div class="material-options-header">
+        <h4>Material / Texture Options</h4>
+        <button type="button" class="ghost-button add-color">➕ Add Option</button>
+      </div>
+      <div class="material-options-body"></div>
+    </div>
+    <button type="button" class="ghost-button danger remove-variant-item">Remove Item</button>
+  `;
+
+  const optionsBody = itemDiv.querySelector(".material-options-body");
+  (itemData.colors ?? []).forEach(color => optionsBody.appendChild(createColorRow(color)));
+
+  itemDiv.querySelector(".add-color").onclick = () => {
+    optionsBody.appendChild(createColorRow());
+  };
+
+  itemDiv.querySelector(".remove-variant-item").onclick = () => itemDiv.remove();
+
+  if ((itemData.colors ?? []).length === 0) {
+    optionsBody.appendChild(createColorRow({ type: "color" }));
+  }
+
+  return itemDiv;
+}
+
+function createColorRow(option = {}) {
+  const row = document.createElement("div");
+  row.className = "color-row";
+  const type = option.type ?? "color";
+
+  row.innerHTML = `
+    <input type="text" class="color-option-name" value="${option.name ?? ""}" placeholder="Option name">
+    <select class="color-option-type">
+      <option value="color" ${type === "color" ? "selected" : ""}>Color</option>
+      <option value="texture" ${type === "texture" ? "selected" : ""}>Texture</option>
+    </select>
+    <input type="color" class="color-option-hex" value="${rgbArrayToHex(option.color)}">
+    <div class="texture-inputs">
+      <input type="text" class="texture-map" value="${option.texture ?? ""}" placeholder="Texture file">
+      <input type="text" class="texture-normal" value="${option.normal ?? ""}" placeholder="Normal map">
+      <input type="text" class="texture-rough" value="${option.rough ?? ""}" placeholder="Roughness map">
+      <label class="upload-label">Upload<input type="file" class="texture-upload" accept=".jpg,.jpeg,.png,.webp"></label>
+    </div>
+    <button type="button" class="ghost-button danger remove-color">✖</button>
+  `;
+
+  const typeSelect = row.querySelector(".color-option-type");
+  const colorInput = row.querySelector(".color-option-hex");
+  const textureInputs = row.querySelector(".texture-inputs");
+
+  function syncMaterialInputs() {
+    const currentType = typeSelect.value;
+    if (currentType === "color") {
+      colorInput.style.display = "block";
+      textureInputs.style.display = "none";
+    } else {
+      colorInput.style.display = "none";
+      textureInputs.style.display = "grid";
+    }
+  }
+
+  syncMaterialInputs();
+  typeSelect.addEventListener("change", syncMaterialInputs);
+  row.querySelector(".remove-color").onclick = () => row.remove();
+  return row;
+}
+
+function normalizeVariantGroups(groups = {}) {
+  return Object.entries(groups).map(([groupName, parts]) => ({
+    name: groupName,
+    parts: Object.entries(parts ?? {}).map(([key, part]) => ({
+      key,
+      mainMat: part?.mainMat ?? "",
+      models: (part?.models ?? []).map(model => ({
+        ...model,
+        colors: model?.colors ?? [],
+      })),
+    })),
+  }));
+}
+
+function slugify(value) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+}
+
+function rgbArrayToHex(color = []) {
+  if (!Array.isArray(color) || color.length < 3) return "#ffffff";
+  const toHex = value => {
+    const normalized = Math.max(0, Math.min(255, Math.round((value ?? 0) * 255)));
+    return normalized.toString(16).padStart(2, "0");
+  };
+  return `#${toHex(color[0])}${toHex(color[1])}${toHex(color[2])}`;
+}
+
+function hexToRgbArray(hex) {
+  const clean = (hex || "#ffffff").replace("#", "");
+  if (clean.length !== 6) return [1, 1, 1];
+  const r = parseInt(clean.slice(0, 2), 16) / 255;
+  const g = parseInt(clean.slice(2, 4), 16) / 255;
+  const b = parseInt(clean.slice(4, 6), 16) / 255;
+  return [Number(r.toFixed(3)), Number(g.toFixed(3)), Number(b.toFixed(3))];
+}
+
+function buildClientFromCard(card, index) {
+  const name = card.querySelector(".client-name").value.trim() || `Client ${index + 1}`;
+  const boatInfo = {};
+  card.querySelectorAll('.boat-info input[data-section="boat"]').forEach(input => {
+    boatInfo[input.dataset.key] = input.value;
   });
 
-  const newVariants = structuredClone(VARIANT_GROUPS);
-  document.querySelectorAll("[data-field]").forEach(el => {
-    const { group, part, idx, field } = el.dataset;
-    if (group && part && idx && field)
-      newVariants[group][part].models[idx][field] = el.value;
-  });
+  const variantGroups = {};
+  card.querySelectorAll(".variant-group").forEach(groupEl => {
+    const groupName = groupEl.querySelector(".variant-group-name").value.trim();
+    if (!groupName) return;
+    const parts = {};
 
-  const clients = [];
-  document.querySelectorAll(".client-card").forEach(c => {
-    clients.push({
-      name: c.querySelector(".client-name").value,
-      model: c.querySelectorAll("input")[1]?.value || "",
-      texture: c.querySelectorAll("input")[2]?.value || "",
-      variants: c.querySelector("textarea")?.value || "",
+    groupEl.querySelectorAll(".variant-part").forEach(partEl => {
+      const partKey = partEl.querySelector(".variant-part-name").value.trim();
+      if (!partKey) return;
+      const partData = {
+        mainMat: partEl.querySelector(".variant-part-material").value.trim() || null,
+        models: [],
+      };
+
+      partEl.querySelectorAll(".variant-item").forEach(itemEl => {
+        const model = {
+          name: itemEl.querySelector(".variant-item-name").value.trim(),
+          src: itemEl.querySelector(".variant-item-src").value.trim() || null,
+          price: parseFloat(itemEl.querySelector(".variant-item-price").value) || 0,
+          description: itemEl.querySelector(".variant-item-description").value.trim(),
+          colors: [],
+        };
+
+        itemEl.querySelectorAll(".color-row").forEach(row => {
+          const type = row.querySelector(".color-option-type").value;
+          const colorData = {
+            name: row.querySelector(".color-option-name").value.trim(),
+            type,
+          };
+          if (type === "color") {
+            colorData.color = hexToRgbArray(row.querySelector(".color-option-hex").value);
+          } else {
+            colorData.texture = row.querySelector(".texture-map").value.trim();
+            colorData.normal = row.querySelector(".texture-normal").value.trim();
+            colorData.rough = row.querySelector(".texture-rough").value.trim();
+          }
+          model.colors.push(colorData);
+        });
+
+        partData.models.push(model);
+      });
+
+      if (partData.models.length) {
+        parts[partKey] = partData;
+      }
     });
+
+    if (Object.keys(parts).length) {
+      variantGroups[groupName] = parts;
+    }
   });
 
+  return {
+    name,
+    slug: slugify(name) || `client-${index + 1}`,
+    boatInfo,
+    variantGroups,
+  };
+}
+
+function collectClients() {
+  const cards = Array.from(document.querySelectorAll(".client-card"));
+  return cards.map((card, idx) => buildClientFromCard(card, idx)).filter(Boolean);
+}
+
+function handleSave() {
+  const clients = collectClients();
+  if (clients.length === 0) {
+    alert("Add at least one client before saving.");
+    return;
+  }
+
+  const firstClient = clients[0];
   const output = `export const BASE_PRICE = ${BASE_PRICE};
-export const BOAT_INFO = ${JSON.stringify(newBoat, null, 2)};
-export const VARIANT_GROUPS = ${JSON.stringify(newVariants, null, 2)};
+export const BOAT_INFO = ${JSON.stringify(firstClient.boatInfo, null, 2)};
+export const VARIANT_GROUPS = ${JSON.stringify(firstClient.variantGroups, null, 2)};
 export const SIDEBAR_INFO = ${JSON.stringify(SIDEBAR_INFO, null, 2)};
 export const CLIENTS = ${JSON.stringify(clients, null, 2)};`;
 
@@ -236,4 +468,10 @@ export const CLIENTS = ${JSON.stringify(clients, null, 2)};`;
   a.click();
   URL.revokeObjectURL(url);
   alert("New config.js exported!");
-};
+}
+
+addClientForm({
+  name: "Client 1",
+  boatInfo: structuredClone(BOAT_INFO),
+  variantGroups: structuredClone(VARIANT_GROUPS),
+});
