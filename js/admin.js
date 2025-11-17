@@ -87,47 +87,62 @@ function addClientForm(data = {}) {
   const clientDiv = document.createElement("div");
   clientDiv.className = "client-card";
 
-  const clientName = data.name ?? `Client ${clientsContainer.children.length + 1}`;
+  const index = clientsContainer.children.length + 1;
+  const clientName = data.name ?? `Client ${index}`;
   const boatInfo = data.boatInfo ?? structuredClone(BOAT_INFO);
   const variantGroups = normalizeVariantGroups(data.variantGroups ?? VARIANT_GROUPS);
+  const linkPreview = slugify(clientName) || `client-${index}`;
 
   clientDiv.innerHTML = `
     <div class="client-header">
       <div class="client-header-left">
+        <label>Client name</label>
         <input type="text" placeholder="Client Name" value="${clientName}" class="client-name">
+        <div class="client-link">Link preview <code>?client=${linkPreview}</code></div>
       </div>
       <div class="client-header-right">
-        <button class="toggleBtn">▼</button>
-        <button class="removeBtn">✖</button>
+        <button class="ghost-button subtle toggleBtn">Collapse</button>
+        <button class="ghost-button danger removeBtn">Remove</button>
       </div>
     </div>
   `;
 
   const body = document.createElement("div");
   body.className = "client-body";
-  body.style.display = "none";
 
-  const boatDiv = document.createElement("div");
-  boatDiv.className = "section inner boat-info";
-  boatDiv.innerHTML = `<div class="section-header"><h3>Boat Info</h3></div>`;
+  const boatDiv = document.createElement("section");
+  boatDiv.className = "panel-card boat-info";
+  boatDiv.innerHTML = `
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Foundational data</p>
+        <h3>Boat info</h3>
+        <p class="panel-description">Reference specs that appear inside the configurator toggle panels.</p>
+      </div>
+    </div>
+  `;
+
+  const boatGrid = document.createElement("div");
+  boatGrid.className = "form-grid two";
   Object.entries(boatInfo).forEach(([key, value]) => {
-    const wrapper = document.createElement("label");
-    wrapper.textContent = key;
-    const input = document.createElement("input");
-    input.type = "text";
+    const field = createFormField(key, value ?? "");
+    const input = field.querySelector("input");
     input.dataset.section = "boat";
     input.dataset.key = key;
-    input.value = value ?? "";
-    wrapper.appendChild(input);
-    boatDiv.appendChild(wrapper);
+    boatGrid.appendChild(field);
   });
+  boatDiv.appendChild(boatGrid);
 
-  const variantsWrapper = document.createElement("div");
-  variantsWrapper.className = "section inner";
+  const variantsWrapper = document.createElement("section");
+  variantsWrapper.className = "panel-card";
   variantsWrapper.innerHTML = `
-    <div class="section-header">
-      <h3>Variant Groups</h3>
-      <button type="button" class="ghost-button add-group">➕ Add Variant Group</button>
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Configurator content</p>
+        <h3>Variant groups</h3>
+        <p class="panel-description">Break down every selectable item by group and mesh part. Use as many variant and additional groups as you need.</p>
+      </div>
+      <button type="button" class="ghost-button add-group">➕ Add group</button>
     </div>
   `;
 
@@ -148,11 +163,16 @@ function addClientForm(data = {}) {
   const toggleBtn = clientDiv.querySelector(".toggleBtn");
   const removeBtn = clientDiv.querySelector(".removeBtn");
   const nameInput = clientDiv.querySelector(".client-name");
+  const linkBadge = clientDiv.querySelector(".client-link code");
+
+  const setBodyVisibility = visible => {
+    body.style.display = visible ? "flex" : "none";
+    toggleBtn.textContent = visible ? "Collapse" : "Expand";
+  };
 
   toggleBtn.onclick = () => {
-    const isOpen = body.style.display === "block";
-    body.style.display = isOpen ? "none" : "block";
-    toggleBtn.textContent = isOpen ? "▼" : "▲";
+    const isVisible = body.style.display === "flex";
+    setBodyVisibility(!isVisible);
   };
 
   removeBtn.onclick = () => {
@@ -162,55 +182,88 @@ function addClientForm(data = {}) {
   };
 
   nameInput.addEventListener("input", () => {
+    const slug = slugify(nameInput.value) || "client";
+    linkBadge.textContent = `?client=${slug}`;
     refreshTabs();
     renderSidebarClients();
   });
 
-  if (clientsContainer.children.length === 1) {
-    body.style.display = "block";
-    toggleBtn.textContent = "▲";
-  }
+  setBodyVisibility(clientsContainer.children.length === 1);
 
   refreshTabs();
   renderSidebarClients();
 }
 
+function createFormField(labelText, value = "") {
+  const wrapper = document.createElement("label");
+  wrapper.className = "form-field";
+  wrapper.innerHTML = `<span>${labelText}</span>`;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = value;
+  wrapper.appendChild(input);
+  return wrapper;
+}
+
 function createVariantGroup(groupData = {}) {
   const groupDiv = document.createElement("div");
-  groupDiv.className = "variant-group";
+  groupDiv.className = "variant-group variant-card";
 
   groupDiv.innerHTML = `
-    <div class="variant-group-header">
+    <div class="variant-card-head">
       <div>
-        <label>Group Name</label>
-        <input type="text" class="variant-group-name" value="${groupData.name ?? ""}" placeholder="e.g. Seats, Hull, Additional Equipment">
+        <p class="eyebrow">Group</p>
+        <input type="text" class="variant-group-name" value="${groupData.name ?? ""}" placeholder="Seats, Hull, Additional equipment">
       </div>
-      <button type="button" class="ghost-button danger remove-group">Remove Group</button>
+      <div class="variant-card-meta">
+        <span class="pill parts-pill">0 Parts</span>
+        <button type="button" class="ghost-button subtle collapse-group">Collapse</button>
+        <button type="button" class="ghost-button danger remove-group">Remove</button>
+      </div>
     </div>
   `;
 
+  const body = document.createElement("div");
+  body.className = "variant-card-body";
+
+  const helperText = document.createElement("p");
+  helperText.className = "card-hint";
+  helperText.textContent = "Mesh parts define which 3D objects respond to the options below.";
+  body.appendChild(helperText);
+
   const partsContainer = document.createElement("div");
   partsContainer.className = "variant-parts";
-
   (groupData.parts ?? []).forEach(part => partsContainer.appendChild(createVariantPart(part)));
+  body.appendChild(partsContainer);
 
   const addPartBtn = document.createElement("button");
   addPartBtn.type = "button";
-  addPartBtn.className = "ghost-button add-part";
-  addPartBtn.textContent = "➕ Add Mesh / Part";
-  addPartBtn.onclick = () => partsContainer.appendChild(createVariantPart());
+  addPartBtn.className = "ghost-button add-part wide";
+  addPartBtn.textContent = "➕ Add mesh / part";
+  addPartBtn.onclick = () => {
+    partsContainer.appendChild(createVariantPart());
+    updateGroupSummary(groupDiv);
+  };
+  body.appendChild(addPartBtn);
 
-  groupDiv.appendChild(partsContainer);
-  groupDiv.appendChild(addPartBtn);
+  groupDiv.appendChild(body);
 
   groupDiv.querySelector(".remove-group").onclick = () => {
     groupDiv.remove();
+  };
+
+  const collapseBtn = groupDiv.querySelector(".collapse-group");
+  collapseBtn.onclick = () => {
+    const isHidden = body.style.display === "none";
+    body.style.display = isHidden ? "block" : "none";
+    collapseBtn.textContent = isHidden ? "Collapse" : "Expand";
   };
 
   if ((groupData.parts ?? []).length === 0) {
     partsContainer.appendChild(createVariantPart());
   }
 
+  updateGroupSummary(groupDiv);
   return groupDiv;
 }
 
@@ -221,14 +274,17 @@ function createVariantPart(partData = {}) {
   partDiv.innerHTML = `
     <div class="variant-part-header">
       <div>
-        <label>Mesh / Part Key</label>
-        <input type="text" class="variant-part-name" value="${partData.key ?? ""}" placeholder="e.g. BT_Base_03_A">
+        <label>Mesh / Part key</label>
+        <input type="text" class="variant-part-name" value="${partData.key ?? ""}" placeholder="BT_Base_03_A">
       </div>
       <div>
-        <label>Main Material</label>
+        <label>Main material</label>
         <input type="text" class="variant-part-material" value="${partData.mainMat ?? ""}" placeholder="Material ID">
       </div>
-      <button type="button" class="ghost-button danger remove-part">Remove Part</button>
+      <div class="variant-part-actions">
+        <span class="pill items-pill">0 Items</span>
+        <button type="button" class="ghost-button danger remove-part">Remove part</button>
+      </div>
     </div>
   `;
 
@@ -239,18 +295,26 @@ function createVariantPart(partData = {}) {
   const addItemBtn = document.createElement("button");
   addItemBtn.type = "button";
   addItemBtn.className = "ghost-button add-variant-item";
-  addItemBtn.textContent = "➕ Add Variant Item";
-  addItemBtn.onclick = () => itemsContainer.appendChild(createVariantItem());
+  addItemBtn.textContent = "➕ Add variant item";
+  addItemBtn.onclick = () => {
+    itemsContainer.appendChild(createVariantItem());
+    updatePartSummary(partDiv);
+  };
 
   partDiv.appendChild(itemsContainer);
   partDiv.appendChild(addItemBtn);
 
-  partDiv.querySelector(".remove-part").onclick = () => partDiv.remove();
+  partDiv.querySelector(".remove-part").onclick = () => {
+    const parentGroup = partDiv.closest(".variant-group");
+    partDiv.remove();
+    if (parentGroup) updateGroupSummary(parentGroup);
+  };
 
   if ((partData.models ?? []).length === 0) {
     itemsContainer.appendChild(createVariantItem());
   }
 
+  updatePartSummary(partDiv);
   return partDiv;
 }
 
@@ -259,20 +323,27 @@ function createVariantItem(itemData = {}) {
   itemDiv.className = "variant-item";
 
   itemDiv.innerHTML = `
-    <div class="field-grid">
-      <label>Item Name<input type="text" class="variant-item-name" value="${itemData.name ?? ""}" placeholder="Display name"></label>
-      <label>GLB / Model Source<input type="text" class="variant-item-src" value="${itemData.src ?? ""}" placeholder="variants/your-file.glb"></label>
-      <label>Price (EUR)<input type="number" class="variant-item-price" value="${itemData.price ?? 0}" min="0"></label>
+    <div class="variant-item-head">
+      <div class="field-grid">
+        <label>Item name<input type="text" class="variant-item-name" value="${itemData.name ?? ""}" placeholder="Display name"></label>
+        <label>GLB / model source<input type="text" class="variant-item-src" value="${itemData.src ?? ""}" placeholder="variants/your-file.glb"></label>
+        <label>Price (EUR)<input type="number" class="variant-item-price" value="${itemData.price ?? 0}" min="0"></label>
+      </div>
     </div>
     <label>Description<textarea class="variant-item-description" rows="3" placeholder="Describe this option">${itemData.description ?? ""}</textarea></label>
     <div class="material-options">
       <div class="material-options-header">
-        <h4>Material / Texture Options</h4>
-        <button type="button" class="ghost-button add-color">➕ Add Option</button>
+        <div>
+          <h4>Material / texture options</h4>
+          <p class="card-hint">Add colors or upload texture maps for this item.</p>
+        </div>
+        <button type="button" class="ghost-button add-color">➕ Add option</button>
       </div>
       <div class="material-options-body"></div>
     </div>
-    <button type="button" class="ghost-button danger remove-variant-item">Remove Item</button>
+    <div class="variant-item-footer">
+      <button type="button" class="ghost-button danger remove-variant-item">Remove item</button>
+    </div>
   `;
 
   const optionsBody = itemDiv.querySelector(".material-options-body");
@@ -282,7 +353,11 @@ function createVariantItem(itemData = {}) {
     optionsBody.appendChild(createColorRow());
   };
 
-  itemDiv.querySelector(".remove-variant-item").onclick = () => itemDiv.remove();
+  itemDiv.querySelector(".remove-variant-item").onclick = () => {
+    const parentPart = itemDiv.closest(".variant-part");
+    itemDiv.remove();
+    if (parentPart) updatePartSummary(parentPart);
+  };
 
   if ((itemData.colors ?? []).length === 0) {
     optionsBody.appendChild(createColorRow({ type: "color" }));
@@ -297,19 +372,23 @@ function createColorRow(option = {}) {
   const type = option.type ?? "color";
 
   row.innerHTML = `
-    <input type="text" class="color-option-name" value="${option.name ?? ""}" placeholder="Option name">
-    <select class="color-option-type">
-      <option value="color" ${type === "color" ? "selected" : ""}>Color</option>
-      <option value="texture" ${type === "texture" ? "selected" : ""}>Texture</option>
-    </select>
-    <input type="color" class="color-option-hex" value="${rgbArrayToHex(option.color)}">
+    <div class="color-row-main">
+      <input type="text" class="color-option-name" value="${option.name ?? ""}" placeholder="Option name">
+      <select class="color-option-type">
+        <option value="color" ${type === "color" ? "selected" : ""}>Color</option>
+        <option value="texture" ${type === "texture" ? "selected" : ""}>Texture</option>
+      </select>
+      <input type="color" class="color-option-hex" value="${rgbArrayToHex(option.color)}">
+    </div>
     <div class="texture-inputs">
       <input type="text" class="texture-map" value="${option.texture ?? ""}" placeholder="Texture file">
       <input type="text" class="texture-normal" value="${option.normal ?? ""}" placeholder="Normal map">
       <input type="text" class="texture-rough" value="${option.rough ?? ""}" placeholder="Roughness map">
       <label class="upload-label">Upload<input type="file" class="texture-upload" accept=".jpg,.jpeg,.png,.webp"></label>
     </div>
-    <button type="button" class="ghost-button danger remove-color">✖</button>
+    <div class="color-row-actions">
+      <button type="button" class="ghost-button danger remove-color">Remove</button>
+    </div>
   `;
 
   const typeSelect = row.querySelector(".color-option-type");
@@ -331,6 +410,22 @@ function createColorRow(option = {}) {
   typeSelect.addEventListener("change", syncMaterialInputs);
   row.querySelector(".remove-color").onclick = () => row.remove();
   return row;
+}
+
+function updateGroupSummary(groupDiv) {
+  const pill = groupDiv.querySelector(".parts-pill");
+  if (pill) {
+    const count = groupDiv.querySelectorAll(".variant-part").length;
+    pill.textContent = `${count} ${count === 1 ? "Part" : "Parts"}`;
+  }
+}
+
+function updatePartSummary(partDiv) {
+  const pill = partDiv.querySelector(".items-pill");
+  if (pill) {
+    const count = partDiv.querySelectorAll(".variant-item").length;
+    pill.textContent = `${count} ${count === 1 ? "Item" : "Items"}`;
+  }
 }
 
 function normalizeVariantGroups(groups = {}) {
