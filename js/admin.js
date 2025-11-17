@@ -1,4 +1,11 @@
-import { BOAT_INFO, VARIANT_GROUPS, SIDEBAR_INFO, BASE_PRICE } from "./config.js";
+import {
+  DEFAULT_MODEL,
+  BOAT_INFO,
+  VARIANT_GROUPS,
+  SIDEBAR_INFO,
+  BASE_PRICE,
+  CLIENTS,
+} from "./config.js";
 
 const app = document.createElement("div");
 app.id = "app";
@@ -347,6 +354,7 @@ function createVariantItem(itemData = {}) {
   `;
 
   const optionsBody = itemDiv.querySelector(".material-options-body");
+  const hasSavedColors = Array.isArray(itemData.colors);
   (itemData.colors ?? []).forEach(color => optionsBody.appendChild(createColorRow(color)));
 
   itemDiv.querySelector(".add-color").onclick = () => {
@@ -359,7 +367,7 @@ function createVariantItem(itemData = {}) {
     if (parentPart) updatePartSummary(parentPart);
   };
 
-  if ((itemData.colors ?? []).length === 0) {
+  if (!hasSavedColors) {
     optionsBody.appendChild(createColorRow({ type: "color" }));
   }
 
@@ -549,10 +557,11 @@ function handleSave() {
   }
 
   const firstClient = clients[0];
-  const output = `export const BASE_PRICE = ${BASE_PRICE};
+ const output = `export const DEFAULT_MODEL = ${JSON.stringify(DEFAULT_MODEL)};
+export const BASE_PRICE = ${BASE_PRICE};
 export const BOAT_INFO = ${JSON.stringify(firstClient.boatInfo, null, 2)};
 export const VARIANT_GROUPS = ${JSON.stringify(firstClient.variantGroups, null, 2)};
-export const SIDEBAR_INFO = ${JSON.stringify(SIDEBAR_INFO, null, 2)};
+export const SIDEBAR_INFO = ${JSON.stringify(sidebarInfo, null, 2)};
 export const CLIENTS = ${JSON.stringify(clients, null, 2)};`;
 
   const blob = new Blob([output], { type: "text/javascript" });
@@ -565,8 +574,21 @@ export const CLIENTS = ${JSON.stringify(clients, null, 2)};`;
   alert("New config.js exported!");
 }
 
-addClientForm({
-  name: "Client 1",
-  boatInfo: structuredClone(BOAT_INFO),
-  variantGroups: structuredClone(VARIANT_GROUPS),
-});
+const initialClients =
+  Array.isArray(CLIENTS) && CLIENTS.length
+    ? CLIENTS
+    : [
+        {
+          name: "Client 1",
+          boatInfo: structuredClone(BOAT_INFO),
+          variantGroups: structuredClone(VARIANT_GROUPS),
+        },
+      ];
+
+initialClients.forEach(client =>
+  addClientForm({
+    name: client.name,
+    boatInfo: structuredClone(client.boatInfo ?? BOAT_INFO),
+    variantGroups: structuredClone(client.variantGroups ?? VARIANT_GROUPS),
+  }),
+);
