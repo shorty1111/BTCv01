@@ -887,3 +887,212 @@ textarea::placeholder {
 #saveBtn:hover {
   background: linear-gradient(135deg, #60b8ff 0%, #3da9fc 100%);
 }
+
+/* ============================================
+   Client Card Body
+   ============================================ */
+.client-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin-top: 16px;
+}
+
+.section.inner {
+  background: rgba(10, 14, 20, 0.85);
+  border: 1px solid rgba(61, 169, 252, 0.08);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.section-header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.boat-info label {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  color: #a0aec0;
+  margin-bottom: 12px;
+}
+
+.boat-info input {
+  margin-top: 6px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 18, 24, 0.9);
+  color: #e5e9f0;
+}
+
+.ghost-button {
+  background: rgba(61, 169, 252, 0.15);
+  border: 1px dashed rgba(61, 169, 252, 0.6);
+  color: #e5e9f0;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ghost-button:hover {
+  background: rgba(61, 169, 252, 0.25);
+}
+
+.ghost-button.danger {
+  border-color: rgba(255, 123, 123, 0.7);
+  color: #ff9f9f;
+  background: rgba(255, 123, 123, 0.05);
+}
+
+.variant-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.variant-group {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 18px;
+  background: rgba(13, 16, 23, 0.95);
+}
+
+.variant-group-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.variant-group-header label,
+.variant-part-header label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8892a6;
+}
+
+.variant-group input,
+.variant-part input,
+.variant-item input,
+.variant-item textarea,
+.color-row input,
+.color-row select {
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(8, 11, 17, 0.85);
+  color: #f7fafc;
+}
+
+.variant-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.variant-part {
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 16px;
+  background: rgba(4, 6, 10, 0.75);
+}
+
+.variant-part-header {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  align-items: end;
+}
+
+.variant-items {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.variant-item {
+  border: 1px solid rgba(61, 169, 252, 0.15);
+  border-radius: 12px;
+  padding: 16px;
+  background: rgba(8, 10, 16, 0.85);
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.material-options {
+  margin-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 16px;
+}
+
+.material-options-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.material-options-header h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.material-options-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.color-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  align-items: center;
+}
+
+.texture-inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.upload-label {
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  padding: 8px;
+  display: block;
+  font-size: 12px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.upload-label input {
+  display: none;
+}
+
+.variant-item textarea {
+  resize: vertical;
+  min-height: 80px;
+}
