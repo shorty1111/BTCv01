@@ -1,4 +1,17 @@
-import { BOAT_INFO, VARIANT_GROUPS, SIDEBAR_INFO, BASE_PRICE } from "./config.js";
+import {
+  DEFAULT_MODEL,
+  BOAT_INFO,
+  VARIANT_GROUPS,
+  SIDEBAR_INFO,
+  BASE_PRICE,
+  CLIENTS,
+} from "./config.js";
+
+const generalSettingsState = {
+  defaultModelInput: null,
+  basePriceInput: null,
+  sidebarInputs: new Map(),
+};
 
 const app = document.createElement("div");
 app.id = "app";
@@ -17,6 +30,9 @@ clientsContainer.id = "clientsContainer";
 
 clientsSection.appendChild(title);
 clientsSection.appendChild(clientsContainer);
+
+const generalSection = createGeneralSettingsSection();
+app.appendChild(generalSection);
 app.appendChild(clientsSection);
 
 const tabsBar = document.createElement("div");
@@ -347,6 +363,7 @@ function createVariantItem(itemData = {}) {
   `;
 
   const optionsBody = itemDiv.querySelector(".material-options-body");
+  const hasSavedColors = Array.isArray(itemData.colors);
   (itemData.colors ?? []).forEach(color => optionsBody.appendChild(createColorRow(color)));
 
   itemDiv.querySelector(".add-color").onclick = () => {
@@ -359,7 +376,7 @@ function createVariantItem(itemData = {}) {
     if (parentPart) updatePartSummary(parentPart);
   };
 
-  if ((itemData.colors ?? []).length === 0) {
+  if (!hasSavedColors) {
     optionsBody.appendChild(createColorRow({ type: "color" }));
   }
 
@@ -548,11 +565,13 @@ function handleSave() {
     return;
   }
 
+  const { defaultModel, basePrice, sidebarInfo } = collectGeneralSettings();
   const firstClient = clients[0];
-  const output = `export const BASE_PRICE = ${BASE_PRICE};
+  const output = `export const DEFAULT_MODEL = ${JSON.stringify(defaultModel)};
+export const BASE_PRICE = ${basePrice};
 export const BOAT_INFO = ${JSON.stringify(firstClient.boatInfo, null, 2)};
 export const VARIANT_GROUPS = ${JSON.stringify(firstClient.variantGroups, null, 2)};
-export const SIDEBAR_INFO = ${JSON.stringify(SIDEBAR_INFO, null, 2)};
+export const SIDEBAR_INFO = ${JSON.stringify(sidebarInfo, null, 2)};
 export const CLIENTS = ${JSON.stringify(clients, null, 2)};`;
 
   const blob = new Blob([output], { type: "text/javascript" });
@@ -565,8 +584,131 @@ export const CLIENTS = ${JSON.stringify(clients, null, 2)};`;
   alert("New config.js exported!");
 }
 
-addClientForm({
-  name: "Client 1",
-  boatInfo: structuredClone(BOAT_INFO),
-  variantGroups: structuredClone(VARIANT_GROUPS),
-});
+const initialClients =
+  Array.isArray(CLIENTS) && CLIENTS.length
+    ? CLIENTS
+    : [
+        {
+          name: "Client 1",
+          boatInfo: structuredClone(BOAT_INFO),
+          variantGroups: structuredClone(VARIANT_GROUPS),
+        },
+      ];
+
+initialClients.forEach(client =>
+  addClientForm({
+    name: client.name,
+    boatInfo: structuredClone(client.boatInfo ?? BOAT_INFO),
+    variantGroups: structuredClone(client.variantGroups ?? VARIANT_GROUPS),
+  }),
+);
+
+function createGeneralSettingsSection() {
+  generalSettingsState.sidebarInputs.clear();
+  const section = document.createElement("div");
+  section.className = "section general-settings";
+
+  const globalCard = document.createElement("section");
+  globalCard.className = "panel-card";
+  globalCard.innerHTML = `
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Global config</p>
+        <h3>Engine defaults</h3>
+        <p class="panel-description">These values are shared across every client inside the WebGL configurator.</p>
+      </div>
+    </div>
+  `;
+
+  const settingsGrid = document.createElement("div");
+  settingsGrid.className = "form-grid two";
+
+  const defaultModelField = document.createElement("label");
+  defaultModelField.className = "form-field";
+  defaultModelField.innerHTML = `<span>Default GLB model</span>`;
+  const defaultModelInput = document.createElement("input");
+  defaultModelInput.type = "text";
+  defaultModelInput.placeholder = "assets/boat.glb";
+  defaultModelInput.value = DEFAULT_MODEL ?? "";
+  defaultModelField.appendChild(defaultModelInput);
+
+  const basePriceField = document.createElement("label");
+  basePriceField.className = "form-field";
+  basePriceField.innerHTML = `<span>Base price (EUR)</span>`;
+  const basePriceInput = document.createElement("input");
+  basePriceInput.type = "number";
+  basePriceInput.min = "0";
+  basePriceInput.step = "100";
+  basePriceInput.value = Number(BASE_PRICE ?? 0);
+  basePriceField.appendChild(basePriceInput);
+
+  settingsGrid.appendChild(defaultModelField);
+  settingsGrid.appendChild(basePriceField);
+  globalCard.appendChild(settingsGrid);
+
+  section.appendChild(globalCard);
+
+  const sidebarCard = document.createElement("section");
+  sidebarCard.className = "panel-card";
+  sidebarCard.innerHTML = `
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Configurator sidebar</p>
+        <h3>Information panels</h3>
+        <p class="panel-description">Update the copy that appears inside the Help, About, Settings, and Contact tabs.</p>
+      </div>
+    </div>
+  `;
+
+  const sidebarContainer = document.createElement("div");
+  sidebarContainer.className = "sidebar-editors";
+  const sidebarEntries =
+    SIDEBAR_INFO && typeof SIDEBAR_INFO === "object" && !Array.isArray(SIDEBAR_INFO)
+      ? Object.entries(SIDEBAR_INFO)
+      : [["about", ""]];
+
+  sidebarEntries.forEach(([key, value]) => {
+    const label = document.createElement("label");
+    label.className = "form-field";
+    label.innerHTML = `<span>${formatSidebarLabel(key)}</span>`;
+    const textarea = document.createElement("textarea");
+    textarea.rows = 6;
+    textarea.value = value ?? "";
+    textarea.dataset.sidebarKey = key;
+    label.appendChild(textarea);
+    sidebarContainer.appendChild(label);
+    generalSettingsState.sidebarInputs.set(key, textarea);
+  });
+
+  sidebarCard.appendChild(sidebarContainer);
+  section.appendChild(sidebarCard);
+
+  generalSettingsState.defaultModelInput = defaultModelInput;
+  generalSettingsState.basePriceInput = basePriceInput;
+
+  return section;
+}
+
+function collectGeneralSettings() {
+  const defaultModel = generalSettingsState.defaultModelInput?.value.trim() || DEFAULT_MODEL || "";
+  const parsedBase = parseFloat(generalSettingsState.basePriceInput?.value ?? "");
+  const basePrice = Number.isFinite(parsedBase) && parsedBase >= 0 ? parsedBase : Number(BASE_PRICE) || 0;
+  const sidebarInfo = {};
+
+  if (generalSettingsState.sidebarInputs.size) {
+    generalSettingsState.sidebarInputs.forEach((textarea, key) => {
+      sidebarInfo[key] = textarea.value;
+    });
+  } else if (SIDEBAR_INFO && typeof SIDEBAR_INFO === "object") {
+    Object.assign(sidebarInfo, SIDEBAR_INFO);
+  }
+
+  return { defaultModel, basePrice, sidebarInfo };
+}
+
+function formatSidebarLabel(key = "") {
+  return key
+    .toString()
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, char => char.toUpperCase());
+}

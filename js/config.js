@@ -276,4 +276,13 @@ about: `
   settings: "Customize preferences, performance options, and camera sensitivity here."
 };
 
+export const CLIENTS = [
+  {
+    name: "Demo Client",
+    slug: "demo-client",
+    boatInfo: { ...BOAT_INFO },
+    variantGroups: JSON.parse(JSON.stringify(VARIANT_GROUPS)),
+  },
+];
+
 
