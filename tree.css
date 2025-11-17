@@ -1031,7 +1031,7 @@ canvas,
   cursor: pointer;
   font-size: 14px;
   font-weight: 600;
-  z-index: 101;
+  z-index: 501;
   transition: var(--transition-smooth);
   overflow: hidden;
 }
@@ -1480,7 +1480,7 @@ body.studio-mode .btn-weather {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 150;
+  z-index: 20;
 }
 
 .variant-hotspot {
