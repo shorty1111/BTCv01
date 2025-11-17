@@ -1092,6 +1092,17 @@ textarea::placeholder {
   display: none;
 }
 
+.sidebar-editors {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sidebar-editors textarea {
+  min-height: 140px;
+  resize: vertical;
+}
+
 .variant-item textarea {
   resize: vertical;
   min-height: 80px;
