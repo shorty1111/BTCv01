@@ -29,7 +29,6 @@ header {
   position: sticky;
   top: 0;
   z-index: 100;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   border-bottom: 1px solid rgba(61, 169, 252, 0.1);
 }
 
@@ -69,7 +68,6 @@ header button:not(.toggle-sidebar) {
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(61, 169, 252, 0.2);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -78,7 +76,6 @@ header button:not(.toggle-sidebar) {
 header button:not(.toggle-sidebar):hover {
   background: linear-gradient(135deg, #60b8ff 0%, #3da9fc 100%);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(61, 169, 252, 0.3);
 }
 
 header button:not(.toggle-sidebar):active {
@@ -143,7 +140,6 @@ header button:not(.toggle-sidebar):active {
 
 .sidebar-search input:focus {
   border-color: #3da9fc;
-  box-shadow: 0 0 0 3px rgba(61, 169, 252, 0.1);
 }
 
 .sidebar-content {
@@ -199,7 +195,6 @@ header button:not(.toggle-sidebar):active {
 
 .client-status.active {
   background: #22c55e;
-  box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
 }
 
 .client-status.inactive {
@@ -323,13 +318,11 @@ header button:not(.toggle-sidebar):active {
   border-radius: 12px;
   padding: 24px;
   margin-bottom: 24px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
   transition: all 0.3s ease;
 }
 
 .card:hover {
   border-color: rgba(61, 169, 252, 0.2);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
 }
 
 .card-header {
@@ -397,7 +390,6 @@ input:focus,
 textarea:focus {
   border-color: #3da9fc;
   background: #0f1218;
-  box-shadow: 0 0 0 3px rgba(61, 169, 252, 0.1);
 }
 
 input:hover,
@@ -464,7 +456,6 @@ textarea::placeholder {
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(61, 169, 252, 0.2);
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -473,7 +464,6 @@ textarea::placeholder {
 .primary-button:hover {
   background: linear-gradient(135deg, #60b8ff 0%, #3da9fc 100%);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(61, 169, 252, 0.3);
 }
 
 .primary-button:active {
@@ -565,7 +555,6 @@ textarea::placeholder {
   border-radius: 16px;
   width: 90%;
   max-width: 500px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
   animation: slideUp 0.3s ease;
 }
 
@@ -663,7 +652,6 @@ textarea::placeholder {
     top: 70px;
     height: calc(100% - 70px);
     z-index: 90;
-    box-shadow: 4px 0 12px rgba(0, 0, 0, 0.3);
   }
   
   .main-content {
@@ -696,7 +684,6 @@ textarea::placeholder {
   border-radius: 12px;
   padding: 24px;
   margin-bottom: 32px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
 }
 
 .section h2, .section h3, .section h4 {
@@ -864,8 +851,7 @@ textarea::placeholder {
 .model textarea:focus {
   border-color: #3da9fc;
   background: #0f1218;
-  box-shadow: 0 0 0 2px rgba(61, 169, 252, 0.15);
-}
+  }
 
 .model textarea {
   min-height: 60px;
@@ -903,7 +889,6 @@ textarea::placeholder {
   border: 1px solid rgba(61, 169, 252, 0.08);
   border-radius: 12px;
   padding: 20px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
 }
 
 .section-header {
@@ -1182,7 +1167,6 @@ textarea::placeholder {
   border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: 16px;
   padding: 24px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
 }
 
 .panel-head {

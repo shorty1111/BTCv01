@@ -49,15 +49,6 @@ export const VARIANT_GROUPS = {
               "normal": "leather_brown_N_C.jpg",
               "rough": "leather_brown_R_C.jpg"
             },
-            {
-              "name": "Colors",
-              "type": "color",
-              "color": [
-                1,
-                0,
-                0
-              ]
-            }
           ]
         },
         {

@@ -351,36 +351,30 @@ gl.bindVertexArray(null);
   gl.uniform1f(waterUniforms.uCubeMaxMip, 8.0);
   gl.uniform3fv(waterUniforms.uShallowColor, [0.2, 0.85, 0.7]);
   gl.uniform3fv(waterUniforms.uDeepColor, [0.01, 0.02, 0.03]);
-  // === DEBUG: ISPIS UKUPNOG BROJA VERTOVA ===
-(function debugWaterVerts() {
-  let totalVerts = 0;
 
-  for (let i = 0; i < lodMeshes.length; i++) {
-    const lod = lodMeshes[i];
-
-    // broj verteksa u jednom grid-u = count vert array / stride 6*4 bytes
-    // ali mi znamo direktno: (div+1)*(div+1)
-    const div = LOD_DIVS[i];
-    const vertsPerGrid = (div + 1) * (div + 1);
-
-    const grids = lodInstances[i]; // broj instanci tog LOD-a
-
-    const vertsLOD = vertsPerGrid * grids;
-
-    console.log(
-      `%cLOD${i}: div=${div}, instanci=${grids}, vertsPerGrid=${vertsPerGrid}, totalLODVerts=${vertsLOD}`,
-      "color:#4ad;"
-    );
-
-    totalVerts += vertsLOD;
-  }
-
-  console.log(
-    "%cUKUPAN BROJ VERTOVA VODE (sve instance + LOD): " + totalVerts,
-    "color:#f80;font-size:15px;font-weight:bold;"
-  );
-})();
-
+    // === DEBUG: ISPIS UKUPNOG BROJA VERTOVA ===
+  // (function debugWaterVerts() {
+  //   let totalVerts = 0;
+  //   for (let i = 0; i < lodMeshes.length; i++) {
+  //     const lod = lodMeshes[i];
+  //     // broj verteksa u jednom grid-u = count vert array / stride 6*4 bytes
+  //     // ali mi znamo direktno: (div+1)*(div+1)
+  //     const div = LOD_DIVS[i];
+  //     const vertsPerGrid = (div + 1) * (div + 1);
+  //     const grids = lodInstances[i]; // broj instanci tog LOD-a
+  //     const vertsLOD = vertsPerGrid * grids;
+  //     console.log(
+  //       `%cLOD${i}: div=${div}, instanci=${grids}, vertsPerGrid=${vertsPerGrid}, totalLODVerts=${vertsLOD}`,
+  //       "color:#4ad;"
+  //     );
+  //     totalVerts += vertsLOD;
+  //   }
+  //   console.log(
+  //     "%cUKUPAN BROJ VERTOVA VODE (sve instance + LOD): " + totalVerts,
+  //     "color:#f80;font-size:15px;font-weight:bold;"
+  //   );
+  // })
+    // ();
 }
 
 // === helper za učitavanje 2D teksture ===
