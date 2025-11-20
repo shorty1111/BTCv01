@@ -1,4 +1,4 @@
-import {
+﻿import {
   DEFAULT_MODEL,
   BOAT_INFO,
   VARIANT_GROUPS,
@@ -6,6 +6,22 @@ import {
   BASE_PRICE,
   CLIENTS,
 } from "./config.js";
+
+const CONFIG_SIGNATURE = JSON.stringify({
+  boatInfo: BOAT_INFO,
+  variantGroups: VARIANT_GROUPS,
+});
+
+const cloneData = value =>
+  typeof structuredClone === "function"
+    ? structuredClone(value)
+    : JSON.parse(JSON.stringify(value));
+
+const sidebarInfo = cloneData(SIDEBAR_INFO);
+const EMPTY_BOAT_INFO = Object.keys(BOAT_INFO).reduce((acc, key) => {
+  acc[key] = "";
+  return acc;
+}, {});
 
 const app = document.createElement("div");
 app.id = "app";
@@ -32,7 +48,7 @@ clientsSection.insertBefore(tabsBar, clientsContainer);
 
 const addClientButton = document.getElementById("addClientBtn");
 if (addClientButton) {
-  addClientButton.onclick = () => addClientForm();
+  addClientButton.onclick = () => addClientForm({}, { blank: true });
 }
 
 document.getElementById("saveBtn").onclick = handleSave;
@@ -90,14 +106,17 @@ function renderSidebarClients() {
   });
 }
 
-function addClientForm(data = {}) {
+function addClientForm(data = {}, options = {}) {
+  const isBlank = options.blank === true;
   const clientDiv = document.createElement("div");
   clientDiv.className = "client-card";
 
   const index = clientsContainer.children.length + 1;
-  const clientName = data.name ?? `Client ${index}`;
-  const boatInfo = data.boatInfo ?? structuredClone(BOAT_INFO);
-  const variantGroups = normalizeVariantGroups(data.variantGroups ?? VARIANT_GROUPS);
+  const clientName = data.name ?? (isBlank ? "" : `Client ${index}`);
+  const boatInfo = isBlank ? cloneData(EMPTY_BOAT_INFO) : data.boatInfo ?? cloneData(BOAT_INFO);
+  const variantGroups = isBlank
+    ? []
+    : normalizeVariantGroups(data.variantGroups ?? VARIANT_GROUPS);
   const linkPreview = slugify(clientName) || `client-${index}`;
 
   clientDiv.innerHTML = `
@@ -162,8 +181,38 @@ function addClientForm(data = {}) {
     groupsContainer.appendChild(createVariantGroup());
   };
 
-  body.appendChild(boatDiv);
-  body.appendChild(variantsWrapper);
+  const tabs = document.createElement("div");
+  tabs.className = "client-tabs";
+  tabs.innerHTML = `
+    <button type="button" data-tab="overview" class="active">Boat info</button>
+    <button type="button" data-tab="variants">Variant groups</button>
+  `;
+
+  const panels = document.createElement("div");
+  panels.className = "client-tab-panels";
+  const overviewPanel = document.createElement("div");
+  overviewPanel.className = "client-tab-panel active";
+  overviewPanel.dataset.tab = "overview";
+  overviewPanel.appendChild(boatDiv);
+  const variantsPanel = document.createElement("div");
+  variantsPanel.className = "client-tab-panel";
+  variantsPanel.dataset.tab = "variants";
+  variantsPanel.appendChild(variantsWrapper);
+  panels.appendChild(overviewPanel);
+  panels.appendChild(variantsPanel);
+
+  tabs.querySelectorAll("button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.tab;
+      tabs.querySelectorAll("button").forEach(b => b.classList.toggle("active", b === btn));
+      panels.querySelectorAll(".client-tab-panel").forEach(panel =>
+        panel.classList.toggle("active", panel.dataset.tab === tab),
+      );
+    });
+  });
+
+  body.appendChild(tabs);
+  body.appendChild(panels);
   clientDiv.appendChild(body);
   clientsContainer.appendChild(clientDiv);
 
@@ -172,14 +221,15 @@ function addClientForm(data = {}) {
   const nameInput = clientDiv.querySelector(".client-name");
   const linkBadge = clientDiv.querySelector(".client-link code");
 
+  let isBodyVisible = true;
   const setBodyVisibility = visible => {
-    body.style.display = visible ? "flex" : "none";
+    isBodyVisible = visible;
+    body.style.display = visible ? "block" : "none";
     toggleBtn.textContent = visible ? "Collapse" : "Expand";
   };
 
   toggleBtn.onclick = () => {
-    const isVisible = body.style.display === "flex";
-    setBodyVisibility(!isVisible);
+    setBodyVisibility(!isBodyVisible);
   };
 
   removeBtn.onclick = () => {
@@ -214,7 +264,7 @@ function createFormField(labelText, value = "") {
 
 function createVariantGroup(groupData = {}) {
   const groupDiv = document.createElement("div");
-  groupDiv.className = "variant-group variant-card";
+  groupDiv.className = "variant-group variant-card collapsed";
 
   groupDiv.innerHTML = `
     <div class="variant-card-head">
@@ -240,18 +290,9 @@ function createVariantGroup(groupData = {}) {
 
   const partsContainer = document.createElement("div");
   partsContainer.className = "variant-parts";
-  (groupData.parts ?? []).forEach(part => partsContainer.appendChild(createVariantPart(part)));
+  const partList = groupData.parts && groupData.parts.length ? groupData.parts : [createEmptyPart()];
+  partList.forEach(part => partsContainer.appendChild(createVariantPart(part)));
   body.appendChild(partsContainer);
-
-  const addPartBtn = document.createElement("button");
-  addPartBtn.type = "button";
-  addPartBtn.className = "ghost-button add-part wide";
-  addPartBtn.textContent = "➕ Add mesh / part";
-  addPartBtn.onclick = () => {
-    partsContainer.appendChild(createVariantPart());
-    updateGroupSummary(groupDiv);
-  };
-  body.appendChild(addPartBtn);
 
   groupDiv.appendChild(body);
 
@@ -260,23 +301,27 @@ function createVariantGroup(groupData = {}) {
   };
 
   const collapseBtn = groupDiv.querySelector(".collapse-group");
-  collapseBtn.onclick = () => {
-    const isHidden = body.style.display === "none";
-    body.style.display = isHidden ? "block" : "none";
-    collapseBtn.textContent = isHidden ? "Collapse" : "Expand";
+  const toggleGroup = collapsed => {
+    groupDiv.classList.toggle("collapsed", collapsed);
+    body.style.display = collapsed ? "none" : "block";
+    collapseBtn.textContent = collapsed ? "Expand" : "Collapse";
   };
-
-  if ((groupData.parts ?? []).length === 0) {
-    partsContainer.appendChild(createVariantPart());
-  }
+  collapseBtn.onclick = () => {
+    toggleGroup(!groupDiv.classList.contains("collapsed"));
+  };
+  toggleGroup(true);
 
   updateGroupSummary(groupDiv);
   return groupDiv;
 }
 
+function createEmptyPart() {
+  return { key: "", mainMat: "", models: [] };
+}
+
 function createVariantPart(partData = {}) {
   const partDiv = document.createElement("div");
-  partDiv.className = "variant-part";
+  partDiv.className = "variant-part collapsed";
 
   partDiv.innerHTML = `
     <div class="variant-part-header">
@@ -290,6 +335,7 @@ function createVariantPart(partData = {}) {
       </div>
       <div class="variant-part-actions">
         <span class="pill items-pill">0 Items</span>
+        <button type="button" class="ghost-button subtle collapse-part">Collapse</button>
         <button type="button" class="ghost-button danger remove-part">Remove part</button>
       </div>
     </div>
@@ -308,14 +354,26 @@ function createVariantPart(partData = {}) {
     updatePartSummary(partDiv);
   };
 
-  partDiv.appendChild(itemsContainer);
-  partDiv.appendChild(addItemBtn);
+  const partBody = document.createElement("div");
+  partBody.className = "variant-part-body";
+  partBody.appendChild(itemsContainer);
+  partBody.appendChild(addItemBtn);
+
+  partDiv.appendChild(partBody);
 
   partDiv.querySelector(".remove-part").onclick = () => {
     const parentGroup = partDiv.closest(".variant-group");
     partDiv.remove();
     if (parentGroup) updateGroupSummary(parentGroup);
   };
+  const collapseBtn = partDiv.querySelector(".collapse-part");
+  const togglePart = collapsed => {
+    partDiv.classList.toggle("collapsed", collapsed);
+    partBody.style.display = collapsed ? "none" : "flex";
+    collapseBtn.textContent = collapsed ? "Expand" : "Collapse";
+  };
+  collapseBtn.onclick = () => togglePart(!partDiv.classList.contains("collapsed"));
+  togglePart(true);
 
   if ((partData.models ?? []).length === 0) {
     itemsContainer.appendChild(createVariantItem());
@@ -327,9 +385,26 @@ function createVariantPart(partData = {}) {
 
 function createVariantItem(itemData = {}) {
   const itemDiv = document.createElement("div");
-  itemDiv.className = "variant-item";
+  itemDiv.className = "variant-item collapsed";
 
-  itemDiv.innerHTML = `
+  const summary = document.createElement("div");
+  summary.className = "variant-item-summary";
+  summary.innerHTML = `
+    <div>
+      <p class="variant-item-title">${itemData.name ?? "New item"}</p>
+      <p class="variant-item-subtitle">${itemData.src ?? "No GLB source"}</p>
+    </div>
+    <div class="variant-item-summary-meta">
+      <span class="pill price-pill">${formatPriceLabel(itemData.price)}</span>
+      <button type="button" class="ghost-button subtle toggle-item">Expand</button>
+      <button type="button" class="ghost-button danger remove-variant-item">Remove</button>
+    </div>
+  `;
+  itemDiv.appendChild(summary);
+
+  const details = document.createElement("div");
+  details.className = "variant-item-details";
+  details.innerHTML = `
     <div class="variant-item-head">
       <div class="field-grid">
         <label>Item name<input type="text" class="variant-item-name" value="${itemData.name ?? ""}" placeholder="Display name"></label>
@@ -344,24 +419,23 @@ function createVariantItem(itemData = {}) {
           <h4>Material / texture options</h4>
           <p class="card-hint">Add colors or upload texture maps for this item.</p>
         </div>
-        <button type="button" class="ghost-button add-color">➕ Add option</button>
+        <button type="button" class="ghost-button add-color">? Add option</button>
       </div>
       <div class="material-options-body"></div>
     </div>
-    <div class="variant-item-footer">
-      <button type="button" class="ghost-button danger remove-variant-item">Remove item</button>
-    </div>
   `;
+  itemDiv.appendChild(details);
 
-  const optionsBody = itemDiv.querySelector(".material-options-body");
+  const optionsBody = details.querySelector(".material-options-body");
   const hasSavedColors = Array.isArray(itemData.colors);
   (itemData.colors ?? []).forEach(color => optionsBody.appendChild(createColorRow(color)));
 
-  itemDiv.querySelector(".add-color").onclick = () => {
+  details.querySelector(".add-color").onclick = () => {
     optionsBody.appendChild(createColorRow());
   };
 
-  itemDiv.querySelector(".remove-variant-item").onclick = () => {
+  const removeBtn = summary.querySelector(".remove-variant-item");
+  removeBtn.onclick = () => {
     const parentPart = itemDiv.closest(".variant-part");
     itemDiv.remove();
     if (parentPart) updatePartSummary(parentPart);
@@ -370,6 +444,29 @@ function createVariantItem(itemData = {}) {
   if (!hasSavedColors) {
     optionsBody.appendChild(createColorRow({ type: "color" }));
   }
+
+  const toggleBtn = summary.querySelector(".toggle-item");
+  const toggleItem = collapsed => {
+    itemDiv.classList.toggle("collapsed", collapsed);
+    details.style.display = collapsed ? "none" : "block";
+    toggleBtn.textContent = collapsed ? "Expand" : "Collapse";
+  };
+  toggleBtn.onclick = () => toggleItem(!itemDiv.classList.contains("collapsed"));
+
+  const nameInput = details.querySelector(".variant-item-name");
+  const srcInput = details.querySelector(".variant-item-src");
+  const priceInput = details.querySelector(".variant-item-price");
+  const titleEl = summary.querySelector(".variant-item-title");
+  const subtitleEl = summary.querySelector(".variant-item-subtitle");
+  const pricePill = summary.querySelector(".price-pill");
+  const updateSummary = () => {
+    titleEl.textContent = nameInput.value || "New item";
+    subtitleEl.textContent = srcInput.value || "No GLB source";
+    pricePill.textContent = formatPriceLabel(priceInput.value);
+  };
+  [nameInput, srcInput, priceInput].forEach(input => input.addEventListener("input", updateSummary));
+  updateSummary();
+  toggleItem(true);
 
   return itemDiv;
 }
@@ -477,6 +574,12 @@ function hexToRgbArray(hex) {
   return [Number(r.toFixed(3)), Number(g.toFixed(3)), Number(b.toFixed(3))];
 }
 
+function formatPriceLabel(value) {
+  const num = Number(value) || 0;
+  if (num === 0) return "Included";
+  return `+€${num.toLocaleString("de-DE")}`;
+}
+
 function buildClientFromCard(card, index) {
   const name = card.querySelector(".client-name").value.trim() || `Client ${index + 1}`;
   const boatInfo = {};
@@ -541,6 +644,7 @@ function buildClientFromCard(card, index) {
     slug: slugify(name) || `client-${index + 1}`,
     boatInfo,
     variantGroups,
+    __signature: CONFIG_SIGNATURE,
   };
 }
 
@@ -574,21 +678,33 @@ export const CLIENTS = ${JSON.stringify(clients, null, 2)};`;
   alert("New config.js exported!");
 }
 
-const initialClients =
-  Array.isArray(CLIENTS) && CLIENTS.length
-    ? CLIENTS
-    : [
-        {
-          name: "Client 1",
-          boatInfo: structuredClone(BOAT_INFO),
-          variantGroups: structuredClone(VARIANT_GROUPS),
-        },
-      ];
+const initialClients = (() => {
+  if (!Array.isArray(CLIENTS) || CLIENTS.length === 0) {
+    return [
+      {
+        name: "Client 1",
+        boatInfo: cloneData(BOAT_INFO),
+        variantGroups: cloneData(VARIANT_GROUPS),
+      },
+    ];
+  }
+  return CLIENTS.map((client, idx) => {
+    const needsResync = client?.__signature !== CONFIG_SIGNATURE;
+    return {
+      name: client?.name ?? `Client ${idx + 1}`,
+      boatInfo: needsResync ? cloneData(BOAT_INFO) : cloneData(client.boatInfo ?? BOAT_INFO),
+      variantGroups: needsResync
+        ? cloneData(VARIANT_GROUPS)
+        : cloneData(client.variantGroups ?? VARIANT_GROUPS),
+    };
+  });
+})();
 
 initialClients.forEach(client =>
   addClientForm({
     name: client.name,
-    boatInfo: structuredClone(client.boatInfo ?? BOAT_INFO),
-    variantGroups: structuredClone(client.variantGroups ?? VARIANT_GROUPS),
+    boatInfo: client.boatInfo,
+    variantGroups: client.variantGroups,
   }),
 );
+

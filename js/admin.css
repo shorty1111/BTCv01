@@ -1077,6 +1077,47 @@ textarea::placeholder {
   display: none;
 }
 
+.variant-card.collapsed .variant-card-body {
+  display: none;
+}
+
+.client-tabs {
+  display: inline-flex;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  margin-bottom: 16px;
+}
+
+.client-tabs button {
+  background: transparent;
+  border: none;
+  color: #9fb5dc;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.client-tabs button.active {
+  background: rgba(61, 169, 252, 0.15);
+  color: #e5e9f0;
+}
+
+.client-tab-panels {
+  position: relative;
+}
+
+.client-tab-panel {
+  display: none;
+}
+
+.client-tab-panel.active {
+  display: block;
+}
+
 .sidebar-editors {
   display: flex;
   flex-direction: column;
@@ -1245,9 +1286,14 @@ textarea::placeholder {
   color: #8ecaff;
 }
 
-.ghost-button.add-part.wide,
-.ghost-button.add-variant-item {
+.ghost-button.add-part.wide {
   width: 100%;
+}
+
+.ghost-button.add-variant-item {
+  align-self: flex-start;
+  width: auto;
+  padding: 10px 18px;
 }
 
 .variant-card {
