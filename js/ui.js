@@ -1120,11 +1120,6 @@ function setupBoatTooltip() {
   const toggle = document.getElementById("menuToggle");
   if (!header || !toggle) return;
 
-  if (localStorage.getItem("boatTooltipSeen") === "1") {
-    header.classList.remove("show-tooltip");
-    return;
-  }
-
   header.classList.add("show-tooltip");
   toggle.addEventListener(
     "click",
