@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Less Engine Portal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"rel="stylesheet" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.08), transparent 55%),
+          radial-gradient(circle at 80% 0%, rgba(255, 255, 255, 0.05), transparent 50%),
+          #04070d;
+        --card: rgba(6, 10, 18, 0.85);
+        --border: rgba(255, 255, 255, 0.12);
+        --accent: #55d6ff;
+        --accent-strong: #0af;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: 'Space Grotesk', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: var(--card);
+        color: #f4f6fb;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+      }
+
+      .portal {
+        width: min(960px, 100%);
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 32px;
+        padding: clamp(2rem, 5vw, 3.5rem);
+        box-shadow: 0 40px 100px rgba(0, 0, 0, 0.45);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .portal::before {
+        content: '';
+        position: absolute;
+        inset: 2px;
+        border-radius: 32px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        pointer-events: none;
+      }
+
+      header {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .eyebrow {
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.3em;
+        color: rgba(255, 255, 255, 0.6);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2rem, 5vw, 2.9rem);
+      }
+
+      p.description {
+        margin: 0;
+        max-width: 60ch;
+        color: rgba(255, 255, 255, 0.8);
+        line-height: 1.6;
+      }
+
+      .cta-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1rem;
+        margin-top: 2rem;
+      }
+
+      .cta-card {
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 1.5rem;
+        background: rgba(255, 255, 255, 0.02);
+        transition: border-color 0.2s, transform 0.2s, background 0.2s;
+      }
+
+      .cta-card:hover {
+        border-color: rgba(85, 214, 255, 0.8);
+        background: rgba(85, 214, 255, 0.05);
+        transform: translateY(-2px);
+      }
+
+      .cta-card h2 {
+        margin: 0;
+        font-size: 1.2rem;
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+      }
+
+      .cta-card p {
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 0.95rem;
+        line-height: 1.5;
+      }
+
+      .cta-card a {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+        width: 100%;
+        margin-top: 1rem;
+        padding: 0.85rem 1rem;
+        border-radius: 999px;
+        font-size: 1rem;
+        font-weight: 600;
+        text-decoration: none;
+        border: 1px solid transparent;
+      }
+
+      .cta-card.start a {
+        background: var(--accent);
+        color: #02131d;
+        box-shadow: 0 15px 35px rgba(10, 170, 255, 0.3);
+      }
+
+      .cta-card.admin a {
+        border-color: rgba(255, 255, 255, 0.3);
+        color: #f4f6fb;
+      }
+
+      .cta-card.admin a:hover {
+        border-color: var(--accent-strong);
+        color: var(--accent);
+      }
+
+      footer {
+        margin-top: 2.5rem;
+        font-size: 0.9rem;
+        color: rgba(255, 255, 255, 0.65);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      footer span strong {
+        color: #fff;
+      }
+
+      footer .client-hint {
+        font-size: 0.85rem;
+        color: rgba(255, 255, 255, 0.6);
+      }
+
+      @media (max-width: 600px) {
+        body {
+          padding: 1rem;
+        }
+        .portal {
+          padding: 1.5rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="portal">
+      <header>
+        <span class="eyebrow">Less Engine Control Room</span>
+        <h1>Odavde pokrećeš i konfigurator i admin panel</h1>
+        <p class="description">
+          Start Engine otvara 3D konfigurator sa svim klijentskim konfiguracijama (možeš dodati query parametar
+          <code>?client=slug</code> da odmah učitaš konkretnog klijenta), dok Admin Panel služi za uređivanje svih podataka
+          koji žive u bazi.
+        </p>
+      </header>
+
+      <section class="cta-grid">
+        <article class="cta-card start">
+          <h2>🚀 Start Engine</h2>
+          <p>Pokreni 3D prikaz i konfigurator. Podeli link u formatu <code>engine.html?client=ime-klijenta</code> da klijent
+            vidi samo svoje podatke.</p>
+          <a href="engine.html">Launch Engine</a>
+        </article>
+
+        <article class="cta-card admin">
+          <h2>🛠 Admin Panel</h2>
+          <p>Dodaj nove klijente, ažuriraj podatke i generiši jedinstvene linkove iz administracije.</p>
+          <a href="js/admin.html">Open Admin</a>
+        </article>
+      </section>
+
+      <footer>
+        <span>Less Engine • Unified access</span>
+        <span class="client-hint">Za javni link prosledi direktno <code>engine.html?client=slug</code> bez ove početne stranice.</span>
+      </footer>
+    </main>
+  </body>
+</html>

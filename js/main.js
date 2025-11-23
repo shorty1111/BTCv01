@@ -654,15 +654,17 @@ function createDepthTexture(w, h) {
   let ssaa = 1.2;
 
 function resizeCanvas() {
-
   const sidebarEl = document.getElementById("sidebar");
-  const sidebarW = sidebarEl ? sidebarEl.offsetWidth : 0;
+  const isTabletPortrait = window.matchMedia("(min-width: 769px) and (max-width: 1200px) and (orientation: portrait)").matches;
+  let sidebarW = sidebarEl ? sidebarEl.offsetWidth : 0;
   const headerEl = document.querySelector(".global-header");
   const headerH = headerEl ? headerEl.offsetHeight : 0;
 
-  const cssW = window.innerWidth - sidebarW;
-  const footerH = 77;
-  const cssH = window.innerHeight - headerH - footerH;
+  const footerH = isTabletPortrait ? (sidebarEl ? sidebarEl.offsetHeight : 0) : 77;
+  if (isTabletPortrait) sidebarW = 0;
+
+  const cssW = Math.max(1, window.innerWidth - sidebarW);
+  const cssH = Math.max(1, window.innerHeight - headerH - footerH);
   const aspect = cssW / cssH;
   let maxRenderW;
   const isMobile = /Mobi|Android|iPhone|iPad|Tablet/i.test(navigator.userAgent);
@@ -682,7 +684,7 @@ function resizeCanvas() {
   canvas.height = realH;
   canvas.style.width = cssW + "px";
   canvas.style.height = cssH + "px";
-  canvas.style.left = sidebarW + "px";
+  canvas.style.left = (isTabletPortrait ? 0 : sidebarW) + "px";
   canvas.style.top = headerH + "px"; 
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -781,8 +783,8 @@ export async function exportPDF() {
 
   // === RENDER SCENA (screenshot canvasa) ===
   const canvas = document.querySelector("#glCanvas");
-  const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true });
   render(); // osveži kadar
+  gl.finish();
   const imageData = canvas.toDataURL("image/png");
 
   const imgAspect = canvas.width / canvas.height;
@@ -791,7 +793,6 @@ export async function exportPDF() {
   pdf.addImage(imageData, "PNG", margin, y, renderWidth, renderHeight);
 
   y += renderHeight + 10;
-  canvas.getContext("webgl2", { preserveDrawingBuffer: false });
 
   // === VRATI STARU POZICIJU KAMERE POSLE PDF RENDERA ===
   camera.currentView = oldView;
@@ -1090,6 +1091,8 @@ function initShadowMap() {
   // alociramo depth teksturu
   gl.texImage2D(gl.TEXTURE_2D,0,gl.DEPTH_COMPONENT24, SHADOW_RES,SHADOW_RES,0,gl.DEPTH_COMPONENT, gl.UNSIGNED_INT,null);
   // NEAREST je sigurniji za depth mapu
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -2102,14 +2105,16 @@ if (showWater) {
   }
 
     // === 10. Transparent/Overlay/Dimenzije ===
-    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, gBuffer);
-    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, finalFBO);
-    gl.blitFramebuffer(
-      0, 0, canvas.width, canvas.height,
-      0, 0, canvas.width, canvas.height,
-      gl.DEPTH_BUFFER_BIT,
-      gl.NEAREST
-    );
+    if (!showWater) {
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, gBuffer);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, finalFBO);
+      gl.blitFramebuffer(
+        0, 0, canvas.width, canvas.height,
+        0, 0, canvas.width, canvas.height,
+        gl.DEPTH_BUFFER_BIT,
+        gl.NEAREST
+      );
+    }
     gl.bindFramebuffer(gl.FRAMEBUFFER, finalFBO);
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.enable(gl.BLEND);
@@ -2140,9 +2145,10 @@ if (cameraMoved) {
       m._bbComputed = true;
     }
     const cw = mulMat4Vec4([], m.modelMat, [m._centerLocal[0], m._centerLocal[1], m._centerLocal[2], 1]);
-    m._farDepth = (cw[0]-camWorld[0])*V[0] + (cw[1]-camWorld[1])*V[1] + (cw[2]-camWorld[2])*V[2] + m._radiusLocal;
-  });
+      m._farDepth = (cw[0]-camWorld[0])*V[0] + (cw[1]-camWorld[1])*V[1] + (cw[2]-camWorld[2])*V[2] + m._radiusLocal;
+    });
   transparentMeshes.sort((a,b) => b._farDepth - a._farDepth);
+  lastViewMatrix.set(view);
 }
 
 
@@ -2298,11 +2304,161 @@ function renderLoop(now) {
 
 const infoPanel = document.getElementById("info-panel");
 const toggleBtn = document.getElementById("toggle-info");
+const mobileTabs = document.getElementById("mobileTabs");
+const tabButtons = mobileTabs ? mobileTabs.querySelectorAll("button") : [];
+
+function setMobileTab(mode) {
+  if (!mobileTabs) return;
+  if (mobileTabs.classList.contains("hidden")) {
+    document.body.classList.remove("mobile-tab-info", "mobile-tab-variants");
+    return;
+  }
+  tabButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === mode));
+  document.body.classList.toggle("mobile-tab-info", mode === "info");
+  document.body.classList.toggle("mobile-tab-variants", mode === "variants");
+  if (mode === "info") infoPanel.classList.add("open");
+  else infoPanel.classList.remove("open");
+}
+
+function updateToggleLabelForDevice() {
+  const isPhone = window.matchMedia("(max-width: 768px)").matches;
+  const isTabletPortrait = window.matchMedia("(min-width: 769px) and (max-width: 1200px) and (orientation: portrait)").matches;
+  const useTextLabel = isPhone || isTabletPortrait;
+  if (useTextLabel) {
+    toggleBtn.textContent = "Configuration Info";
+    toggleBtn.classList.add("text-label");
+    mobileTabs?.classList.remove("hidden");
+    setMobileTab("variants");
+  } else {
+    toggleBtn.textContent = "";
+    toggleBtn.classList.remove("text-label");
+    mobileTabs?.classList.add("hidden");
+    document.body.classList.remove("mobile-tab-info", "mobile-tab-variants");
+    infoPanel.classList.remove("open");
+  }
+}
+
 toggleBtn.addEventListener("click", () => {
+  const isTouchMode =
+    toggleBtn.classList.contains("text-label") ||
+    document.body.classList.contains("mobile-tab-info") ||
+    document.body.classList.contains("mobile-tab-variants");
+  if (isTouchMode) {
+    setMobileTab("info");
+    return;
+  }
   infoPanel.classList.toggle("open");
 });
 
+tabButtons.forEach((btn) => {
+  btn.addEventListener("click", () => setMobileTab(btn.dataset.tab));
+});
+
+updateToggleLabelForDevice();
+window.addEventListener("resize", updateToggleLabelForDevice);
+
+function disposeCurrentMeshes() {
+  const texSet = new Set();
+  const collectTex = (tex) => {
+    if (!tex) return;
+    if (tex === window.whiteTex || tex === window.defaultNormalTex) return;
+    texSet.add(tex);
+  };
+
+  modelVAOs.forEach((vao) => vao && gl.deleteVertexArray(vao));
+  transparentMeshes.forEach((m) => {
+    if (m.vao) gl.deleteVertexArray(m.vao);
+    if (m.vbo) gl.deleteBuffer(m.vbo);
+    if (m.ebo) gl.deleteBuffer(m.ebo);
+    collectTex(m.baseColorTex);
+    collectTex(m.normalTex);
+    collectTex(m.roughnessTex);
+  });
+  Object.values(originalGlassByPart).forEach((list) => {
+    list.forEach((g) => {
+      if (g.vao) gl.deleteVertexArray(g.vao);
+      if (g.vbo) gl.deleteBuffer(g.vbo);
+      if (g.ebo) gl.deleteBuffer(g.ebo);
+      collectTex(g.baseColorTex);
+      collectTex(g.normalTex);
+      collectTex(g.roughnessTex);
+    });
+  });
+  Object.values(originalParts).forEach((p) => {
+    if (p.vbo) gl.deleteBuffer(p.vbo);
+    if (p.ebo) gl.deleteBuffer(p.ebo);
+    collectTex(p.baseColorTex);
+    collectTex(p.normalTex);
+    collectTex(p.roughnessTex);
+  });
+  modelBaseTextures.forEach(collectTex);
+  texSet.forEach((tex) => gl.deleteTexture(tex));
+}
+
+function updateBoundsFromCurrentParts({ fitCamera = false } = {}) {
+  let min = [Infinity, Infinity, Infinity];
+  let max = [-Infinity, -Infinity, -Infinity];
+
+  for (const renderIdx in originalParts) {
+    const part = originalParts[renderIdx];
+    if (!part || !part.pos) continue;
+    const mat = modelMatrices[renderIdx];
+    for (let i = 0; i < part.pos.length; i += 3) {
+      const p = [part.pos[i], part.pos[i + 1], part.pos[i + 2], 1];
+      const w = vec4.transformMat4([], p, mat);
+      min[0] = Math.min(min[0], w[0]);
+      min[1] = Math.min(min[1], w[1]);
+      min[2] = Math.min(min[2], w[2]);
+      max[0] = Math.max(max[0], w[0]);
+      max[1] = Math.max(max[1], w[1]);
+      max[2] = Math.max(max[2], w[2]);
+    }
+  }
+
+  boatMin = min;
+  boatMax = max;
+  const center = [
+    (min[0] + max[0]) * 0.5,
+    (min[1] + max[1]) * 0.5,
+    (min[2] + max[2]) * 0.5,
+  ];
+  const radius = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2]) * 0.5;
+  window.sceneBoundingCenter = center;
+  window.sceneBoundingRadius = radius;
+  window.boatMin = boatMin;
+  window.boatMax = boatMax;
+  boatLengthLine = makeLengthLine(min, max);
+  window.envBox = {
+    min: [
+      center[0] - radius * 2.0,
+      center[1] - radius * 1.0,
+      center[2] - radius * 2.0,
+    ],
+    max: [
+      center[0] + radius * 2.0,
+      center[1] + radius * 2.0,
+      center[2] + radius * 2.0,
+    ],
+  };
+
+  if (fitCamera) {
+    camera.fitToBoundingBox(min, max);
+    camera.rx = camera.rxTarget = Math.PI / 10;
+    camera.ry = camera.ryTarget = Math.PI / 20;
+    camera.updateView();
+    window.initialCameraState = {
+      pan: camera.pan.slice(),
+      dist: camera.distTarget,
+      rx: camera.rxTarget,
+      ry: camera.ryTarget,
+    };
+  }
+
+  return { min, max, center, radius };
+}
+
 async function loadGLB(buf) {
+  disposeCurrentMeshes();
   modelVAOs = [];
   idxCounts = [];
   idxTypes = [];
@@ -2315,6 +2471,11 @@ async function loadGLB(buf) {
   modelBaseTextures = [];
   originalParts = {};
   transparentMeshes = [];
+  originalGlassByPart = {};
+  realOriginalParts = {};
+  boatLengthLine = null;
+  boatMin = null;
+  boatMax = null;
 
   /* ---------- PARSIRAJ GLB ---------- */
   const dv = new DataView(buf);
@@ -2474,6 +2635,8 @@ async function loadGLB(buf) {
           count: ind.length,
           type,
           modelMat,
+          vbo: vb,
+          ebo: eb,
           baseColor,
           roughness,
           metallic,
@@ -2518,6 +2681,8 @@ async function loadGLB(buf) {
     pos: pos.slice(),
     nor: nor.slice(),
     ind: ind.slice(),
+    vbo: vb,
+    ebo: eb,
     opacity,
     alphaMode,
     normalTex: normalTex || window.defaultNormalTex,
@@ -2552,67 +2717,7 @@ async function loadGLB(buf) {
     }
   }
 
-  /* ---------- Boundinzi i kamera ---------- */
-  let min = [Infinity, Infinity, Infinity];
-  let max = [-Infinity, -Infinity, -Infinity];
-  boatMin = min;
-  boatMax = max;
-  
-
-  for (const renderIdx in originalParts) {
-    const part = originalParts[renderIdx];
-    if (!part || !part.pos) continue;
-    const mat = modelMatrices[renderIdx];
-    for (let i = 0; i < part.pos.length; i += 3) {
-      const p = [part.pos[i], part.pos[i + 1], part.pos[i + 2], 1];
-      const w = vec4.transformMat4([], p, mat);
-      min[0] = Math.min(min[0], w[0]);
-      min[1] = Math.min(min[1], w[1]);
-      min[2] = Math.min(min[2], w[2]);
-      max[0] = Math.max(max[0], w[0]);
-      max[1] = Math.max(max[1], w[1]);
-      max[2] = Math.max(max[2], w[2]);
-    }
-  }
-
-  window.sceneBoundingCenter = [
-    (min[0] + max[0]) * 0.5,
-    (min[1] + max[1]) * 0.5,
-    (min[2] + max[2]) * 0.5,
-  ];
-  window.sceneBoundingRadius =
-    Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2]) * 0.5;
-    window.boatMin = boatMin;
-    window.boatMax = boatMax;
-  boatLengthLine = makeLengthLine(min, max);
-  window.envBox = {
-  min: [
-    sceneBoundingCenter[0] - sceneBoundingRadius * 2.0,
-    sceneBoundingCenter[1] - sceneBoundingRadius * 1.0,
-    sceneBoundingCenter[2] - sceneBoundingRadius * 2.0,
-  ],
-  max: [
-    sceneBoundingCenter[0] + sceneBoundingRadius * 2.0,
-    sceneBoundingCenter[1] + sceneBoundingRadius * 2.0,
-    sceneBoundingCenter[2] + sceneBoundingRadius * 2.0,
-  ],
-  
-};
-
-
-  camera.fitToBoundingBox(min, max);
-  camera.rx = camera.rxTarget = Math.PI / 10;
-  camera.ry = camera.ryTarget = Math.PI / 20;
-  camera.updateView();
-
-  // 👇 DODAJ OVO - sačuvaj početno stanje kamere
-  window.initialCameraState = {
-    pan: camera.pan.slice(),
-    dist: camera.distTarget,
-    rx: camera.rxTarget,
-    ry: camera.ryTarget
-  };
-
+  updateBoundsFromCurrentParts({ fitCamera: true });
   ({ proj, view, camWorld } = camera.updateView());
   // Sačekaj da se sve teksture spuste u GPU
   await waitForPendingTextures(8000);
@@ -3078,7 +3183,7 @@ if (activeColor) {
     hideLoading(); // 👈 zameni безусловни hideLoading() sa uslovnim
   }
 
-
+updateBoundsFromCurrentParts();
 refreshLighting();
 
 
