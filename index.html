@@ -1,155 +1,209 @@
 <!DOCTYPE html>
-
 <html lang="en">
   <head>
-    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-    <link rel="stylesheet" href="tree.css?v=s13111c1" />
-
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta charset="UTF-8" />
-    <title>Less Engine</title>
-    <style></style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Less Engine | Homepage</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.08), transparent 55%),
+          radial-gradient(circle at 80% 0%, rgba(255, 255, 255, 0.05), transparent 50%),
+          #04070d;
+        --card: rgba(6, 10, 18, 0.85);
+        --border: rgba(255, 255, 255, 0.12);
+        --accent: #55d6ff;
+        --accent-strong: #0af;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Space Grotesk", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: #f4f6fb;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+      }
+
+      .portal {
+        width: min(960px, 100%);
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 32px;
+        padding: clamp(2rem, 5vw, 3.5rem);
+        box-shadow: 0 40px 100px rgba(0, 0, 0, 0.45);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .portal::before {
+        content: "";
+        position: absolute;
+        inset: 2px;
+        border-radius: 32px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        pointer-events: none;
+      }
+
+      header {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .logo {
+        height: 56px;
+        width: auto;
+        object-fit: contain;
+        filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.35));
+      }
+
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2rem, 5vw, 2.9rem);
+      }
+
+      p.description {
+        margin: 0;
+        max-width: 60ch;
+        color: rgba(255, 255, 255, 0.8);
+        line-height: 1.6;
+      }
+
+      .cta-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1rem;
+        margin-top: 2rem;
+      }
+
+      .cta-card {
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 1.5rem;
+        background: rgba(255, 255, 255, 0.02);
+        transition: border-color 0.2s, transform 0.2s, background 0.2s;
+      }
+
+      .cta-card:hover {
+        border-color: rgba(85, 214, 255, 0.8);
+        background: rgba(85, 214, 255, 0.05);
+        transform: translateY(-2px);
+      }
+
+      .cta-card h2 {
+        margin: 0;
+        font-size: 1.2rem;
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+      }
+
+      .cta-card p {
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 0.95rem;
+        line-height: 1.5;
+      }
+
+      .cta-card a {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+        width: 100%;
+        margin-top: 1rem;
+        padding: 0.85rem 1rem;
+        border-radius: 999px;
+        font-size: 1rem;
+        font-weight: 600;
+        text-decoration: none;
+        border: 1px solid transparent;
+      }
+
+      .cta-card.start a {
+        background: var(--accent);
+        color: #02131d;
+        box-shadow: 0 15px 35px rgba(10, 170, 255, 0.3);
+      }
+
+      .cta-card.start a:hover {
+        border-color: rgba(85, 214, 255, 0.8);
+      }
+
+      footer {
+        margin-top: 2.5rem;
+        font-size: 0.9rem;
+        color: rgba(255, 255, 255, 0.65);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      footer span strong {
+        color: #fff;
+      }
+
+      footer .client-hint {
+        font-size: 0.85rem;
+        color: rgba(255, 255, 255, 0.6);
+      }
+
+      @media (max-width: 600px) {
+        body {
+          padding: 1rem;
+        }
+        .portal {
+          padding: 1.5rem;
+        }
+      }
+    </style>
   </head>
   <body>
-<div class="global-header">
-
-<div class="header-left">
-    <span class="boat-name">TIARA 56</span>
-    <button class="dropdown-toggle" id="menuToggle">▾</button>
-    <div class="tooltip">Click "▾" for more options</div>
-  <div class="dropdown-menu hidden">
-      <button id="exportPDF">Export PDF</button>
-      <button id="shareConfig">Share Configuration</button>
-      <button id="copyConfig">Copy Link</button>
-      <button id="saveConfigBtn">Save Configuration</button>
-      <hr style="border: 0; border-top: 1px solid var(--border); margin: 6px 0;" />
-        <div id="savedConfigsContainer" class="saved-configs">
-          <div class="empty">No saved configs.</div>
-      </div>
-  </div>
-</div>
-
-
-<div id="saveConfigModal" class="modal hidden">
-  <div class="modal-content">
-    <h3>Save configuration</h3>
-    <input type="text" id="configNameInput" placeholder="Configuration name" />
-    <div class="modal-buttons">
-      <button id="cancelSave">Cancel</button>
-      <button id="confirmSave">Save</button>
-    </div>
-  </div>
-</div>
-
-<div class="header-center">
-  <div class="boat-name-wrapper">
-<img src="assets/Less_logo.png" alt="Logo" class="logo">
-
-  </div>
-</div>
-<div class="header-right">
-  <button id="hamburger" class="hamburger-btn">
-    ☰ Menu
-  </button>
-</div>
-
-<!-- Sidebar -->
-<nav id="sidebarMenu" class="sidebar-menu">
-  <div class="sidebar-header">
-    <span class="sidebar-title">Less Engine</span>
-    <button id="closeSidebar">×</button>
-  </div>
-  <ul id="sidebarList">
-    <li data-key="help"><a href="#">Help</a></li>
-    <li data-key="about"><a href="#">About Engine</a></li>
-    <li data-key="settings"><a href="#">Settings</a></li>
-    <li data-key="contact"><a href="#">Contact</a></li>
-  </ul>
-</nav>
-
-</div>
-    <div id="loading-screen" class="hidden">
-      <div class="sheet">
-        <div>Boat Configurator</div>
-        <div class="loader" aria-label="Loading"></div>
-        <div class="progress" aria-hidden="true"></div>
-        <div style="opacity: 0.8; font-weight: 500">
-          Compiling shaders…
+    <main class="portal">
+      <header>
+        <div class="brand">
+          <img src="assets/Less_logo.png" alt="Less Engine logo" class="logo" />
         </div>
-      </div>
-    </div>
-    <div class="canvas-wrapper">
-      <canvas id="glCanvas"></canvas>
-      <div id="variantHotspotLayer" class="variant-hotspot-layer"></div>
-    </div>
-    <div id="lengthLabel">0.0 m</div>
-    <div id="labels"></div>
+        <h1>3D boat configurator, ready to launch</h1>
+        <p class="description">
+          Explore and personalize the Less experience. Launch the live 3D engine and dive into materials, layouts, and lighting that bring your boat to life.
+        </p>
+      </header>
 
-    <div id="camera-controls" class="collapsed">
-      <button id="toggleOptions"><span>Options</span></button>
-        <div class="controls-content">
-        <div class="controls-inner">
-          <div class="section-label">Viewports</div>  
-          <div class="button-grid">
-            <button data-view="iso" class="btn-view">Home</button>
-            <button data-view="front" class="btn-view">Front</button>
-            <button data-view="left" class="btn-view">Left</button>
-            <button data-view="top" class="btn-view">Top</button>
-          </div>
-          <div class="section-label">Dimensions</div>  
-            <button class="btn-toggle full-width" id="toggleDims">Show Ruler</button>
-          <div class="section-label">Lighting</div>  
-            <button class="btn-toggle full-width" id="toggleWater">Studio</button>
-            
-          <div class="section-label">Weather</div>
-              <div class="button-grid">
-                <button class="btn-weather day" data-weather="day">
-                  <img src="assets/sun_up.png" alt="Day">
-                </button>
-                <button class="btn-weather sunset" data-weather="sunset">
-                  <img src="assets/sun_down.png" alt="Sunset">
-                </button>
-              </div>
-          <button id="closeOptions" class="full-width"> Close</button></div>
-      </div>
-    </div>
+      <section class="cta-grid">
+        <article class="cta-card start">
+          <h2>Start the demo</h2>
+          <p>Open the 3D Engine in a new tab and instantly see Less Engine in action.</p>
+          <a href="./engine.html" aria-label="Launch 3D Engine">Launch Engine</a>
+        </article>
+      </section>
 
-    <aside id="sidebar" class="tree">
-      <input id="glbInput"type="file" accept=".glb,.gltf"style="display: none"/>
-      <div id="mobileTabs" class="mobile-tabs hidden">
-        <button data-tab="variants" class="active">Variants</button>
-        <button data-tab="info">Configuration Info</button>
-      </div>
-      <div id="variantSidebar" class="variant-sidebar"></div>
-      <div class="sidebar-total">
-        <span class="label">Total Price:</span>
-        <span class="price"></span>        
-      </div>
-    </aside>
-
-    <link rel="stylesheet" href="tree.css?v=s1v11c1111" />
-    <script type="module" src="js/main.js?v=31cc111111"></script>
-    <div id="fps-meter hidden" class="hidden">FPS: <span id="fps-value">0</span></div>
-    <div id="drawcall-meter hidden" class="hidden">Draw Calls: <span id="drawcalls-value">0</span></div>
-    <div id="res-meter hidden" class="hidden"></div>
-    <div id="info-panel">
-      <div id="info-content">
-        <h3>Parts info</h3>
-        <table id="partsTable">
-          <thead>
-            <tr>
-              <th>Part</th>
-              <th>Description</th>
-              <th>Price</th>
-            </tr>
-          </thead>
-          <tbody><!-- Popunjava se iz main.js --></tbody>
-        </table>
-      </div>
-      <div id="boat-info" class="info-section"></div>
-      <div id="toggle-info"></div>
-    </div>
-    
+      <footer>
+        <span><strong>Less Engine</strong> • Unified viewer & configurator</span>
+        <span class="client-hint">Crafted for immersive product storytelling.</span>
+      </footer>
+    </main>
   </body>
 </html>

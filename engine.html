@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <link rel="stylesheet" href="tree.css?v=s13111c1" />
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta charset="UTF-8" />
+    <title>Less Engine</title>
+    <style></style>
+  </head>
+  <body>
+<div class="global-header">
+
+<div class="header-left">
+    <span class="boat-name">TIARA 56</span>
+    <button class="dropdown-toggle" id="menuToggle">▾</button>
+    <div class="tooltip">Click "▾" for more options</div>
+  <div class="dropdown-menu hidden">
+      <button id="exportPDF">Export PDF</button>
+      <button id="shareConfig">Share Configuration</button>
+      <button id="copyConfig">Copy Link</button>
+      <button id="saveConfigBtn">Save Configuration</button>
+      <hr style="border: 0; border-top: 1px solid var(--border); margin: 6px 0;" />
+        <div id="savedConfigsContainer" class="saved-configs">
+          <div class="empty">No saved configs.</div>
+      </div>
+  </div>
+</div>
+
+
+<div id="saveConfigModal" class="modal hidden">
+  <div class="modal-content">
+    <h3>Save configuration</h3>
+    <input type="text" id="configNameInput" placeholder="Configuration name" />
+    <div class="modal-buttons">
+      <button id="cancelSave">Cancel</button>
+      <button id="confirmSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="header-center">
+  <div class="boat-name-wrapper">
+<img src="assets/Less_logo.png" alt="Logo" class="logo">
+
+  </div>
+</div>
+<div class="header-right">
+  <button id="hamburger" class="hamburger-btn">
+    ☰ Menu
+  </button>
+</div>
+
+<!-- Sidebar -->
+<nav id="sidebarMenu" class="sidebar-menu">
+  <div class="sidebar-header">
+    <span class="sidebar-title">Less Engine</span>
+    <button id="closeSidebar">×</button>
+  </div>
+  <ul id="sidebarList">
+    <li data-key="help"><a href="#">Help</a></li>
+    <li data-key="about"><a href="#">About Engine</a></li>
+    <li data-key="settings"><a href="#">Settings</a></li>
+    <li data-key="contact"><a href="#">Contact</a></li>
+  </ul>
+</nav>
+
+</div>
+    <div id="loading-screen" class="hidden">
+      <div class="sheet">
+        <div>Boat Configurator</div>
+        <div class="loader" aria-label="Loading"></div>
+        <div class="progress" aria-hidden="true"></div>
+        <div style="opacity: 0.8; font-weight: 500">
+          Compiling shaders…
+        </div>
+      </div>
+    </div>
+    <div class="canvas-wrapper">
+      <canvas id="glCanvas"></canvas>
+      <div id="variantHotspotLayer" class="variant-hotspot-layer"></div>
+    </div>
+    <div id="lengthLabel">0.0 m</div>
+    <div id="labels"></div>
+
+    <div id="camera-controls" class="collapsed">
+      <button id="toggleOptions"><span>Options</span></button>
+        <div class="controls-content">
+        <div class="controls-inner">
+          <div class="section-label">Viewports</div>  
+          <div class="button-grid">
+            <button data-view="iso" class="btn-view">Home</button>
+            <button data-view="front" class="btn-view">Front</button>
+            <button data-view="left" class="btn-view">Left</button>
+            <button data-view="top" class="btn-view">Top</button>
+          </div>
+          <div class="section-label">Dimensions</div>  
+            <button class="btn-toggle full-width" id="toggleDims">Show Ruler</button>
+          <div class="section-label">Lighting</div>  
+            <button class="btn-toggle full-width" id="toggleWater">Studio</button>
+            
+          <div class="section-label">Weather</div>
+              <div class="button-grid">
+                <button class="btn-weather day" data-weather="day">
+                  <img src="assets/sun_up.png" alt="Day">
+                </button>
+                <button class="btn-weather sunset" data-weather="sunset">
+                  <img src="assets/sun_down.png" alt="Sunset">
+                </button>
+              </div>
+          <button id="closeOptions" class="full-width"> Close</button></div>
+      </div>
+    </div>
+
+    <aside id="sidebar" class="tree">
+      <input id="glbInput"type="file" accept=".glb,.gltf"style="display: none"/>
+      <div id="variantSidebar" class="variant-sidebar"></div>
+      <div class="sidebar-total">
+        <span class="label">Total Price:</span>
+        <span class="price"></span>        
+      </div>
+    </aside>
+
+    <link rel="stylesheet" href="tree.css?v=s1v11c1" />
+    <script type="module" src="js/main.js?v=31cc111"></script>
+    <div id="fps-meter hidden" class="hidden">FPS: <span id="fps-value">0</span></div>
+    <div id="drawcall-meter hidden" class="hidden">Draw Calls: <span id="drawcalls-value">0</span></div>
+    <div id="res-meter hidden" class="hidden"></div>
+    <div id="info-panel">
+      <div id="info-content">
+        <h3>Parts info</h3>
+        <table id="partsTable">
+          <thead>
+            <tr>
+              <th>Part</th>
+              <th>Description</th>
+              <th>Price</th>
+            </tr>
+          </thead>
+          <tbody><!-- Popunjava se iz main.js --></tbody>
+        </table>
+      </div>
+      <div id="boat-info" class="info-section"></div>
+      <div id="toggle-info"></div>
+    </div>
+    
+  </body>
+</html>
