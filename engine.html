@@ -128,8 +128,22 @@
       </div>
     </aside>
 
-    <link rel="stylesheet" href="tree.css?v=s1v11c1111" />
-    <script type="module" src="js/main.js?v=31cc111111"></script>
+    <link rel="stylesheet" href="tree.css?v=s1v11c1111111" />
+    <script type="module" src="js/main.js?v=31cc111111111"></script>
+    <script>
+      // Blokiraj landscape samo na touch uređajima manjeg ekrana (telefoni/tableti)
+      (function () {
+        const updateBlock = () => {
+          const isTouch = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+          const narrowScreen = Math.min(screen.width, screen.height) <= 1400;
+          const isLandscape = window.matchMedia("(orientation: landscape)").matches;
+          document.body.classList.toggle("block-landscape", isTouch && narrowScreen && isLandscape);
+        };
+        window.addEventListener("resize", updateBlock);
+        window.addEventListener("orientationchange", updateBlock);
+        updateBlock();
+      })();
+    </script>
     <div id="fps-meter hidden" class="hidden">FPS: <span id="fps-value">0</span></div>
     <div id="drawcall-meter hidden" class="hidden">Draw Calls: <span id="drawcalls-value">0</span></div>
     <div id="res-meter hidden" class="hidden"></div>

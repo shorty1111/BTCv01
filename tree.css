@@ -1481,88 +1481,108 @@ canvas,
     }
 }
 
-/* Block landscape on touch devices - force portrait */
-@media (pointer: coarse) and (orientation: landscape) {
-  body::before {
-    content: "Rotate device to portrait to continue";
-    position: fixed;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    background: rgba(0, 0, 0, 0.85);
-    color: var(--foreground);
-    font-weight: 700;
-    font-size: 18px;
-    z-index: 4000;
-    text-align: center;
-    padding: 24px;
-  }
-
-  .global-header,
-  .canvas-wrapper,
-  .tree,
-  #camera-controls,
-  #info-panel,
-  #variantHotspotLayer,
-  #lengthLabel,
-  #labels {
-    display: none !important;
-  }
+/* JS toggles body.block-landscape for touch devices in landscape (phones/tablets) */
+body.block-landscape::before {
+  content: "Rotate device to portrait to continue";
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.85);
+  color: var(--foreground);
+  font-weight: 700;
+  font-size: 18px;
+  z-index: 4000;
+  text-align: center;
+  padding: 24px;
 }
-/* Final overrides */
-@media (max-width: 1200px) {
+
+body.block-landscape .global-header,
+body.block-landscape .canvas-wrapper,
+body.block-landscape .tree,
+body.block-landscape #camera-controls,
+body.block-landscape #info-panel,
+body.block-landscape #variantHotspotLayer,
+body.block-landscape #lengthLabel,
+body.block-landscape #labels {
+  display: none !important;
+}
+/* Unified info-panel layout */
+#info-panel {
+  position: fixed;
+  left: var(--sidebar-w);
+  right: 0;
+  width: calc(100% - var(--sidebar-w));
+  bottom: 0;
+  max-height: 48px;
+  overflow: hidden;
+}
+#info-panel.open {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+@media (max-width: 768px) {
   #info-panel {
-    position: relative !important;
-    left: 0 !important;
-    right: 0 !important;
-    width: 100% !important;
-    bottom: 0 !important;
-    max-height: none !important;
-    height: auto !important;
-    border: none;
-    border-radius: 0;
-    background: transparent;
+    position: relative;
+    left: 0;
+    right: 0;
+    width: 100%;
+    bottom: auto;
+    max-height: none;
+    height: auto;
   }
   #info-panel.open {
-    max-height: none !important;
-    overflow-y: auto !important;
+    max-height: none;
   }
-  body.mobile-tab-info #info-panel {
-    overflow-y: auto !important;
-  }
-  body.mobile-tab-info #toggle-info {
-    display: none;
-  }
+  body.mobile-tab-info #toggle-info,
   body.mobile-tab-info .sidebar-total {
     display: none;
   }
-}
 
-/* Ensure scrollable info panel in mobile portrait */
-@media (max-width: 768px) {
+  /* Scrollable info panel in Configuration Info tabu */
   body.mobile-tab-info #info-panel {
-    position: fixed !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    height: calc(var(--mobile-panel-height) - var(--tabs-height)) !important;
-    max-height: calc(var(--mobile-panel-height) - var(--tabs-height)) !important;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    height: calc(var(--mobile-panel-height) - var(--tabs-height));
+    max-height: calc(var(--mobile-panel-height) - var(--tabs-height));
+    overflow-y: auto;
     padding-top: 12px;
-    overflow-y: auto !important;
   }
 }
 
-/* Ensure scrollable info panel in tablet portrait */
 @media (min-width: 769px) and (max-width: 1200px) and (orientation: portrait) {
+  #info-panel {
+    position: relative;
+    left: 0;
+    right: 0;
+    width: 100%;
+    bottom: auto;
+    max-height: none;
+    height: auto;
+  }
+  #info-panel.open {
+    max-height: none;
+  }
+  body.mobile-tab-info #toggle-info,
+  body.mobile-tab-info .sidebar-total {
+    display: none;
+  }
+
+  /* Scrollable info panel u tablet portret modu */
   body.mobile-tab-info #info-panel {
-    position: fixed !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    height: calc(var(--tablet-panel-height) - var(--tabs-height)) !important;
-    max-height: calc(var(--tablet-panel-height) - var(--tabs-height)) !important;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    height: calc(var(--tablet-panel-height) - var(--tabs-height));
+    max-height: calc(var(--tablet-panel-height) - var(--tabs-height));
+    overflow-y: auto;
     padding-top: 12px;
-    overflow-y: auto !important;
   }
 }
 

@@ -136,8 +136,8 @@ export function initCamera(canvas) {
   // === MOUSE & TOUCH ===
   canvas.addEventListener("mousemove", (e) => {
     if (e.buttons === 1) {
-      ryTarget += e.movementX * 0.001;
-      rxTarget += e.movementY * 0.005;
+      ryTarget -= e.movementX * 0.0025; // brža rotacija yaw
+      rxTarget += e.movementY * 0.006;  // i pitch malo brže
     } else if (e.buttons === 4) {
       const panSpeed = 0.001 * dist;
       const eye = [
@@ -191,8 +191,8 @@ canvas.addEventListener("touchmove", (e) => {
   if (e.touches.length === 1 && touchDragging) {
     const dx = e.touches[0].clientX - touchLastX;
     const dy = e.touches[0].clientY - touchLastY;
-    ryTarget += dx * 0.003;
-    rxTarget += dy * 0.005;
+    ryTarget -= dx * 0.005; // brža yaw za touch
+    rxTarget += dy * 0.007; // brža pitch za touch
     touchLastX = e.touches[0].clientX;
     touchLastY = e.touches[0].clientY;
   }
