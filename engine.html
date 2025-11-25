@@ -16,18 +16,6 @@
 
 <div class="header-left">
     <span class="boat-name">TIARA 56</span>
-    <button class="dropdown-toggle" id="menuToggle">▾</button>
-    <div class="tooltip">Click "▾" for more options</div>
-  <div class="dropdown-menu hidden">
-      <button id="exportPDF">Export PDF</button>
-      <button id="shareConfig">Share Configuration</button>
-      <button id="copyConfig">Copy Link</button>
-      <button id="saveConfigBtn">Save Configuration</button>
-      <hr style="border: 0; border-top: 1px solid var(--border); margin: 6px 0;" />
-        <div id="savedConfigsContainer" class="saved-configs">
-          <div class="empty">No saved configs.</div>
-      </div>
-  </div>
 </div>
 
 
@@ -128,7 +116,6 @@
       </div>
     </aside>
 
-    <link rel="stylesheet" href="tree.css?v=s1v11c1111111" />
     <script type="module" src="js/main.js?v=31cc111111111"></script>
     <script>
       // Blokiraj landscape samo na touch uređajima manjeg ekrana (telefoni/tableti)
@@ -146,23 +133,48 @@
     </script>
     <div id="fps-meter hidden" class="hidden">FPS: <span id="fps-value">0</span></div>
     <div id="drawcall-meter hidden" class="hidden">Draw Calls: <span id="drawcalls-value">0</span></div>
-    <div id="res-meter hidden" class="hidden"></div>
+      <div id="res-meter hidden" class="hidden"></div>
     <div id="info-panel">
-      <div id="info-content">
-        <h3>Parts info</h3>
-        <table id="partsTable">
-          <thead>
-            <tr>
-              <th>Part</th>
-              <th>Description</th>
-              <th>Price</th>
-            </tr>
-          </thead>
-          <tbody><!-- Popunjava se iz main.js --></tbody>
-        </table>
+      <div class="canvas-actions">
+        <div class="info-actions">
+          <button id="exportPDF" class="action-button">Export PDF</button>
+          <button id="shareConfig" class="action-button">Share Config</button>
+          <button id="copyConfig" class="action-button">Copy Link</button>
+          <button id="saveConfigBtn" class="action-button">Save Configuration</button>
+          <button id="loadConfigToggle" class="action-button has-chevron">
+            <span class="label">Load Configuration</span>
+            <span class="chevron" aria-hidden="true"></span>
+          </button>
+          <button id="toggle-info" class="action-button has-chevron">
+            <span class="label">Config Info</span>
+            <span class="chevron" aria-hidden="true"></span>
+          </button>
+        </div>
       </div>
-      <div id="boat-info" class="info-section"></div>
-      <div id="toggle-info"></div>
+      <div class="load-body">
+        <div class="saved-configs-card">
+          <div class="saved-title">Saved configurations</div>
+          <div id="savedConfigsContainer" class="saved-configs">
+            <div class="empty">No saved configs.</div>
+          </div>
+        </div>
+      </div>
+      <div class="info-body">
+        <div id="info-content">
+          <h3>Parts info</h3>
+          <table id="partsTable">
+            <thead>
+              <tr>
+                <th>Part</th>
+                <th>Description</th>
+                <th>Price</th>
+              </tr>
+            </thead>
+            <tbody><!-- Popunjava se iz main.js --></tbody>
+          </table>
+        </div>
+        <div id="boat-info" class="info-section"></div>
+      </div>
     </div>
     
   </body>

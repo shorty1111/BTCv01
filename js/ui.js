@@ -571,51 +571,85 @@ function showPartInfo(name) {
   }
 }
 function initDropdown() {
-    const exportPDF = window.exportPDF;
+  const exportPDF = window.exportPDF;
   const toggleBtn = document.querySelector(".dropdown-toggle");
   const dropdown = document.querySelector(".dropdown-menu");
+  const closeDropdown = () => dropdown?.classList.add("hidden");
 
-  if (!toggleBtn || !dropdown) return;
+  if (toggleBtn && dropdown) {
+    // Otvaranje / zatvaranje
+    toggleBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      dropdown.classList.toggle("hidden");
+    });
 
-  // Otvaranje / zatvaranje
-  toggleBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    dropdown.classList.toggle("hidden");
-  });
-
-  // Klik van menija → zatvori
-  document.addEventListener("click", (e) => {
-    if (!dropdown.contains(e.target) && !toggleBtn.contains(e.target)) {
-      dropdown.classList.add("hidden");
-    }
-  });
-    // Klik na "Pročitaj opis" otvara/zatvara karticu
+    // Klik van menija → zatvori
     document.addEventListener("click", (e) => {
+      if (!dropdown.contains(e.target) && !toggleBtn.contains(e.target)) {
+        dropdown.classList.add("hidden");
+      }
+    });
+  }
+
+  // Klik na "Pročitaj opis" otvara/zatvara karticu
+  document.addEventListener("click", (e) => {
     const btn = e.target.closest(".desc-toggle");
     if (!btn) return;
     const card = btn.closest(".variant-item");
-    card.classList.toggle("open");
-    });
+    if (card) card.classList.toggle("open");
+  });
+
   // Export PDF
   const exportBtn = document.getElementById("exportPDF");
-  if (exportBtn) {
+  if (exportBtn && typeof exportPDF === "function") {
     exportBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      dropdown.classList.add("hidden");
+      closeDropdown();
       exportPDF();
+    });
+  }
+
+  const copyBtn = document.getElementById("copyConfig");
+  const copyLink = async (btnRef) => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      if (btnRef) {
+        const original = btnRef.textContent;
+        btnRef.textContent = "Copied!";
+        setTimeout(() => (btnRef.textContent = original), 1200);
+      }
+    } catch (err) {
+      console.warn("Copy to clipboard failed:", err);
+    }
+  };
+
+  if (copyBtn) {
+    copyBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeDropdown();
+      copyLink(copyBtn);
     });
   }
 
   // Share konfiguracija
   const shareBtn = document.getElementById("shareConfig");
   if (shareBtn) {
-    shareBtn.addEventListener("click", (e) => {
+    shareBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
-      dropdown.classList.add("hidden");
-        // TODO: ovde ubaciš svoj share handler
+      closeDropdown();
+      const shareData = { title: document.title, url: window.location.href };
+      if (navigator.share) {
+        try {
+          await navigator.share(shareData);
+          return;
+        } catch (err) {
+          if (err?.name === "AbortError") return;
+          console.warn("Native share failed, falling back to copy.", err);
+        }
+      }
+      await copyLink(copyBtn || shareBtn);
     });
   }
-
 }
 let saveButtonInitialized = false;
 

@@ -659,8 +659,13 @@ function resizeCanvas() {
   let sidebarW = sidebarEl ? sidebarEl.offsetWidth : 0;
   const headerEl = document.querySelector(".global-header");
   const headerH = headerEl ? headerEl.offsetHeight : 0;
+  const actionBarH = (() => {
+    const root = getComputedStyle(document.documentElement);
+    const val = parseFloat(root.getPropertyValue("--action-bar-h")) || 0;
+    return val;
+  })();
 
-  const footerH = isTabletPortrait ? (sidebarEl ? sidebarEl.offsetHeight : 0) : 77;
+  const footerH = isTabletPortrait ? (sidebarEl ? sidebarEl.offsetHeight : 0) : actionBarH;
   if (isTabletPortrait) sidebarW = 0;
 
   const cssW = Math.max(1, window.innerWidth - sidebarW);
@@ -728,148 +733,199 @@ gl.uniform1i(pbrUniforms.uShadowMap, 7); // 🔁 rebinding novog shadowDepthTex
 export async function exportPDF() {
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF("p", "mm", "a4");
-  const margin = 15;
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+  const margin = 14;
   let y = margin;
 
   const boatName = BOAT_INFO.Model || "Less Boat";
   const dateStr = new Date().toLocaleDateString("en-GB");
+  const accent = [58, 164, 255];
+  const muted = [80, 94, 110];
+  const baseText = [20, 20, 20];
+  const contactEmail = "contact@lessengine.com";
+  const contactPhone = "+381 11 555 123";
 
-  // === LOGO HEADER ===
+  // Helpers
+  const ensureSpace = (need = 15) => {
+    if (y + need > pageH - margin) {
+      pdf.addPage();
+      y = margin;
+    }
+  };
+  const sectionTitle = (title) => {
+    ensureSpace(14);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(13);
+    pdf.setTextColor(20);
+    pdf.text(title.toUpperCase(), margin, y);
+    pdf.setDrawColor(...accent);
+    pdf.setLineWidth(0.6);
+    pdf.line(margin, y + 2, margin + 30, y + 2);
+    y += 10;
+  };
+
+  // Logo
   const logoImg = new Image();
   logoImg.src = "assets/Less_logo.png";
   await new Promise((res) => (logoImg.onload = res));
-
   const logoAspect = logoImg.width / logoImg.height;
-  const logoHeight = 10;
-  const logoWidth = logoHeight * logoAspect;
+  const logoH = 14;
+  const logoW = logoH * logoAspect;
 
-  // === HEADER ===
-  pdf.setFillColor(10, 20, 30);
-  pdf.rect(0, 0, 210, 25, "F");
-
-  // logo levo
-  pdf.addImage(logoImg, "PNG", 10, 7, logoWidth, logoHeight);
-
-  // datum desno
-  pdf.setTextColor(255);
+  // HEADER STRIP
+  pdf.setFillColor(8, 14, 22);
+  pdf.rect(0, 0, pageW, 24, "F");
+  pdf.addImage(logoImg, "PNG", margin, 6, logoW, logoH);
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(11);
-  pdf.text(dateStr, 200, 17, { align: "right" });
-  y = 35;
-  // === NASLOV ===
-  pdf.setTextColor(0);
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(22);
-  pdf.text(boatName, margin, y);
-  y += 10;
+  pdf.setTextColor(230);
+  pdf.text(dateStr, pageW - margin, 16, { align: "right" });
+  y = 24;
 
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(12);
-  pdf.text("Model specifications and configuration overview", margin, y);
-  y += 8;
-
-  pdf.setDrawColor(58, 164, 255);
-  pdf.setLineWidth(0.8);
-  pdf.line(margin, y, 210 - margin, y);
-  y += 10;
-
-  // === PRIVREMENO PREBACI NA FRONT POGLED ZA PDF ===
+  // SCREENSHOT
   const oldView = camera.currentView;
   const oldUseOrtho = camera.useOrtho;
-
-
   ({ proj, view, camWorld } = camera.updateView());
   render();
-
-  // === RENDER SCENA (screenshot canvasa) ===
   const canvas = document.querySelector("#glCanvas");
-  render(); // osveži kadar
+  render();
   gl.finish();
   const imageData = canvas.toDataURL("image/png");
-
   const imgAspect = canvas.width / canvas.height;
-  const renderWidth = 180;
-  const renderHeight = renderWidth / imgAspect;
-  pdf.addImage(imageData, "PNG", margin, y, renderWidth, renderHeight);
-
-  y += renderHeight + 10;
-
-  // === VRATI STARU POZICIJU KAMERE POSLE PDF RENDERA ===
+  const shotW = pageW;
+  const shotH = shotW / imgAspect;
+  // full-bleed hero
+  pdf.addImage(imageData, "PNG", 0, y, shotW, shotH);
+  y += shotH + 12;
   camera.currentView = oldView;
   camera.useOrtho = oldUseOrtho;
   ({ proj, view, camWorld } = camera.updateView());
   render();
 
-  // === SPECIFIKACIJE ===
-  pdf.setFontSize(14);
+  // Title block under image
   pdf.setFont("helvetica", "bold");
-  pdf.text("TECHNICAL SPECIFICATIONS", margin, y);
-  y += 8;
-
-  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(22);
+  pdf.setTextColor(20);
+  pdf.text(boatName, margin, y);
   pdf.setFontSize(11);
-  for (const [key, val] of Object.entries(BOAT_INFO)) {
-    pdf.text(`${key}:`, margin, y);
-    pdf.text(String(val), margin + 50, y);
-    y += 6;
-    if (y > 260) {
-      pdf.addPage();
-      y = margin;
-    }
-  }
-
-  y += 8;
-
-  // === TABELA DELA ===
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(14);
-  pdf.text("PARTS LIST", margin, y);
+  pdf.setFont("helvetica", "normal");
+  pdf.setTextColor(...muted);
   y += 7;
+  pdf.text("Configuration breakdown", margin, y);
+  y += 10;
 
-  const rows = document.querySelectorAll("#partsTable tbody tr");
+  // BOAT INFO table
+  sectionTitle("Boat info");
+  const specs = Object.entries(BOAT_INFO || {});
+  const infoRowH = 8;
+  const infoW = pageW - margin * 2;
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(10.5);
+  pdf.setFillColor(...accent);
+  pdf.setTextColor(255);
+  pdf.rect(margin, y - 5, infoW, 9, "F");
+  pdf.text("Label", margin + 3, y);
+  pdf.text("Value", margin + infoW - 6, y, { align: "right" });
+  y += 8;
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(10);
+  specs.forEach((entry, i) => {
+    ensureSpace(infoRowH + 4);
+    const [key, val] = entry;
+    if (i % 2 === 0) {
+      pdf.setFillColor(247, 249, 252);
+      pdf.rect(margin, y - infoRowH + 1, infoW, infoRowH + 1, "F");
+    }
+    pdf.setTextColor(90);
+    pdf.text(key, margin + 3, y);
+    pdf.setTextColor(20);
+    pdf.text(String(val), margin + infoW - 6, y, { align: "right" });
+    y += infoRowH;
+  });
+  y += 10;
+
+  // PARTS TABLE (full width)
+  sectionTitle("Parts list");
+  const rows = [...document.querySelectorAll("#partsTable tbody tr")];
+  const headerH = 9;
+  const rowH = 7;
+  const tableW = pageW - margin * 2;
+  const colPart = 40;
+  const colDesc = 120;
+  pdf.setFillColor(...accent);
+  pdf.setTextColor(255);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(10.5);
+  pdf.rect(margin, y - 5, tableW, headerH, "F");
+  pdf.text("Part", margin + 3, y);
+  pdf.text("Description", margin + colPart + 3, y);
+  pdf.text("Price", margin + tableW - 6, y, { align: "right" });
+  y += headerH - 1;
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(10);
+  pdf.setTextColor(30);
 
   rows.forEach((tr, i) => {
     const cells = tr.querySelectorAll("td");
     if (cells.length < 3) return;
-
     const part = cells[0].textContent.trim();
     const desc = cells[1].textContent.trim();
     const price = cells[2].textContent.trim();
-
-    // sivi red naizmenično
+    ensureSpace(rowH + 4);
     if (i % 2 === 0) {
-      pdf.setFillColor(245, 248, 255);
-      pdf.rect(margin, y - 4.5, 180, 6.5, "F");
+      pdf.setFillColor(247, 249, 252);
+      pdf.rect(margin, y - rowH + 1, tableW, rowH + 1, "F");
     }
-
-    pdf.text(part, margin + 2, y);
-    pdf.text(desc, margin + 70, y);
-    pdf.text(price, margin + 150, y);
-    y += 6;
-
-    if (y > 260) {
-      pdf.addPage();
-      y = margin;
-    }
+    pdf.text(part, margin + 3, y);
+    pdf.text(desc, margin + colDesc + 3, y);
+    pdf.text(price, margin + tableW - 6, y, { align: "right" });
+    y += rowH;
   });
-
   y += 10;
 
-  // === TOTAL ===
+  // CONTACT / CTA block (no QR)
+  ensureSpace(32 + 20);
+  const ctaH = 32;
+  pdf.setDrawColor(...accent);
+  pdf.setLineWidth(0.4);
+  pdf.setFillColor(245, 248, 255);
+  pdf.roundedRect(margin, y - 5, tableW, ctaH, 3, 3, "FD");
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(11);
+  pdf.setTextColor(20);
+  pdf.text("Get in touch", margin + 6, y + 2);
+  pdf.setFont("helvetica", "normal");
+  pdf.setTextColor(...muted);
+  pdf.setFontSize(10);
+  pdf.text(contactEmail, margin + 6, y + 10);
+  pdf.text(contactPhone, margin + 6, y + 18);
+  pdf.text("Less Engine", margin + tableW - 6, y + 18, { align: "right" });
+  y += ctaH;
+  y += 8;
+
+  // TOTAL TAG
   const total = document.querySelector(".sidebar-total .price")?.textContent || "";
   pdf.setFont("helvetica", "bold");
-  pdf.setTextColor(30, 144, 255);
-  pdf.setFontSize(13);
-  pdf.text(`TOTAL PRICE: ${total}`, margin, y);
+  pdf.setFontSize(12);
+  pdf.setTextColor(...accent);
+  pdf.text(`TOTAL: ${total}`, margin, y);
 
-  // === FOOTER ===
-  pdf.setFillColor(10, 20, 30);
-  pdf.rect(0, 285, 210, 12, "F");
-  pdf.setTextColor(255);
+  // FOOTER
+  pdf.setFillColor(8, 14, 22);
+  pdf.rect(0, pageH - 12, pageW, 12, "F");
+  pdf.setTextColor(230);
   pdf.setFontSize(9);
-  pdf.text("Generated by Less Engine (c) 2025", 105, 292, { align: "center" });
+  // page numbers + project
+  const pageCount = pdf.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    pdf.setPage(i);
+    pdf.setFillColor(8, 14, 22);
+    pdf.rect(0, pageH - 12, pageW, 12, "F");
+    pdf.setTextColor(230);
+    pdf.setFontSize(9);
+    pdf.text(`Less Engine · Page ${i} of ${pageCount}`, pageW / 2, pageH - 4, { align: "center" });
+  }
 
   pdf.save(`${boatName.replace(/\s+/g, "_")}_Report.pdf`);
 }
@@ -2304,6 +2360,9 @@ function renderLoop(now) {
 
 const infoPanel = document.getElementById("info-panel");
 const toggleBtn = document.getElementById("toggle-info");
+const loadToggleBtn = document.getElementById("loadConfigToggle");
+const toggleLabel = toggleBtn ? toggleBtn.querySelector(".label") : null;
+const loadLabel = loadToggleBtn ? loadToggleBtn.querySelector(".label") : null;
 const mobileTabs = document.getElementById("mobileTabs");
 const tabButtons = mobileTabs ? mobileTabs.querySelectorAll("button") : [];
 
@@ -2316,25 +2375,66 @@ function setMobileTab(mode) {
   tabButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === mode));
   document.body.classList.toggle("mobile-tab-info", mode === "info");
   document.body.classList.toggle("mobile-tab-variants", mode === "variants");
-  if (mode === "info") infoPanel.classList.add("open");
-  else infoPanel.classList.remove("open");
+  if (mode === "info") {
+    infoPanel.classList.add("info-open");
+    infoPanel.classList.remove("load-open");
+    toggleBtn?.classList.add("active");
+    loadToggleBtn?.classList.remove("active");
+  } else {
+    infoPanel.classList.remove("info-open");
+    infoPanel.classList.remove("load-open");
+    toggleBtn?.classList.remove("active");
+    loadToggleBtn?.classList.remove("active");
+  }
 }
 
 function updateToggleLabelForDevice() {
   const isPhone = window.matchMedia("(max-width: 768px)").matches;
   const isTabletPortrait = window.matchMedia("(min-width: 769px) and (max-width: 1200px) and (orientation: portrait)").matches;
   const useTextLabel = isPhone || isTabletPortrait;
+  const labelText = useTextLabel ? "Configuration Info" : "Config Info";
+  if (toggleLabel) toggleLabel.textContent = labelText;
+  if (loadLabel) loadLabel.textContent = "Load Configuration";
   if (useTextLabel) {
-    toggleBtn.textContent = "Configuration Info";
     toggleBtn.classList.add("text-label");
     mobileTabs?.classList.remove("hidden");
     setMobileTab("variants");
   } else {
-    toggleBtn.textContent = "";
     toggleBtn.classList.remove("text-label");
     mobileTabs?.classList.add("hidden");
     document.body.classList.remove("mobile-tab-info", "mobile-tab-variants");
-    infoPanel.classList.remove("open");
+    infoPanel.classList.remove("info-open", "load-open");
+    toggleBtn?.classList.remove("active");
+    loadToggleBtn?.classList.remove("active");
+  }
+}
+
+function openInfo() {
+  infoPanel.classList.add("info-open");
+  infoPanel.classList.remove("load-open");
+  toggleBtn?.classList.add("active");
+  loadToggleBtn?.classList.remove("active");
+}
+
+function toggleInfoPanel() {
+  const shouldOpen = !infoPanel.classList.contains("info-open");
+  if (shouldOpen) openInfo();
+  else {
+    infoPanel.classList.remove("info-open");
+    toggleBtn?.classList.remove("active");
+  }
+}
+
+function toggleLoadPanel() {
+  const shouldOpen = !infoPanel.classList.contains("load-open");
+  if (shouldOpen) {
+    infoPanel.classList.add("load-open");
+    infoPanel.classList.remove("info-open");
+    loadToggleBtn?.classList.add("active");
+    toggleBtn?.classList.remove("active");
+  } else {
+    infoPanel.classList.remove("load-open");
+    loadToggleBtn?.classList.remove("active");
   }
 }
 
@@ -2347,8 +2447,22 @@ toggleBtn.addEventListener("click", () => {
     setMobileTab("info");
     return;
   }
-  infoPanel.classList.toggle("open");
+  toggleInfoPanel();
 });
+
+if (loadToggleBtn) {
+  loadToggleBtn.addEventListener("click", () => {
+    const isTouchMode =
+      toggleBtn.classList.contains("text-label") ||
+      document.body.classList.contains("mobile-tab-info") ||
+      document.body.classList.contains("mobile-tab-variants");
+    if (isTouchMode) {
+      toggleLoadPanel();
+      return;
+    }
+    toggleLoadPanel();
+  });
+}
 
 tabButtons.forEach((btn) => {
   btn.addEventListener("click", () => setMobileTab(btn.dataset.tab));
