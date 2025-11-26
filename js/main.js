@@ -2361,6 +2361,8 @@ function renderLoop(now) {
 const infoPanel = document.getElementById("info-panel");
 const toggleBtn = document.getElementById("toggle-info");
 const loadToggleBtn = document.getElementById("loadConfigToggle");
+if (loadToggleBtn) loadToggleBtn.classList.remove("active");
+if (toggleBtn) toggleBtn.classList.remove("active");
 const toggleLabel = toggleBtn ? toggleBtn.querySelector(".label") : null;
 const loadLabel = loadToggleBtn ? loadToggleBtn.querySelector(".label") : null;
 const mobileTabs = document.getElementById("mobileTabs");
