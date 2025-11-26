@@ -414,6 +414,8 @@ function createFinalColorTarget(w, h) {
 function focusCameraOnNode(node) {
   if (!node) return;
   camera.useOrtho = false; // dY"? prebaci nazad u perspektivu
+  // osveži bbox pre fokusa da bude tačan posle zamene varijante
+  delete node.cachedBounds;
   const bounds = ensureNodeBounds(node);
   if (!bounds || !bounds.center) return;
 
