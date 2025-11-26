@@ -417,7 +417,7 @@ function focusCameraOnNode(node) {
   const bounds = ensureNodeBounds(node);
   if (!bounds || !bounds.center) return;
 
-  camera.pan = bounds.center.slice();
+  camera.panTarget = bounds.center.slice();
   let targetDist = bounds.dist;
   if (!targetDist) {
     const size = bounds.size || (bounds.radius ? bounds.radius * 2 : 1);

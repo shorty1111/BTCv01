@@ -1005,7 +1005,7 @@ document
 
       // ✅ Postavi uglove za svaki view
       const center = window.sceneBoundingCenter || [0, 0, 0];
-      camera.pan = center.slice();
+      camera.panTarget = center.slice();
 
       switch (viewName) {
         case "iso":

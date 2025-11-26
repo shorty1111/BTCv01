@@ -12,6 +12,7 @@ export function initCamera(canvas) {
   let rx = 0, ry = 0, dist = 5;
 
   let pan = [0, 0, 0];
+  let panTarget = pan.slice();
   let rxTarget = rx, ryTarget = ry, distTarget = dist;
   let useOrtho = false;
   let camWorld = [0, 0, 0];
@@ -47,6 +48,11 @@ export function initCamera(canvas) {
       distTarget += (maxDistDynamic - distTarget) * 0.2;
 
     dist += (distTarget - dist) * 0.14;
+
+    const panLerp = 0.14;
+    pan[0] += (panTarget[0] - pan[0]) * panLerp;
+    pan[1] += (panTarget[1] - pan[1]) * panLerp;
+    pan[2] += (panTarget[2] - pan[2]) * panLerp;
     // 🔹 detekcija pomeranja kamere
     if (
       Math.abs(rx - lastRx) > 1e-5 ||
@@ -129,6 +135,7 @@ export function initCamera(canvas) {
       const halfMax = Math.max(halfHeight, halfWidth, halfDepth);
       const distFit = halfMax / Math.tan(fovY * 0.5);
       pan = center.slice();
+      panTarget = center.slice();
       dist = distTarget = distFit;
       window.sceneFitDistance = distFit; // zapamti distancu
     }
@@ -152,6 +159,7 @@ export function initCamera(canvas) {
       pan[0] += (e.movementX * right[0] + e.movementY * up[0]) * panSpeed;
       pan[1] += (e.movementX * right[1] + e.movementY * up[1]) * panSpeed;
       pan[2] += (e.movementX * right[2] + e.movementY * up[2]) * panSpeed;
+      panTarget = pan.slice();
       updateView();
     }
   });
@@ -226,6 +234,7 @@ canvas.addEventListener("touchmove", (e) => {
         pan[0] += (dmx * right[0] + dmy * up[0]) * panSpeed;
         pan[1] += (dmx * right[1] + dmy * up[1]) * panSpeed;
         pan[2] += (dmx * right[2] + dmy * up[2]) * panSpeed;
+        panTarget = pan.slice();
 
     }
     touchPanLastMid = { x: midX, y: midY };
@@ -256,7 +265,12 @@ canvas.addEventListener("touchend", (e) => {
     fitToBoundingBox,
     get camWorld() { return camWorld; },
     get pan() { return pan; },
-    set pan(v) { pan = v; },
+    set pan(v) {
+      pan = v ? v.slice() : [0, 0, 0];
+      panTarget = pan.slice();
+    },
+    get panTarget() { return panTarget; },
+    set panTarget(v) { panTarget = v ? v.slice() : panTarget; },
     get useOrtho() { return useOrtho; },
     set useOrtho(v) { useOrtho = v; },
     get currentView() { return currentView; },
