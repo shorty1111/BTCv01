@@ -20,17 +20,26 @@ export function initCamera(canvas) {
   let lastRx = rx, lastRy = ry, lastDist = dist;
   let lastPan = pan.slice();
   let moved = false;
+  let viewUpdateQueued = false;
   // === ✅ POČETNI UGAO I VISINA — KAO U STAROM main.js ===
   rx = rxTarget = Math.PI / 10;   // ~18° nagib iznad horizonta
   ry = ryTarget = Math.PI / 20;   // blagi yaw
   dist = distTarget = 5;          // inicijalna udaljenost
+  const initialState = {
+    pan: pan.slice(),
+    dist,
+    rx,
+    ry,
+  };
 
   // === ANIMACIJA KAMERE ===
   function animateCamera() {
     const minRx = 0.025;
     const maxRx = Math.PI / 2 - 0.01;
-    rxTarget = Math.max(minRx, Math.min(maxRx, rxTarget));
-    if (rxTarget > maxRx) rxTarget += (maxRx - rxTarget) * 0.25;
+    const clampedRx = Math.max(minRx, Math.min(maxRx, rxTarget));
+    if (Math.abs(clampedRx - rxTarget) > 1e-4) {
+      rxTarget = clampedRx + (rxTarget - clampedRx) * 0.2;
+    }
     rx += (rxTarget - rx) * 0.16;
     ry += (ryTarget - ry) * 0.16;
 
@@ -42,10 +51,7 @@ export function initCamera(canvas) {
     let maxDistDynamic =
       (window.currentBoundingRadius || window.sceneBoundingRadius || 5) * 10.0;
 
-    if (distTarget < minDistDynamic)
-      distTarget += (minDistDynamic - distTarget) * 0.2;
-    if (distTarget > maxDistDynamic)
-      distTarget += (maxDistDynamic - distTarget) * 0.2;
+    distTarget = Math.min(Math.max(distTarget, minDistDynamic), maxDistDynamic);
 
     dist += (distTarget - dist) * 0.14;
 
@@ -76,10 +82,11 @@ export function initCamera(canvas) {
   function updateView() {
     const aspect = canvas.width / canvas.height;
     const proj = persp(60, aspect, 0.1, 100000);
+    const target = pan;
 
         if (useOrtho) {
-          const center = window.sceneBoundingCenter || [0, 0, 0];
-          const d = window.sceneFitDistance || 10.0; // ista udaljenost kao u iso
+          const center = target || window.sceneBoundingCenter || [0, 0, 0];
+          const d = window.sceneFitDistance || distTarget || dist || 10.0; // ista udaljenost kao u iso
           let eye, up;
 
           switch (currentView) {
@@ -100,13 +107,21 @@ export function initCamera(canvas) {
         dist * Math.sin(rx) + pan[1],
         dist * Math.cos(rx) * Math.cos(ry) + pan[2],
       ];
-      view.set(look(eye, pan, [0, 1, 0]));
+      view.set(look(eye, target, [0, 1, 0]));
       camWorld = eye.slice();
     }
 
     return { proj, view, camWorld };
     
-    
+  
+  }
+  function scheduleViewUpdate() {
+    if (viewUpdateQueued) return;
+    viewUpdateQueued = true;
+    requestAnimationFrame(() => {
+      viewUpdateQueued = false;
+      updateView();
+    });
   }
     // === AUTO-FIT KAMERE NA SCENU ===
     function fitToBoundingBox(bmin, bmax) {
@@ -146,7 +161,8 @@ export function initCamera(canvas) {
       ryTarget -= e.movementX * 0.0025; // brža rotacija yaw
       rxTarget += e.movementY * 0.006;  // i pitch malo brže
     } else if (e.buttons === 4) {
-      const panSpeed = 0.001 * dist;
+      // ubrzaj pan pomeranjem po ekranu (viša vrednost = brži pan)
+      const panSpeed = (dist / Math.max(canvas.width, canvas.height)) * 2.0;
       const eye = [
         dist * Math.cos(rx) * Math.sin(ry) + pan[0],
         dist * Math.sin(rx) + pan[1],
@@ -160,14 +176,14 @@ export function initCamera(canvas) {
       pan[1] += (e.movementX * right[1] + e.movementY * up[1]) * panSpeed;
       pan[2] += (e.movementX * right[2] + e.movementY * up[2]) * panSpeed;
       panTarget = pan.slice();
-      updateView();
+      scheduleViewUpdate();
     }
   });
 
   canvas.addEventListener("wheel", (e) => {
     distTarget += e.deltaY * 0.01;
     distTarget = Math.max(0.2, distTarget);
-    updateView();
+    scheduleViewUpdate();
   }, { passive: true });
 
   // === TOUCH ===
@@ -222,7 +238,7 @@ canvas.addEventListener("touchmove", (e) => {
     if (touchPanLastMid) {
       const dmx = midX - touchPanLastMid.x;
       const dmy = midY - touchPanLastMid.y;
-      const panSpeed = 0.002 * dist;
+      const panSpeed = (dist / Math.max(canvas.width, canvas.height)) * 3.0;
       const eye = [
         dist * Math.cos(rx) * Math.sin(ry) + pan[0],
         dist * Math.sin(rx) + pan[1],
@@ -258,6 +274,20 @@ canvas.addEventListener("touchend", (e) => {
 }, { passive: false });
 
 
+  function resetCamera({ useSceneBounds = true } = {}) {
+    const target =
+      (useSceneBounds && window.sceneBoundingCenter && window.sceneBoundingCenter.slice()) ||
+      initialState.pan.slice();
+    const newDist =
+      (useSceneBounds && window.sceneFitDistance) || initialState.dist;
+
+    pan = target.slice();
+    panTarget = target.slice();
+    dist = distTarget = newDist;
+    rx = rxTarget = initialState.rx;
+    ry = ryTarget = initialState.ry;
+  }
+
   // === RETURN API ===
   return {
     animateCamera,
@@ -289,5 +319,6 @@ canvas.addEventListener("touchend", (e) => {
     set distTarget(v) { distTarget = v; },
     get moved() { return moved; },
     set moved(v) { moved = v; },
+    reset: resetCamera,
   };
 }

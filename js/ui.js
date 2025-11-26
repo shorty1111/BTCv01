@@ -16,6 +16,7 @@ export function showLoading() {
   if (!loadingScr) return;
   loadingScr.classList.remove("hidden");
   loadingScr.style.opacity = "1";
+  updateLoadingProgress();
 }
 export function hideLoading() {
   const loadingScr = document.getElementById("loading-screen");
@@ -27,6 +28,77 @@ export function hideLoading() {
     loadingScr.removeEventListener("transitionend", onEnd);
   };
   loadingScr.addEventListener("transitionend", onEnd);
+}
+
+export function updateLoadingProgress(
+  stage = "",
+  pendingTextures = window.pendingTextures || 0,
+  pendingMeshes = window.pendingMeshes ? 1 : 0
+) {
+  const loadingScr = document.getElementById("loading-screen");
+  if (!loadingScr) return;
+  const progressEl = loadingScr.querySelector(".progress");
+  let labelEl = loadingScr.querySelector(".progress-label");
+  if (!labelEl && progressEl) {
+    // kreiraj labelu odmah posle progress bara da ne pišemo tekst u sam bar
+    labelEl = document.createElement("div");
+    labelEl.className = "progress-label";
+    progressEl.insertAdjacentElement("afterend", labelEl);
+  }
+  if (progressEl) {
+    const totalPending = pendingTextures + pendingMeshes;
+    const pct =
+      totalPending === 0
+        ? 1
+        : Math.max(0.05, Math.min(0.95, 1 - totalPending * 0.1));
+    progressEl.style.setProperty("--progress-fill", `${Math.round(pct * 100)}%`);
+    if (labelEl) {
+      labelEl.textContent =
+        stage ||
+        `Loading${pendingMeshes ? " model" : ""}${
+          pendingTextures ? ` + ${pendingTextures} textures` : ""
+        }`;
+    }
+  }
+}
+
+export function showToast(message, type = "info", timeout = 4000) {
+  let container = document.getElementById("toast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "toast-container";
+    container.style.position = "fixed";
+    container.style.top = "16px";
+    container.style.right = "16px";
+    container.style.zIndex = "9999";
+    container.style.display = "flex";
+    container.style.flexDirection = "column";
+    container.style.gap = "8px";
+    document.body.appendChild(container);
+  }
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  toast.style.padding = "10px 14px";
+  toast.style.borderRadius = "8px";
+  toast.style.background =
+    type === "error"
+      ? "rgba(220, 60, 60, 0.9)"
+      : type === "warn"
+      ? "rgba(240, 170, 60, 0.9)"
+      : "rgba(40, 40, 50, 0.9)";
+  toast.style.color = "#fff";
+  toast.style.boxShadow = "0 6px 20px rgba(0,0,0,0.25)";
+  toast.style.backdropFilter = "blur(6px)";
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    toast.style.transition = "opacity 0.25s ease";
+    toast.addEventListener("transitionend", () => {
+      toast.remove();
+      if (!container.children.length) container.remove();
+    });
+  }, timeout);
 }
 const hotspotButtons = new Map();
 const partFirstItems = new Map();

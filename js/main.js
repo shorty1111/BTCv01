@@ -6,7 +6,7 @@ import { initSky, drawSky, bakeSkyToCubemap, bakeIrradianceFromSky } from "./sky
 import { DEFAULT_SKY } from "./sky.js";
 import {DEFAULT_MODEL,BASE_PRICE,VARIANT_GROUPS,BOAT_INFO,SIDEBAR_INFO } from "./config.js";
 import {mat4mul,persp,ortho,look,composeTRS,computeBounds,mulMat4Vec4, v3,} from "./math.js";
-import { initUI, renderBoatInfo, showPartInfo, showLoading, hideLoading } from "./ui.js";
+import { initUI, renderBoatInfo, showPartInfo, showLoading, hideLoading, showToast, updateLoadingProgress } from "./ui.js";
 import { TEXTURE_SLOTS, bindTextureToSlot } from "./texture-slots.js";
 
 let sceneChanged = true;
@@ -70,6 +70,7 @@ async function loadTextureWithCache(
   if (!gl) return null;
 
   window.pendingTextures = (window.pendingTextures || 0) + 1;
+  updateLoadingProgress("Loading textures", window.pendingTextures, window.pendingMeshes ? 1 : 0);
 
   const loadPromise = (async () => {
     const tex = gl.createTexture();
@@ -105,6 +106,7 @@ async function loadTextureWithCache(
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
     } catch (err) {
       console.warn("[textures] Failed to load:", src, err);
+      showToast(`Texture failed: ${src}`, "warn", 3500);
     } finally {
       decrementPendingTextures();
       textureCachePromises.delete(src);
@@ -251,6 +253,7 @@ function createSSROutputTarget(w, h) {
 window.pendingTextures = 0;
 function decrementPendingTextures() {
   window.pendingTextures = Math.max(0, window.pendingTextures - 1);
+  updateLoadingProgress("Loading textures", window.pendingTextures, window.pendingMeshes ? 1 : 0);
 }
 let savedColorsByPart = {};
 let reflectionFBO = null;
@@ -296,6 +299,10 @@ let modelBaseTextures = []; // niz u koji ćemo smestiti teksture iz modela
 let modelMetallics = [];
 let modelRoughnesses = [];
 let lastFrameTime = 0;
+let cachedCanvasRect = null;
+let cachedCanvasRectFrame = -1;
+let lastBoundsResult = null;
+let lastBoundsFrame = -1;
 
 const KERNEL_SIZE = 48;
 const SSAO_NOISE_SIZE = 3;
@@ -451,21 +458,47 @@ function ensureNodeBounds(node) {
     if (!r.matName || r.matName.toLowerCase().includes("dummy")) continue;
 
     const orig = originalParts[r.idx];
-    if (!orig || !orig.pos) continue;
+    if (!orig) continue;
 
     const modelMat = modelMatrices[r.idx] || orig.modelMatrix;
     if (!modelMat) continue;
 
-    for (let i = 0; i < orig.pos.length; i += 3) {
+    const local = orig.localAABB;
+    if (local && local.min && local.max) {
       hasGeometry = true;
-      const p = [orig.pos[i], orig.pos[i + 1], orig.pos[i + 2], 1];
-      const w = vec4.transformMat4([], p, modelMat);
-      min[0] = Math.min(min[0], w[0]);
-      min[1] = Math.min(min[1], w[1]);
-      min[2] = Math.min(min[2], w[2]);
-      max[0] = Math.max(max[0], w[0]);
-      max[1] = Math.max(max[1], w[1]);
-      max[2] = Math.max(max[2], w[2]);
+      const lx = local.min[0], ly = local.min[1], lz = local.min[2];
+      const hx = local.max[0], hy = local.max[1], hz = local.max[2];
+      const corners = [
+        [lx, ly, lz, 1],
+        [lx, ly, hz, 1],
+        [lx, hy, lz, 1],
+        [lx, hy, hz, 1],
+        [hx, ly, lz, 1],
+        [hx, ly, hz, 1],
+        [hx, hy, lz, 1],
+        [hx, hy, hz, 1],
+      ];
+      for (const c of corners) {
+        const w = vec4.transformMat4([], c, modelMat);
+        min[0] = Math.min(min[0], w[0]);
+        min[1] = Math.min(min[1], w[1]);
+        min[2] = Math.min(min[2], w[2]);
+        max[0] = Math.max(max[0], w[0]);
+        max[1] = Math.max(max[1], w[1]);
+        max[2] = Math.max(max[2], w[2]);
+      }
+    } else if (orig.pos) {
+      for (let i = 0; i < orig.pos.length; i += 3) {
+        hasGeometry = true;
+        const p = [orig.pos[i], orig.pos[i + 1], orig.pos[i + 2], 1];
+        const w = vec4.transformMat4([], p, modelMat);
+        min[0] = Math.min(min[0], w[0]);
+        min[1] = Math.min(min[1], w[1]);
+        min[2] = Math.min(min[2], w[2]);
+        max[0] = Math.max(max[0], w[0]);
+        max[1] = Math.max(max[1], w[1]);
+        max[2] = Math.max(max[2], w[2]);
+      }
     }
   }
 
@@ -510,7 +543,11 @@ function getPartScreenPosition(partKey) {
   if (!canvasEl) return null;
   const projected = projectToScreen(info.center, window.currentViewProjMatrix, canvasEl);
   if (!projected.visible) return null;
-  const rect = canvasEl.getBoundingClientRect();
+  if (cachedCanvasRectFrame !== drawStats.frame) {
+    cachedCanvasRect = canvasEl.getBoundingClientRect();
+    cachedCanvasRectFrame = drawStats.frame;
+  }
+  const rect = cachedCanvasRect || canvasEl.getBoundingClientRect();
   const scaleX = rect.width / canvasEl.width;
   const scaleY = rect.height / canvasEl.height;
   return {
@@ -567,11 +604,22 @@ function createPreviewProgram(gl2) {
 
 async function loadDefaultModel(url) {
   showLoading();
-  const res = await fetch(url);
-  const buf = await res.arrayBuffer();
-  await loadGLB(buf);  
-  hideLoading();     
-  render();       
+  window.pendingMeshes = true;
+  updateLoadingProgress("Loading model", window.pendingTextures || 0, 1);
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const buf = await res.arrayBuffer();
+    await loadGLB(buf);  
+  } catch (err) {
+    console.error("Failed to load model", err);
+    showToast("Failed to load model file.", "error");
+  } finally {
+    window.pendingMeshes = false;
+    updateLoadingProgress("Loading textures", window.pendingTextures || 0, 0);
+    hideLoading();     
+    render();       
+  }
 }
 function arraysEqual(a, b) {
   if (a.length !== b.length) return false;
@@ -2442,6 +2490,24 @@ function toggleLoadPanel() {
   }
 }
 
+function closePanelsIfClickOutside(e) {
+  const isInfoOpen = infoPanel.classList.contains("info-open");
+  const isLoadOpen = infoPanel.classList.contains("load-open");
+  if (!isInfoOpen && !isLoadOpen) return;
+
+  const target = e.target;
+  const clickedInsidePanel = infoPanel.contains(target);
+  const clickedToggle =
+    (toggleBtn && toggleBtn.contains(target)) ||
+    (loadToggleBtn && loadToggleBtn.contains(target));
+
+  if (!clickedInsidePanel && !clickedToggle) {
+    infoPanel.classList.remove("info-open", "load-open");
+    toggleBtn?.classList.remove("active");
+    loadToggleBtn?.classList.remove("active");
+  }
+}
+
 toggleBtn.addEventListener("click", () => {
   const isTouchMode =
     toggleBtn.classList.contains("text-label") ||
@@ -2467,6 +2533,11 @@ if (loadToggleBtn) {
     toggleLoadPanel();
   });
 }
+
+document.addEventListener("mousedown", closePanelsIfClickOutside);
+document.addEventListener("touchstart", closePanelsIfClickOutside, {
+  passive: true,
+});
 
 tabButtons.forEach((btn) => {
   btn.addEventListener("click", () => setMobileTab(btn.dataset.tab));
@@ -2514,22 +2585,52 @@ function disposeCurrentMeshes() {
 }
 
 function updateBoundsFromCurrentParts({ fitCamera = false } = {}) {
+  if (!fitCamera && lastBoundsResult && lastBoundsFrame === drawStats.frame) {
+    return lastBoundsResult;
+  }
   let min = [Infinity, Infinity, Infinity];
   let max = [-Infinity, -Infinity, -Infinity];
 
   for (const renderIdx in originalParts) {
     const part = originalParts[renderIdx];
-    if (!part || !part.pos) continue;
+    if (!part) continue;
     const mat = modelMatrices[renderIdx];
-    for (let i = 0; i < part.pos.length; i += 3) {
-      const p = [part.pos[i], part.pos[i + 1], part.pos[i + 2], 1];
-      const w = vec4.transformMat4([], p, mat);
-      min[0] = Math.min(min[0], w[0]);
-      min[1] = Math.min(min[1], w[1]);
-      min[2] = Math.min(min[2], w[2]);
-      max[0] = Math.max(max[0], w[0]);
-      max[1] = Math.max(max[1], w[1]);
-      max[2] = Math.max(max[2], w[2]);
+    if (!mat) continue;
+
+    const local = part.localAABB;
+    if (local && local.min && local.max) {
+      const lx = local.min[0], ly = local.min[1], lz = local.min[2];
+      const hx = local.max[0], hy = local.max[1], hz = local.max[2];
+      const corners = [
+        [lx, ly, lz, 1],
+        [lx, ly, hz, 1],
+        [lx, hy, lz, 1],
+        [lx, hy, hz, 1],
+        [hx, ly, lz, 1],
+        [hx, ly, hz, 1],
+        [hx, hy, lz, 1],
+        [hx, hy, hz, 1],
+      ];
+      for (const c of corners) {
+        const w = vec4.transformMat4([], c, mat);
+        min[0] = Math.min(min[0], w[0]);
+        min[1] = Math.min(min[1], w[1]);
+        min[2] = Math.min(min[2], w[2]);
+        max[0] = Math.max(max[0], w[0]);
+        max[1] = Math.max(max[1], w[1]);
+        max[2] = Math.max(max[2], w[2]);
+      }
+    } else if (part.pos) {
+      for (let i = 0; i < part.pos.length; i += 3) {
+        const p = [part.pos[i], part.pos[i + 1], part.pos[i + 2], 1];
+        const w = vec4.transformMat4([], p, mat);
+        min[0] = Math.min(min[0], w[0]);
+        min[1] = Math.min(min[1], w[1]);
+        min[2] = Math.min(min[2], w[2]);
+        max[0] = Math.max(max[0], w[0]);
+        max[1] = Math.max(max[1], w[1]);
+        max[2] = Math.max(max[2], w[2]);
+      }
     }
   }
 
@@ -2572,10 +2673,14 @@ function updateBoundsFromCurrentParts({ fitCamera = false } = {}) {
     };
   }
 
-  return { min, max, center, radius };
+  lastBoundsResult = { min, max, center, radius };
+  lastBoundsFrame = drawStats.frame;
+  return lastBoundsResult;
 }
 
 async function loadGLB(buf) {
+  window.pendingMeshes = true;
+  updateLoadingProgress("Loading model", window.pendingTextures || 0, 1);
   disposeCurrentMeshes();
   modelVAOs = [];
   idxCounts = [];
@@ -2693,6 +2798,8 @@ async function loadGLB(buf) {
 
       const hasTangent = !!tangents;
       const stride = (hasTangent ? 12 : (uvArray ? 8 : 6)) * 4;
+      const localMin = [Infinity, Infinity, Infinity];
+      const localMax = [-Infinity, -Infinity, -Infinity];
       const interleaved = new Float32Array(
         pos.length + nor.length +
         (uvArray ? uvArray.length : 0) +
@@ -2700,9 +2807,19 @@ async function loadGLB(buf) {
       );
 
       for (let i = 0, j = 0; i < pos.length / 3; ++i) {
-        interleaved[j++] = pos[i * 3];
-        interleaved[j++] = pos[i * 3 + 1];
-        interleaved[j++] = pos[i * 3 + 2];
+        const px = pos[i * 3];
+        const py = pos[i * 3 + 1];
+        const pz = pos[i * 3 + 2];
+        localMin[0] = Math.min(localMin[0], px);
+        localMin[1] = Math.min(localMin[1], py);
+        localMin[2] = Math.min(localMin[2], pz);
+        localMax[0] = Math.max(localMax[0], px);
+        localMax[1] = Math.max(localMax[1], py);
+        localMax[2] = Math.max(localMax[2], pz);
+
+        interleaved[j++] = px;
+        interleaved[j++] = py;
+        interleaved[j++] = pz;
         interleaved[j++] = nor[i * 3];
         interleaved[j++] = nor[i * 3 + 1];
         interleaved[j++] = nor[i * 3 + 2];
@@ -2805,6 +2922,7 @@ async function loadGLB(buf) {
     alphaMode,
     normalTex: normalTex || window.defaultNormalTex,
     roughnessTex: roughnessTex || window.whiteTex,
+    localAABB: { min: localMin, max: localMax },
   };
       if (!realOriginalParts[renderIdx]) {
         realOriginalParts[renderIdx] = {
@@ -2841,6 +2959,8 @@ async function loadGLB(buf) {
   await waitForPendingTextures(8000);
   await new Promise(requestAnimationFrame);
   
+  window.pendingMeshes = false;
+  updateLoadingProgress("Loading textures", window.pendingTextures || 0, 0);
   }
 
 function loadTextureFromImage(gltf, bin, texIndex) {
