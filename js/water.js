@@ -17,6 +17,7 @@ const WATER_CONFIG = {
   centerSize: 100.0,  // fizička veličina centralnog patcha
   centerDiv: 120,     // gustina centralnog patcha (vertexi po ivici)
   ringCount: 12,       // koliko "prstenova" mreže oko centralnog
+  ringDivFalloff: 0.55 // koliko se ređe postavljaju verteksi po prstenima
 };
 
 let lodMeshes = [];
@@ -88,7 +89,7 @@ function createWaterGrid(tileSize = 100.0, div = 200) {
 }
 
 function createWaterRings(cfg = WATER_CONFIG) {
-  const { centerSize, centerDiv, ringCount, ringDivFalloff } = cfg;
+  const { centerSize, centerDiv, ringCount, ringDivFalloff = 0.55 } = cfg;
   const rings = [];
   const step = centerSize; // svi gridovi su iste fizičke veličine
 
@@ -225,7 +226,7 @@ export async function initWater(gl) {
     "uSunIntensity", "uOpacity", "uRoughness", "uSpecularStrength",
     "uWaterLevel", "uBottomOffsetM", "uCubeMaxMip", "uWaterNormal",
     "uEnvTex", "uSceneDepth", "uSceneColor", "uReflectionTex",
-    "uReflectionMatrix", "uWaterHeight", "uNear", "uFar", "uViewportSize",
+    "uReflectionMatrix", "uReflectionScale", "uWaterHeight", "uNear", "uFar", "uViewportSize",
     "uShallowColor", "uDeepColor", "uShadowMap", "uLightVP",
     "uGridOffset", 
     "uGlobalExposure" // 👈 DODAJ OVDE
@@ -479,13 +480,11 @@ export function drawWater(
   safeBindTex(gl, TEXTURE_SLOTS.WATER_REFLECTION, gl.TEXTURE_2D, reflectionTex);
   gl.uniformMatrix4fv(waterUniforms.uReflectionMatrix, false, reflProjView);
 
-// 👇 dodaj ovo:
-if (window.reflectionSize) {
-  const sx = window.reflectionSize[0] / gl.canvas.width;
-  const sy = window.reflectionSize[1] / gl.canvas.height;
-  const loc = gl.getUniformLocation(waterProgram, "uReflectionScale");
-  if (loc) gl.uniform2f(loc, sx, sy);
-}
+  if (waterUniforms.uReflectionScale && window.reflectionSize) {
+    const sx = window.reflectionSize[0] / gl.canvas.width;
+    const sy = window.reflectionSize[1] / gl.canvas.height;
+    gl.uniform2f(waterUniforms.uReflectionScale, sx, sy);
+  }
   // === OSTALO ===
   gl.uniform1f(waterUniforms.uWaterHeight, 0.0);
   gl.uniform1f(waterUniforms.uNear, nearPlane);
@@ -517,9 +516,6 @@ for (let i = 0; i < lodMeshes.length; i++) {
     instCount
   );
 }
-
-gl.bindVertexArray(null);
-
 
 gl.bindVertexArray(null);
   // === VRATI STANJE ===

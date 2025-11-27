@@ -326,8 +326,6 @@ function buildVariantSidebar() {
                     }
                   }
 
-                  sceneChanged = true;
-                  render();
                 } else {
                   const loadImageTexture = (src) =>
                     !src
@@ -362,9 +360,6 @@ function buildVariantSidebar() {
                       if (texRough) originalParts[r.idx].roughnessTex = texRough;
                     }
                   }
-
-                  sceneChanged = true;
-                  render();
                 }
               }
               else if (c.type === "color" && c.color) {
