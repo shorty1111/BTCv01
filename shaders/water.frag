@@ -17,7 +17,7 @@ out vec4 fragColor;
 // === UNIFORMI ===
 // uniform samplerCube uEnvTex;
 uniform sampler2D   uReflectionTex;
-uniform sampler2D   waterNormalTex;
+uniform sampler2D   uWaterNormal;
 uniform float       uTime;
 uniform vec3        uCameraPos;
 uniform vec3        uSunDir;
@@ -64,8 +64,8 @@ void main() {
     vec2 scroll1 = vec2(0.02,  0.05) * uTime;
     vec2 scroll2 = vec2(-0.015, 0.01) * uTime * 0.8;
 
-    vec3 n1 = texture(waterNormalTex, vUV * 1.6 + scroll1).xyz * 2.0 - 1.0;
-    vec3 n2 = texture(waterNormalTex, vUV * 0.7 + scroll2).xyz * 2.0 - 1.0;
+    vec3 n1 = texture(uWaterNormal, vUV * 1.6 + scroll1).xyz * 2.0 - 1.0;
+    vec3 n2 = texture(uWaterNormal, vUV * 0.7 + scroll2).xyz * 2.0 - 1.0;
 
     // simple + stable
     vec3 tangentNormal = normalize(n1 + 0.5 * n2);
