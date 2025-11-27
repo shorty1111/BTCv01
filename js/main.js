@@ -286,7 +286,6 @@ let lineProgram; // globalna promenljiva
 let boatLengthLine = null;
 let boatWidthLine = null;
 let boatHeightLine = null;
-let boatTickLine = null;
 let gBufferProgram, ssaoProgram; // Za nove šejder programe
 let quadVAO = null; // Za iscrtavanje preko celog ekrana
 let modelMatrices = [];
@@ -312,6 +311,8 @@ window.markDimLabelsDirty = () => {
   dimLabelsDirty = true;
 };
 let rulerAnchorEl = null;
+let boatTickLine = null;
+const dimOverlayCtx = { canvas: null, labels: null, uColor: null };
 
 const DIM_COLOR = [0.9, 0.02, 1.0];
 const DIM_TICK_COLOR = [0.65, 0.9, 1.0];
@@ -1260,9 +1261,8 @@ function setMatrices(p) {
   gl.uniformMatrix4fv(gl.getUniformLocation(p, "uModel"), false, model);
 }
 
-function ensureRulerAnchor() {
+function ensureRulerAnchor(labelsDiv = document.getElementById("labels")) {
   if (!rulerAnchorEl) {
-    const labelsDiv = document.getElementById("labels");
     if (!labelsDiv) return null;
     rulerAnchorEl = document.createElement("div");
     rulerAnchorEl.className = "ruler-anchor";
@@ -1299,6 +1299,159 @@ function makeHeightLine(min, max) {
   return makeLine([min[0], min[1], max[2]], [min[0], max[1], max[2]]);
 }
 
+function getDimOverlayContext() {
+  if (!dimOverlayCtx.canvas) dimOverlayCtx.canvas = document.getElementById("glCanvas");
+  if (!dimOverlayCtx.labels) {
+    const labelsDiv = document.getElementById("labels");
+    if (labelsDiv) {
+      if (!labelsDiv.style.position) labelsDiv.style.position = "absolute";
+      labelsDiv.style.pointerEvents = "none";
+      dimOverlayCtx.labels = labelsDiv;
+    }
+  }
+  if (!dimOverlayCtx.uColor && lineProgram) {
+    dimOverlayCtx.uColor =
+      (window.lineUniforms && window.lineUniforms.uColor) ||
+      gl.getUniformLocation(lineProgram, "uColor");
+  }
+  if (!dimOverlayCtx.canvas || !dimOverlayCtx.labels || !dimOverlayCtx.uColor) return null;
+  return dimOverlayCtx;
+}
+
+function formatDimensionLabel(label, meters) {
+  const feet = meters * 3.28084;
+  return `${label}: ${meters.toFixed(2)} m / ${feet.toFixed(2)} ft`;
+}
+
+function placeDimLabel(ctx, viewProj, { id, start, end, meters, offsetY = 0, label }) {
+  const { canvas, labels } = ctx;
+  const midWorld = [
+    (start[0] + end[0]) * 0.5,
+    (start[1] + end[1]) * 0.5,
+    (start[2] + end[2]) * 0.5,
+  ];
+  const sMid = projectToScreen(midWorld, viewProj, canvas);
+  let lbl = document.getElementById(id);
+  if (!lbl) {
+    lbl = document.createElement("div");
+    lbl.id = id;
+    lbl.className = "label";
+    labels.appendChild(lbl);
+  }
+  lbl.style.position = "absolute";
+
+  if (!sMid.visible || !Number.isFinite(sMid.x) || !Number.isFinite(sMid.y)) {
+    lbl.classList.remove("visible");
+    return;
+  }
+
+  const midX = sMid.x;
+  const midY = sMid.y + offsetY;
+  lbl.innerText = formatDimensionLabel(label || id, meters);
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = rect.width / canvas.width;
+  const scaleY = rect.height / canvas.height;
+  lbl.style.left = `${rect.left + midX * scaleX}px`;
+  lbl.style.top = `${rect.top + midY * scaleY}px`;
+  lbl.classList.add("visible");
+}
+
+function updateRulerAnchorPosition(ctx, viewProj, dimOrigin) {
+  const { canvas, labels } = ctx;
+  const anchor = ensureRulerAnchor(labels);
+  if (!anchor) return;
+  const s = projectToScreen(dimOrigin, viewProj, canvas);
+  if (s.visible && Number.isFinite(s.x) && Number.isFinite(s.y)) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = rect.width / canvas.width;
+    const scaleY = rect.height / canvas.height;
+    anchor.style.left = `${rect.left + s.x * scaleX}px`;
+    anchor.style.top = `${rect.top + s.y * scaleY}px`;
+    anchor.classList.add("visible");
+  } else {
+    anchor.classList.remove("visible");
+  }
+}
+
+function drawRulerLines(uColorLoc) {
+  const drawDimLine = (line) => {
+    if (!line) return;
+    gl.uniform3fv(uColorLoc, DIM_COLOR);
+    gl.bindVertexArray(line.vao);
+    gl.drawArrays(gl.LINES, 0, line.count);
+    gl.bindVertexArray(null);
+  };
+
+  drawDimLine(boatLengthLine);
+  drawDimLine(boatWidthLine);
+  drawDimLine(boatHeightLine);
+  if (boatTickLine) {
+    gl.uniform3fv(uColorLoc, DIM_TICK_COLOR);
+    gl.bindVertexArray(boatTickLine.vao);
+    gl.drawArrays(gl.LINES, 0, boatTickLine.count);
+    gl.bindVertexArray(null);
+  }
+}
+
+function renderDimensionOverlay(proj, view) {
+  if (!showDimensions || !boatMin || !boatMax) return;
+  const ctx = getDimOverlayContext();
+  if (!ctx) return;
+
+  beginDrawPass("dimensions");
+  gl.useProgram(lineProgram);
+  setMatrices(lineProgram);
+  const prevDepthTest = gl.isEnabled(gl.DEPTH_TEST);
+  const prevDepthMask = gl.getParameter(gl.DEPTH_WRITEMASK);
+  gl.disable(gl.DEPTH_TEST);
+  gl.depthMask(false);
+
+  drawRulerLines(ctx.uColor);
+
+  const viewProj = mat4mul(proj, view);
+  const xLength = boatMax[0] - boatMin[0];
+  const zWidth = boatMax[2] - boatMin[2];
+  const yHeight = boatMax[1] - boatMin[1];
+  const dimOrigin = [boatMin[0], boatMin[1], boatMax[2]];
+
+  const shouldUpdateLabels = camera.moved || dimLabelsDirty;
+  if (shouldUpdateLabels) {
+    updateRulerAnchorPosition(ctx, viewProj, dimOrigin);
+
+    placeDimLabel(ctx, viewProj, {
+      id: "lengthLabel",
+      start: dimOrigin,
+      end: [boatMax[0], boatMin[1], boatMax[2]],
+      meters: xLength,
+      offsetY: 40,
+      label: "Length",
+    });
+
+    placeDimLabel(ctx, viewProj, {
+      id: "widthLabel",
+      start: dimOrigin,
+      end: [boatMin[0], boatMin[1], boatMin[2]],
+      meters: zWidth,
+      offsetY: 20,
+      label: "Width",
+    });
+
+    placeDimLabel(ctx, viewProj, {
+      id: "heightLabel",
+      start: dimOrigin,
+      end: [boatMin[0], boatMax[1], boatMax[2]],
+      meters: yHeight,
+      offsetY: -10,
+      label: "Height",
+    });
+
+    dimLabelsDirty = false;
+  }
+
+  if (prevDepthTest) gl.enable(gl.DEPTH_TEST);
+  else gl.disable(gl.DEPTH_TEST);
+  gl.depthMask(prevDepthMask);
+}
 function buildDimensionTicks(min, max, radius) {
   const verts = [];
   const size = Math.max(radius * 0.015, 0.05);
@@ -2269,153 +2422,14 @@ if (showWater && !camera.useOrtho) {
     reflMatrix,
     window.globalExposure
   );
+} else if (showWater && camera.useOrtho) {
+  // u ortho modu preskačemo crtanje vode, ali zadržavamo depth iz gBuffer-a
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, gBuffer);
+  gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, finalFBO);
+  gl.blitFramebuffer(0,0,canvas.width,canvas.height,0,0,canvas.width,canvas.height,gl.DEPTH_BUFFER_BIT,gl.NEAREST);
 }
 
-  // === 11. Overlay / dimenzije (ako su uključene) ===
-  if (showDimensions && boatMin && boatMax) {
-    beginDrawPass("dimensions");
-    gl.useProgram(lineProgram);
-    setMatrices(lineProgram);
-    const prevDepthTest = gl.isEnabled(gl.DEPTH_TEST);
-    const prevDepthMask = gl.getParameter(gl.DEPTH_WRITEMASK);
-    gl.disable(gl.DEPTH_TEST);
-    gl.depthMask(false);
-
-    const drawDimLine = (line) => {
-      if (!line) return;
-      gl.uniform3fv(gl.getUniformLocation(lineProgram, "uColor"), DIM_COLOR);
-      gl.bindVertexArray(line.vao);
-      gl.drawArrays(gl.LINES, 0, line.count);
-      gl.bindVertexArray(null);
-    };
-
-    drawDimLine(boatLengthLine);
-    drawDimLine(boatWidthLine);
-    drawDimLine(boatHeightLine);
-    if (boatTickLine) {
-      gl.uniform3fv(gl.getUniformLocation(lineProgram, "uColor"), DIM_TICK_COLOR);
-      gl.bindVertexArray(boatTickLine.vao);
-      gl.drawArrays(gl.LINES, 0, boatTickLine.count);
-      gl.bindVertexArray(null);
-    }
-
-    const formatDimensionLabel = (label, meters) => {
-      const feet = meters * 3.28084;
-      return `${label}: ${meters.toFixed(2)} m / ${feet.toFixed(2)} ft`;
-    };
-
-    const placeLabel = (id, pA, pB, meters, offsetY = 0, labelName = "") => {
-      const viewProj = mat4mul(proj, view);
-      const canvasEl = document.getElementById("glCanvas");
-      const labelsDiv = document.getElementById("labels");
-      if (!canvasEl || !labelsDiv) return;
-
-      const midWorld = [
-        (pA[0] + pB[0]) * 0.5,
-        (pA[1] + pB[1]) * 0.5,
-        (pA[2] + pB[2]) * 0.5,
-      ];
-      const sMid = projectToScreen(midWorld, viewProj, canvasEl);
-      let lbl = document.getElementById(id);
-      if (!lbl) {
-        lbl = document.createElement("div");
-        lbl.id = id;
-        lbl.className = "label";
-        labelsDiv.appendChild(lbl);
-      }
-      if (!labelsDiv.style.position) {
-        labelsDiv.style.position = "absolute";
-        labelsDiv.style.pointerEvents = "none";
-      }
-      lbl.style.position = "absolute";
-
-      if (!sMid.visible || !Number.isFinite(sMid.x) || !Number.isFinite(sMid.y)) {
-        lbl.classList.remove("visible");
-        return;
-      }
-
-      const midX = sMid.x;
-      const midY = sMid.y + offsetY;
-      lbl.innerText = formatDimensionLabel(labelName || id, meters);
-      const rect = canvasEl.getBoundingClientRect();
-      const scaleX = rect.width / canvasEl.width;
-      const scaleY = rect.height / canvasEl.height;
-      lbl.style.left = `${rect.left + midX * scaleX}px`;
-      lbl.style.top = `${rect.top + midY * scaleY}px`;
-      lbl.classList.add("visible");
-    };
-
-    const xLength = boatMax[0] - boatMin[0];
-    const zWidth = boatMax[2] - boatMin[2];
-    const yHeight = boatMax[1] - boatMin[1];
-    const dimOrigin = [boatMin[0], boatMin[1], boatMax[2]];
-    const anchor = ensureRulerAnchor();
-
-    const shouldUpdateLabels = camera.moved || dimLabelsDirty;
-    if (shouldUpdateLabels) {
-      if (anchor) {
-        const viewProj = mat4mul(proj, view);
-        const canvasEl = document.getElementById("glCanvas");
-        const labelsDiv = document.getElementById("labels");
-        const s = projectToScreen(dimOrigin, viewProj, canvasEl);
-        if (
-          labelsDiv &&
-          canvasEl &&
-          s.visible &&
-          Number.isFinite(s.x) &&
-          Number.isFinite(s.y)
-        ) {
-          const rect = canvasEl.getBoundingClientRect();
-          const scaleX = rect.width / canvasEl.width;
-          const scaleY = rect.height / canvasEl.height;
-          anchor.style.left = `${rect.left + s.x * scaleX}px`;
-          anchor.style.top = `${rect.top + s.y * scaleY}px`;
-          anchor.classList.add("visible");
-        } else {
-          anchor.classList.remove("visible");
-        }
-      }
-
-      if (boatLengthLine) {
-        placeLabel(
-          "lengthLabel",
-          dimOrigin,
-          [boatMax[0], boatMin[1], boatMax[2]],
-          xLength,
-          40,
-          "Length"
-        );
-      }
-
-      if (boatWidthLine) {
-        placeLabel(
-          "widthLabel",
-          dimOrigin,
-          [boatMin[0], boatMin[1], boatMin[2]],
-          zWidth,
-          20,
-          "Width"
-        );
-      }
-
-      if (boatHeightLine) {
-        placeLabel(
-          "heightLabel",
-          dimOrigin,
-          [boatMin[0], boatMax[1], boatMax[2]],
-          yHeight,
-          -10,
-          "Height"
-        );
-      }
-
-      dimLabelsDirty = false;
-    }
-
-    if (prevDepthTest) gl.enable(gl.DEPTH_TEST);
-    else gl.disable(gl.DEPTH_TEST);
-    gl.depthMask(prevDepthMask);
-  }
+  renderDimensionOverlay(proj, view);
 
     // === 10. Transparent/Overlay/Dimenzije ===
     if (!showWater) {
@@ -2761,6 +2775,19 @@ function disposeCurrentMeshes() {
     if (tex === window.whiteTex || tex === window.defaultNormalTex) return;
     texSet.add(tex);
   };
+
+  if (boatTickLine) {
+    if (boatTickLine.vao) gl.deleteVertexArray(boatTickLine.vao);
+    if (boatTickLine.vbo) gl.deleteBuffer(boatTickLine.vbo);
+    boatTickLine = null;
+  }
+  if (rulerAnchorEl) {
+    rulerAnchorEl.remove();
+    rulerAnchorEl = null;
+  }
+  dimOverlayCtx.canvas = null;
+  dimOverlayCtx.labels = null;
+  dimOverlayCtx.uColor = null;
 
   modelVAOs.forEach((vao) => vao && gl.deleteVertexArray(vao));
   transparentMeshes.forEach((m) => {

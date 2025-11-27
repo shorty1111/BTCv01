@@ -168,8 +168,8 @@ export function initCamera(canvas) {
       const halfHeight = Math.max(needHalfHeight, needHalfHeightFromWidth, 0.5);
       const halfWidth = halfHeight * aspect;
       const depth = computeFarPlane(d);
-      const nearOrtho = -depth;
-      const farOrtho = depth;
+      const nearOrtho = 0.1; // pozitivan near za pravilnu linearizaciju
+      const farOrtho = depth * 2.0;
       proj = ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, nearOrtho, farOrtho);
       near = nearOrtho;
       far = farOrtho;
