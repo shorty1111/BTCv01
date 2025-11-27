@@ -22,6 +22,17 @@ const EMPTY_BOAT_INFO = Object.keys(BOAT_INFO).reduce((acc, key) => {
   acc[key] = "";
   return acc;
 }, {});
+const DEFAULT_MODEL_PATH = DEFAULT_MODEL || "assets/boat.glb";
+
+function attachUpload(fileInput, targetInput) {
+  if (!fileInput || !targetInput) return;
+  fileInput.addEventListener("change", () => {
+    const f = fileInput.files && fileInput.files[0];
+    if (!f) return;
+    targetInput.value = f.name;
+    targetInput.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
 
 const app = document.createElement("div");
 app.id = "app";
@@ -114,6 +125,7 @@ function addClientForm(data = {}, options = {}) {
   const index = clientsContainer.children.length + 1;
   const clientName = data.name ?? (isBlank ? "" : `Client ${index}`);
   const boatInfo = isBlank ? cloneData(EMPTY_BOAT_INFO) : data.boatInfo ?? cloneData(BOAT_INFO);
+  const defaultModel = data.defaultModel ?? DEFAULT_MODEL_PATH;
   const variantGroups = isBlank
     ? []
     : normalizeVariantGroups(data.variantGroups ?? VARIANT_GROUPS);
@@ -148,6 +160,17 @@ function addClientForm(data = {}, options = {}) {
     </div>
   `;
 
+  const defaultModelField = document.createElement("div");
+  defaultModelField.className = "form-grid one";
+  defaultModelField.innerHTML = `
+    <label>Default model (GLB path)</label>
+    <div class="file-input-row">
+      <input type="text" class="default-model-input" value="${defaultModel}" placeholder="assets/boat.glb" readonly>
+      <label class="upload-label">Upload<input type="file" class="default-model-upload" accept=".glb"></label>
+    </div>
+  `;
+  attachUpload(defaultModelField.querySelector(".default-model-upload"), defaultModelField.querySelector(".default-model-input"));
+
   const boatGrid = document.createElement("div");
   boatGrid.className = "form-grid two";
   Object.entries(boatInfo).forEach(([key, value]) => {
@@ -157,6 +180,7 @@ function addClientForm(data = {}, options = {}) {
     input.dataset.key = key;
     boatGrid.appendChild(field);
   });
+  boatDiv.appendChild(defaultModelField);
   boatDiv.appendChild(boatGrid);
 
   const variantsWrapper = document.createElement("section");
@@ -408,7 +432,12 @@ function createVariantItem(itemData = {}) {
     <div class="variant-item-head">
       <div class="field-grid">
         <label>Item name<input type="text" class="variant-item-name" value="${itemData.name ?? ""}" placeholder="Display name"></label>
-        <label>GLB / model source<input type="text" class="variant-item-src" value="${itemData.src ?? ""}" placeholder="variants/your-file.glb"></label>
+        <label>GLB / model source
+          <div class="file-input-row">
+            <input type="text" class="variant-item-src" value="${itemData.src ?? ""}" placeholder="variants/your-file.glb" readonly>
+            <label class="upload-label">Upload<input type="file" class="variant-item-upload" accept=".glb"></label>
+          </div>
+        </label>
         <label>Price (EUR)<input type="number" class="variant-item-price" value="${itemData.price ?? 0}" min="0"></label>
       </div>
     </div>
@@ -455,6 +484,7 @@ function createVariantItem(itemData = {}) {
 
   const nameInput = details.querySelector(".variant-item-name");
   const srcInput = details.querySelector(".variant-item-src");
+  attachUpload(details.querySelector(".variant-item-upload"), srcInput);
   const priceInput = details.querySelector(".variant-item-price");
   const titleEl = summary.querySelector(".variant-item-title");
   const subtitleEl = summary.querySelector(".variant-item-subtitle");
@@ -486,10 +516,18 @@ function createColorRow(option = {}) {
       <input type="color" class="color-option-hex" value="${rgbArrayToHex(option.color)}">
     </div>
     <div class="texture-inputs">
-      <input type="text" class="texture-map" value="${option.texture ?? ""}" placeholder="Texture file">
-      <input type="text" class="texture-normal" value="${option.normal ?? ""}" placeholder="Normal map">
-      <input type="text" class="texture-rough" value="${option.rough ?? ""}" placeholder="Roughness map">
-      <label class="upload-label">Upload<input type="file" class="texture-upload" accept=".jpg,.jpeg,.png,.webp"></label>
+      <div class="file-input-row">
+        <input type="text" class="texture-map" value="${option.texture ?? ""}" placeholder="Texture file">
+        <label class="upload-label">Upload<input type="file" class="texture-map-upload" accept=".jpg,.jpeg,.png,.webp"></label>
+      </div>
+      <div class="file-input-row">
+        <input type="text" class="texture-normal" value="${option.normal ?? ""}" placeholder="Normal map">
+        <label class="upload-label">Upload<input type="file" class="texture-normal-upload" accept=".jpg,.jpeg,.png,.webp"></label>
+      </div>
+      <div class="file-input-row">
+        <input type="text" class="texture-rough" value="${option.rough ?? ""}" placeholder="Roughness map">
+        <label class="upload-label">Upload<input type="file" class="texture-rough-upload" accept=".jpg,.jpeg,.png,.webp"></label>
+      </div>
     </div>
     <div class="color-row-actions">
       <button type="button" class="ghost-button danger remove-color">Remove</button>
@@ -499,6 +537,13 @@ function createColorRow(option = {}) {
   const typeSelect = row.querySelector(".color-option-type");
   const colorInput = row.querySelector(".color-option-hex");
   const textureInputs = row.querySelector(".texture-inputs");
+  ["texture-map", "texture-normal", "texture-rough"].forEach(cls => {
+    const inp = row.querySelector(`.${cls}`);
+    if (inp) inp.readOnly = true;
+  });
+  attachUpload(row.querySelector(".texture-map-upload"), row.querySelector(".texture-map"));
+  attachUpload(row.querySelector(".texture-normal-upload"), row.querySelector(".texture-normal"));
+  attachUpload(row.querySelector(".texture-rough-upload"), row.querySelector(".texture-rough"));
 
   function syncMaterialInputs() {
     const currentType = typeSelect.value;
@@ -582,6 +627,7 @@ function formatPriceLabel(value) {
 
 function buildClientFromCard(card, index) {
   const name = card.querySelector(".client-name").value.trim() || `Client ${index + 1}`;
+  const defaultModel = card.querySelector(".default-model-input")?.value.trim() || DEFAULT_MODEL_PATH;
   const boatInfo = {};
   card.querySelectorAll('.boat-info input[data-section="boat"]').forEach(input => {
     boatInfo[input.dataset.key] = input.value;
@@ -642,6 +688,7 @@ function buildClientFromCard(card, index) {
   return {
     name,
     slug: slugify(name) || `client-${index + 1}`,
+    defaultModel,
     boatInfo,
     variantGroups,
     __signature: CONFIG_SIGNATURE,
@@ -661,7 +708,7 @@ function handleSave() {
   }
 
   const firstClient = clients[0];
- const output = `export const DEFAULT_MODEL = ${JSON.stringify(DEFAULT_MODEL)};
+ const output = `export const DEFAULT_MODEL = ${JSON.stringify(firstClient.defaultModel || DEFAULT_MODEL_PATH)};
 export const BASE_PRICE = ${BASE_PRICE};
 export const BOAT_INFO = ${JSON.stringify(firstClient.boatInfo, null, 2)};
 export const VARIANT_GROUPS = ${JSON.stringify(firstClient.variantGroups, null, 2)};
@@ -683,6 +730,7 @@ const initialClients = (() => {
     return [
       {
         name: "Client 1",
+        defaultModel: DEFAULT_MODEL_PATH,
         boatInfo: cloneData(BOAT_INFO),
         variantGroups: cloneData(VARIANT_GROUPS),
       },
@@ -692,6 +740,7 @@ const initialClients = (() => {
     const needsResync = client?.__signature !== CONFIG_SIGNATURE;
     return {
       name: client?.name ?? `Client ${idx + 1}`,
+      defaultModel: client?.defaultModel ?? DEFAULT_MODEL_PATH,
       boatInfo: needsResync ? cloneData(BOAT_INFO) : cloneData(client.boatInfo ?? BOAT_INFO),
       variantGroups: needsResync
         ? cloneData(VARIANT_GROUPS)

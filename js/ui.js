@@ -850,11 +850,13 @@ confirmBtn.addEventListener("click", () => {
   const name = nameInput.value.trim() || `Config ${new Date().toLocaleString()}`;
   saveToLocal(name);
   modal.classList.add("hidden");
+  if (typeof window.setMobileTab === "function") window.setMobileTab("info");
 });
 
 // otkaži
 cancelBtn.addEventListener("click", () => {
   modal.classList.add("hidden");
+  if (typeof window.setMobileTab === "function") window.setMobileTab("info");
 });
 
 

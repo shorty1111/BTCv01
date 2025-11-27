@@ -608,7 +608,7 @@ canvas,
 #loading-screen {
   position: fixed;
   inset: 0;
-  background: radial-gradient(circle at 50% 30%, rgba(20, 30, 50, 0.55), rgba(10, 12, 20, 0.9));
+  background: #0d111a;
   color: var(--foreground);
   font-size: 18px;
   display: flex;

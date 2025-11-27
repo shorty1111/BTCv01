@@ -1699,10 +1699,10 @@ async function initializeApp() {
   await preloadAllConfigTextures();
 
   try {
-    // Sačekaj i model
+    // Sacekaj i model
     await loadDefaultModel(DEFAULT_MODEL);
 
-    // ⚠️ Validacija programa
+
     if (!program || !(program instanceof WebGLProgram)) {
       console.error("❌ Main PBR program nije ispravno učitan.");
       alert("Shader link error — proveri log u konzoli (verovatno pbr.frag).");
@@ -2454,6 +2454,7 @@ function setMobileTab(mode) {
     loadToggleBtn?.classList.remove("active");
   }
 }
+window.setMobileTab = setMobileTab;
 
 function updateToggleLabelForDevice() {
   const isPhone = window.matchMedia("(max-width: 768px)").matches;
@@ -2465,7 +2466,7 @@ function updateToggleLabelForDevice() {
   if (useTextLabel) {
     toggleBtn.classList.add("text-label");
     mobileTabs?.classList.remove("hidden");
-    setMobileTab("variants");
+    setMobileTab("info");
   } else {
     toggleBtn.classList.remove("text-label");
     mobileTabs?.classList.add("hidden");
@@ -3731,5 +3732,7 @@ if (import.meta.hot) {
     lose?.loseContext();
   });
 }
+
+
 
 

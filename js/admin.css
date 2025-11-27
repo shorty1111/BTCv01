@@ -1066,8 +1066,11 @@ textarea::placeholder {
 .upload-label {
   border: 1px dashed rgba(255, 255, 255, 0.25);
   border-radius: 8px;
-  padding: 8px;
-  display: block;
+  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 160px;
   font-size: 12px;
   text-align: center;
   cursor: pointer;
@@ -1075,6 +1078,16 @@ textarea::placeholder {
 
 .upload-label input {
   display: none;
+}
+.file-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 360px;
+}
+.file-input-row input[type="text"] {
+  flex: 1;
+  cursor: default;
 }
 
 .variant-card.collapsed .variant-card-body {

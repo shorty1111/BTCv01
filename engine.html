@@ -4,7 +4,7 @@
   <head>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-    <link rel="stylesheet" href="tree.css?v=s13111c1" />
+    <link rel="stylesheet" href="tree.css?v=s13c1c1" />
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta charset="UTF-8" />
@@ -57,12 +57,12 @@
 </nav>
 
 </div>
-    <div id="loading-screen" class="hidden">
+    <div id="loading-screen">
       <div class="sheet">
         <div>Boat Configurator</div>
         <div class="loader" aria-label="Loading"></div>
         <div class="progress" aria-hidden="true"></div>
-        <div style="opacity: 0.8; font-weight: 500">
+        <div style="opacity: 1.0; font-weight: 500">
           Compiling shaders…
         </div>
       </div>
@@ -116,7 +116,7 @@
       </div>
     </aside>
 
-    <script type="module" src="js/main.js?v=31cc111111111"></script>
+    <script type="module" src="js/main.js?v=31c51"></script>
     <script>
       // Blokiraj landscape samo na touch uređajima manjeg ekrana (telefoni/tableti)
       (function () {
@@ -131,9 +131,9 @@
         updateBlock();
       })();
     </script>
-    <div id="fps-meter hidden" class="hidden">FPS: <span id="fps-value">0</span></div>
-    <div id="drawcall-meter hidden" class="hidden">Draw Calls: <span id="drawcalls-value">0</span></div>
-      <div id="res-meter hidden" class="hidden"></div>
+    <div id="fps-meter" class="">FPS: <span id="fps-value">0</span></div>
+    <div id="drawcall-meter" class="">Draw Calls: <span id="drawcalls-value">0</span></div>
+      <div id="res-meter" class=""></div>
     <div id="info-panel">
       <div class="canvas-actions">
         <div class="info-actions">
