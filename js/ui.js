@@ -1063,6 +1063,7 @@ document
       // 👇 DODAJ - HOME button specijalan slučaj
       if (viewName === "iso" && window.initialCameraState) {
         console.log("🏠 HOME clicked - restoring initial state");
+        camera.useOrtho = false;
         camera.pan = window.initialCameraState.pan.slice();
         camera.distTarget = window.initialCameraState.dist;
 
@@ -1079,7 +1080,8 @@ document
 
 
       camera.currentView = viewName;
-      camera.useOrtho = false;
+      const orthoViews = new Set(["front", "left", "back", "right", "top", "side"]);
+      camera.useOrtho = orthoViews.has(viewName);
 
       // ✅ Postavi uglove za svaki view
       const center = window.sceneBoundingCenter || [0, 0, 0];

@@ -91,31 +91,94 @@ export function initCamera(canvas) {
   // === VIEW MATRICA ===
   function updateView() {
     const aspect = canvas.width / canvas.height;
-    const near = BASE_NEAR;
-    const far = computeFarPlane(dist);
-    const proj = persp(60, aspect, near, far);
+    const perspNear = BASE_NEAR;
+    const perspFar = computeFarPlane(dist);
+    let proj = persp(60, aspect, perspNear, perspFar);
+    let near = perspNear;
+    let far = perspFar;
     window.currentNear = near;
     window.currentFar = far;
     const target = pan;
 
-        if (useOrtho) {
-          const center = target || window.sceneBoundingCenter || [0, 0, 0];
-          const d = window.sceneFitDistance || distTarget || dist || 10.0; // ista udaljenost kao u iso
-          let eye, up;
+    if (useOrtho) {
+      const center = target || window.sceneBoundingCenter || [0, 0, 0];
+      const d = window.sceneFitDistance || distTarget || dist || 10.0;
+      let eye, up;
 
-          switch (currentView) {
-            case "front": eye = [center[0], center[1], center[2] + d]; up = [0, 1, 0]; break;
-            case "back":  eye = [center[0], center[1], center[2] - d]; up = [0, 1, 0]; break;
-            case "left":  eye = [center[0] - d, center[1], center[2]]; up = [0, 1, 0]; break;
-            case "right": eye = [center[0] + d, center[1], center[2]]; up = [0, 1, 0]; break;
-            case "top":   eye = [center[0], center[1] + d, center[2]]; up = [0, 0, -1]; break;
-            default:      eye = [center[0] + d, center[1] + d, center[2] + d]; up = [0, 1, 0]; break;
-          }
+      switch (currentView) {
+        case "front":
+          eye = [center[0], center[1], center[2] + d];
+          up = [0, 1, 0];
+          break;
+        case "back":
+          eye = [center[0], center[1], center[2] - d];
+          up = [0, 1, 0];
+          break;
+        case "left":
+          eye = [center[0] - d, center[1], center[2]];
+          up = [0, 1, 0];
+          break;
+        case "right":
+          eye = [center[0] + d, center[1], center[2]];
+          up = [0, 1, 0];
+          break;
+        case "top":
+          eye = [center[0], center[1] + d, center[2]];
+          up = [0, 0, -1];
+          break;
+        default:
+          eye = [center[0] + d, center[1] + d, center[2] + d];
+          up = [0, 1, 0];
+          break;
+      }
 
-          view.set(look(eye, center, up));
-          camWorld = eye.slice();
-        }
-        else {
+      const margin = 1.2; // 20% margine
+      const minB = window.boatMin || window.sceneBoundingMin || [center[0] - 1, center[1] - 1, center[2] - 1];
+      const maxB = window.boatMax || window.sceneBoundingMax || [center[0] + 1, center[1] + 1, center[2] + 1];
+      const size = [
+        maxB[0] - minB[0],
+        maxB[1] - minB[1],
+        maxB[2] - minB[2],
+      ];
+
+      let projWidth = size[0];
+      let projHeight = size[1];
+      switch (currentView) {
+        case "front":
+        case "back":
+          projWidth = size[0]; // X span
+          projHeight = size[1]; // Y span
+          break;
+        case "left":
+        case "right":
+          projWidth = size[2]; // Z span
+          projHeight = size[1]; // Y span
+          break;
+        case "top":
+          projWidth = size[0]; // X span
+          projHeight = size[2]; // Z span
+          break;
+        default:
+          projWidth = projHeight = Math.max(size[0], size[1], size[2]);
+          break;
+      }
+
+      const needHalfHeight = (projHeight * 0.5) * margin;
+      const needHalfHeightFromWidth = ((projWidth * 0.5) * margin) / Math.max(aspect, 0.001);
+      const halfHeight = Math.max(needHalfHeight, needHalfHeightFromWidth, 0.5);
+      const halfWidth = halfHeight * aspect;
+      const depth = computeFarPlane(d);
+      const nearOrtho = -depth;
+      const farOrtho = depth;
+      proj = ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, nearOrtho, farOrtho);
+      near = nearOrtho;
+      far = farOrtho;
+      window.currentNear = near;
+      window.currentFar = far;
+
+      view.set(look(eye, center, up));
+      camWorld = eye.slice();
+    } else {
       const eye = [
         dist * Math.cos(rx) * Math.sin(ry) + pan[0],
         dist * Math.sin(rx) + pan[1],

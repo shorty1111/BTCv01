@@ -2232,7 +2232,7 @@ if (ssaoDirty) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     sceneChanged = false; // ✅ reset
   }
-if (showWater) {
+if (showWater && !camera.useOrtho) {
   beginDrawPass("water");
   // NEMOJ PONOVO bindFramebuffer(finalFBO)! (VEĆ SI U njemu)
   gl.viewport(0, 0, canvas.width, canvas.height);
