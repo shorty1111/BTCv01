@@ -286,6 +286,7 @@ let lineProgram; // globalna promenljiva
 let boatLengthLine = null;
 let boatWidthLine = null;
 let boatHeightLine = null;
+let boatTickLine = null;
 let gBufferProgram, ssaoProgram; // Za nove šejder programe
 let quadVAO = null; // Za iscrtavanje preko celog ekrana
 let modelMatrices = [];
@@ -310,6 +311,10 @@ let dimLabelsDirty = true;
 window.markDimLabelsDirty = () => {
   dimLabelsDirty = true;
 };
+let rulerAnchorEl = null;
+
+const DIM_COLOR = [0.9, 0.02, 1.0];
+const DIM_TICK_COLOR = [0.65, 0.9, 1.0];
 
 const KERNEL_SIZE = 48;
 const SSAO_NOISE_SIZE = 3;
@@ -1255,6 +1260,17 @@ function setMatrices(p) {
   gl.uniformMatrix4fv(gl.getUniformLocation(p, "uModel"), false, model);
 }
 
+function ensureRulerAnchor() {
+  if (!rulerAnchorEl) {
+    const labelsDiv = document.getElementById("labels");
+    if (!labelsDiv) return null;
+    rulerAnchorEl = document.createElement("div");
+    rulerAnchorEl.className = "ruler-anchor";
+    labelsDiv.appendChild(rulerAnchorEl);
+  }
+  return rulerAnchorEl;
+}
+
 function makeLine(p1, p2) {
   const v = [...p1, ...p2];
   const vao = gl.createVertexArray();
@@ -1281,6 +1297,55 @@ function makeWidthLine(min, max) {
 
 function makeHeightLine(min, max) {
   return makeLine([min[0], min[1], max[2]], [min[0], max[1], max[2]]);
+}
+
+function buildDimensionTicks(min, max, radius) {
+  const verts = [];
+  const size = Math.max(radius * 0.015, 0.05);
+  const addTicks = (start, end, up) => {
+    const dir = [
+      end[0] - start[0],
+      end[1] - start[1],
+      end[2] - start[2],
+    ];
+    const len = Math.hypot(dir[0], dir[1], dir[2]);
+    if (len < size * 1.5) return;
+    const step = Math.max(0.5, len / 12);
+    const invLen = 1 / len;
+    dir[0] *= invLen;
+    dir[1] *= invLen;
+    dir[2] *= invLen;
+
+    for (let d = step; d < len; d += step) {
+      const px = start[0] + dir[0] * d;
+      const py = start[1] + dir[1] * d;
+      const pz = start[2] + dir[2] * d;
+      verts.push(
+        px - up[0] * size * 0.5,
+        py - up[1] * size * 0.5,
+        pz - up[2] * size * 0.5,
+        px + up[0] * size * 0.5,
+        py + up[1] * size * 0.5,
+        pz + up[2] * size * 0.5
+      );
+    }
+  };
+
+  const origin = [min[0], min[1], max[2]];
+  addTicks(origin, [max[0], min[1], max[2]], [0, 1, 0]); // length ticks up/down
+  addTicks(origin, [min[0], min[1], min[2]], [0, 1, 0]); // width ticks up/down
+  addTicks(origin, [min[0], max[1], max[2]], [1, 0, 0]); // height ticks sideways
+
+  if (!verts.length) return null;
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+  const vb = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vb);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+  gl.bindVertexArray(null);
+  return { vao, vbo: vb, count: verts.length / 3 };
 }
 
 
@@ -2211,10 +2276,14 @@ if (showWater) {
     beginDrawPass("dimensions");
     gl.useProgram(lineProgram);
     setMatrices(lineProgram);
+    const prevDepthTest = gl.isEnabled(gl.DEPTH_TEST);
+    const prevDepthMask = gl.getParameter(gl.DEPTH_WRITEMASK);
+    gl.disable(gl.DEPTH_TEST);
+    gl.depthMask(false);
 
     const drawDimLine = (line) => {
       if (!line) return;
-      gl.uniform3fv(gl.getUniformLocation(lineProgram, "uColor"), [1, 1, 1]);
+      gl.uniform3fv(gl.getUniformLocation(lineProgram, "uColor"), DIM_COLOR);
       gl.bindVertexArray(line.vao);
       gl.drawArrays(gl.LINES, 0, line.count);
       gl.bindVertexArray(null);
@@ -2223,6 +2292,12 @@ if (showWater) {
     drawDimLine(boatLengthLine);
     drawDimLine(boatWidthLine);
     drawDimLine(boatHeightLine);
+    if (boatTickLine) {
+      gl.uniform3fv(gl.getUniformLocation(lineProgram, "uColor"), DIM_TICK_COLOR);
+      gl.bindVertexArray(boatTickLine.vao);
+      gl.drawArrays(gl.LINES, 0, boatTickLine.count);
+      gl.bindVertexArray(null);
+    }
 
     const formatDimensionLabel = (label, meters) => {
       const feet = meters * 3.28084;
@@ -2253,10 +2328,9 @@ if (showWater) {
         labelsDiv.style.pointerEvents = "none";
       }
       lbl.style.position = "absolute";
-      lbl.style.transform = "translate(-50%, -50%)";
 
       if (!sMid.visible || !Number.isFinite(sMid.x) || !Number.isFinite(sMid.y)) {
-        lbl.style.display = "none";
+        lbl.classList.remove("visible");
         return;
       }
 
@@ -2268,16 +2342,40 @@ if (showWater) {
       const scaleY = rect.height / canvasEl.height;
       lbl.style.left = `${rect.left + midX * scaleX}px`;
       lbl.style.top = `${rect.top + midY * scaleY}px`;
-      lbl.style.display = "block";
+      lbl.classList.add("visible");
     };
 
     const xLength = boatMax[0] - boatMin[0];
     const zWidth = boatMax[2] - boatMin[2];
     const yHeight = boatMax[1] - boatMin[1];
     const dimOrigin = [boatMin[0], boatMin[1], boatMax[2]];
+    const anchor = ensureRulerAnchor();
 
     const shouldUpdateLabels = camera.moved || dimLabelsDirty;
     if (shouldUpdateLabels) {
+      if (anchor) {
+        const viewProj = mat4mul(proj, view);
+        const canvasEl = document.getElementById("glCanvas");
+        const labelsDiv = document.getElementById("labels");
+        const s = projectToScreen(dimOrigin, viewProj, canvasEl);
+        if (
+          labelsDiv &&
+          canvasEl &&
+          s.visible &&
+          Number.isFinite(s.x) &&
+          Number.isFinite(s.y)
+        ) {
+          const rect = canvasEl.getBoundingClientRect();
+          const scaleX = rect.width / canvasEl.width;
+          const scaleY = rect.height / canvasEl.height;
+          anchor.style.left = `${rect.left + s.x * scaleX}px`;
+          anchor.style.top = `${rect.top + s.y * scaleY}px`;
+          anchor.classList.add("visible");
+        } else {
+          anchor.classList.remove("visible");
+        }
+      }
+
       if (boatLengthLine) {
         placeLabel(
           "lengthLabel",
@@ -2313,6 +2411,10 @@ if (showWater) {
 
       dimLabelsDirty = false;
     }
+
+    if (prevDepthTest) gl.enable(gl.DEPTH_TEST);
+    else gl.disable(gl.DEPTH_TEST);
+    gl.depthMask(prevDepthMask);
   }
 
     // === 10. Transparent/Overlay/Dimenzije ===
@@ -2752,9 +2854,14 @@ function updateBoundsFromCurrentParts({ fitCamera = false } = {}) {
   window.sceneBoundingRadius = radius;
   window.boatMin = boatMin;
   window.boatMax = boatMax;
+  if (boatTickLine) {
+    if (boatTickLine.vao) gl.deleteVertexArray(boatTickLine.vao);
+    if (boatTickLine.vbo) gl.deleteBuffer(boatTickLine.vbo);
+  }
   boatLengthLine = makeLengthLine(min, max);
   boatWidthLine = makeWidthLine(min, max);
   boatHeightLine = makeHeightLine(min, max);
+  boatTickLine = buildDimensionTicks(min, max, radius);
   dimLabelsDirty = true;
   window.envBox = {
     min: [
@@ -2808,6 +2915,11 @@ async function loadGLB(buf) {
   boatLengthLine = null;
   boatWidthLine = null;
   boatHeightLine = null;
+  if (boatTickLine) {
+    if (boatTickLine.vao) gl.deleteVertexArray(boatTickLine.vao);
+    if (boatTickLine.vbo) gl.deleteBuffer(boatTickLine.vbo);
+  }
+  boatTickLine = null;
   boatMin = null;
   boatMax = null;
   dimLabelsDirty = true;

@@ -1090,27 +1090,27 @@ document
           camera.rxTarget = Math.PI / 10;
           camera.ryTarget = Math.PI / 20;
           break;
-          
+
         case "front":
           camera.rxTarget = Math.PI / 25;
           camera.ryTarget = 0; // gleda pravo napred
           break;
-          
+
         case "back":
           camera.rxTarget = Math.PI / 10;
           camera.ryTarget = Math.PI; // gleda pozadi
           break;
-          
+
         case "left":
           camera.rxTarget = Math.PI / 50;
           camera.ryTarget = -Math.PI / 2; // gleda levo
           break;
-          
+
         case "right":
           camera.rxTarget = Math.PI / 10;
           camera.ryTarget = Math.PI / 2; // gleda desno
           break;
-          
+
         case "top":
           camera.rxTarget = Math.PI / 2 - 0.05; // skoro 90°
           camera.ryTarget = 0;
@@ -1154,8 +1154,13 @@ setupExclusiveButtons("#camera-controls button[data-weather]");
 
     ["lengthLabel", "widthLabel", "heightLabel"].forEach((id) => {
       const lbl = document.getElementById(id);
-      if (lbl) lbl.style.display = showDimensions ? "block" : "none";
+      if (lbl) {
+        lbl.style.display = showDimensions ? "block" : "none";
+        if (!showDimensions) lbl.classList.remove("visible");
+      }
     });
+    const anchor = document.querySelector(".ruler-anchor");
+    if (anchor) anchor.style.display = showDimensions ? "block" : "none";
     if (window.markDimLabelsDirty) window.markDimLabelsDirty();
   });
   const toggleWaterBtn = document.getElementById("toggleWater");

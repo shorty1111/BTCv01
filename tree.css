@@ -593,15 +593,43 @@ canvas,
   font-size: 14px;
   font-weight: bold;
   pointer-events: none;
-  transform: translate(-50%, -100%);
+  transform: translate(-50%, -100%) scale(0.96);
   background: var(--glass-bg);
   backdrop-filter: var(--blur-medium);
   -webkit-backdrop-filter: var(--blur-medium);
   padding: 4px 8px;
   border-radius: 6px;
   border: 1px solid var(--glass-border);
-  display: none;
+  opacity: 0;
+  transition: opacity 0.18s ease, transform 0.18s ease;
   white-space: nowrap;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+
+#lengthLabel.visible,
+#labels .label.visible {
+  opacity: 1;
+  transform: translate(-50%, -110%) scale(1);
+  display: block;
+}
+
+.ruler-anchor {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--glass-bg);
+  border: 2px solid var(--glass-border);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+  transform: translate(-50%, -50%) scale(0.9);
+  opacity: 0;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  pointer-events: none;
+}
+
+.ruler-anchor.visible {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
 }
 
 /* =========================
@@ -2067,21 +2095,23 @@ body.studio-mode .btn-weather {
 
 .variant-hotspot {
   position: absolute;
-  transform: translate(-50%, -120%);
-  background: rgba(10, 10, 10, 0.85);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 999px;
-  padding: 6px 14px;
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  transform: translate(-50%, -100%);
+  background: var(--glass-bg);
+  color: var(--foreground);
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-transform: none;
   pointer-events: auto;
   cursor: pointer;
   transition: opacity 0.2s ease, transform 0.2s ease;
-  backdrop-filter: blur(6px);
-
+  backdrop-filter: var(--blur-medium);
+  -webkit-backdrop-filter: var(--blur-medium);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  white-space: nowrap;
 }
 
 .variant-hotspot:hover {
