@@ -1151,9 +1151,12 @@ setupExclusiveButtons("#camera-controls button[data-weather]");
   toggleDimsBtn.addEventListener("click", () => {
     showDimensions = !showDimensions;
     toggleDimsBtn.innerText = showDimensions ? "Hide Ruler" : "Show Ruler";
-  
-    const lbl = document.getElementById("lengthLabel");
-    if (lbl) lbl.style.display = showDimensions ? "block" : "none";
+
+    ["lengthLabel", "widthLabel", "heightLabel"].forEach((id) => {
+      const lbl = document.getElementById(id);
+      if (lbl) lbl.style.display = showDimensions ? "block" : "none";
+    });
+    if (window.markDimLabelsDirty) window.markDimLabelsDirty();
   });
   const toggleWaterBtn = document.getElementById("toggleWater");
   toggleWaterBtn.innerText = "Studio"; // odmah prikaži tekst jer je voda aktivna
