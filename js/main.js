@@ -259,6 +259,7 @@ let savedColorsByPart = {};
 let reflectionFBO = null;
 let reflectionTex = null;
 let reflectionColorProgram = null;
+const REFLECTION_SCALE = 0.2;
 let envSize = 512; // kontrola kvaliteta/performansi
 let cubeMaxMip = Math.floor(Math.log2(envSize));
 window.showWater = true;
@@ -350,21 +351,26 @@ function disposeReflectionTarget() {
     gl.deleteFramebuffer(reflectionFBO);
     reflectionFBO = null;
   }
+  window.reflectionSize = null;
 }
 
 function createReflectionTarget(gl, width, height) {
   disposeReflectionTarget();
 
+  const reflW = Math.max(1, Math.floor(width * REFLECTION_SCALE));
+  const reflH = Math.max(1, Math.floor(height * REFLECTION_SCALE));
+  window.reflectionSize = [reflW, reflH];
+
   reflectionTex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, reflectionTex);
-  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,width,height,0,gl.RGBA, gl.HALF_FLOAT,null);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,reflW,reflH,0,gl.RGBA, gl.HALF_FLOAT,null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
   window.reflectionDepthTex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, window.reflectionDepthTex);
   gl.texImage2D(
-  gl.TEXTURE_2D, 0,gl.DEPTH_COMPONENT24,  width,height,0, gl.DEPTH_COMPONENT,gl.UNSIGNED_INT,null);
+  gl.TEXTURE_2D, 0,gl.DEPTH_COMPONENT24,  reflW,reflH,0, gl.DEPTH_COMPONENT,gl.UNSIGNED_INT,null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -1772,11 +1778,16 @@ function render() {
   const timeNow = performance.now() * 0.001; // koristi u SSAO i vodi
   let reflView = null;
   let reflProj = proj;
+  let cameraNear = 0.1;
+  let cameraFar = 100000.0;
+  let near, far;
   // === 1. Animacija kamere i matrica pogleda ===
     showWater = window.showWater;
   showDimensions = window.showDimensions;
   camera.animateCamera();
-  ({ proj, view, camWorld } = camera.updateView());
+  ({ proj, view, camWorld, near, far } = camera.updateView());
+  cameraNear = near ?? cameraNear;
+  cameraFar = far ?? cameraFar;
   currentViewMatrix.set(view);
   currentProjMatrix.set(proj);
   currentViewProjMatrix = mat4mul(currentProjMatrix, currentViewMatrix);
@@ -1894,10 +1905,13 @@ if (showWater) {
   reflCam = getReflectedCamera(camWorld, camera.pan, [0, 1, 0]);
   reflView = reflCam.view;
   reflProj = proj;
+  const reflViewport = window.reflectionSize || [canvas.width, canvas.height];
+  const reflW = reflViewport[0];
+  const reflH = reflViewport[1];
 
   // ✅ I nacrtaj reflection pass UVEK (čak i u top view-u)
   gl.bindFramebuffer(gl.FRAMEBUFFER, reflectionFBO);
-  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.viewport(0, 0, reflW, reflH);
   gl.clearColor(0, 0, 0, 1);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   gl.enable(gl.DEPTH_TEST);
@@ -1905,6 +1919,7 @@ if (showWater) {
   // Nacrtaj nebo
   drawSky(gl, reflectionFBO, reflView, reflProj, SUN.dir, {
     ...DEFAULT_SKY,
+    viewportSize: reflViewport,
     worldLocked: 1,
     sunColor: SUN.color,
     sunIntensity: SUN.intensity,
@@ -2161,8 +2176,8 @@ if (showWater) {
     performance.now() * 0.001,
     sceneDepthTex,
     gAlbedo,
-    0.1,
-    100000.0,
+    cameraNear,
+    cameraFar,
     [canvas.width, canvas.height],
     shadowDepthTex,
     lightVP,

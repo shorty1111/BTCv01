@@ -17,6 +17,16 @@ export function initCamera(canvas) {
   let useOrtho = false;
   let camWorld = [0, 0, 0];
   let view = new Float32Array(16);
+  const BASE_NEAR = 0.1;
+  const MIN_FAR = 500.0;
+
+  function computeFarPlane(currentDist) {
+    const sceneRadius = window.sceneBoundingRadius || 50.0;
+    const waterRadius = window.waterRadius || 0.0;
+    const maxRadius = Math.max(sceneRadius, waterRadius, currentDist || 0);
+    const margin = 200.0;
+    return Math.max(MIN_FAR, maxRadius * 4.0 + margin);
+  }
   let lastRx = rx, lastRy = ry, lastDist = dist;
   let lastPan = pan.slice();
   let moved = false;
@@ -81,7 +91,11 @@ export function initCamera(canvas) {
   // === VIEW MATRICA ===
   function updateView() {
     const aspect = canvas.width / canvas.height;
-    const proj = persp(60, aspect, 0.1, 100000);
+    const near = BASE_NEAR;
+    const far = computeFarPlane(dist);
+    const proj = persp(60, aspect, near, far);
+    window.currentNear = near;
+    window.currentFar = far;
     const target = pan;
 
         if (useOrtho) {
@@ -111,7 +125,7 @@ export function initCamera(canvas) {
       camWorld = eye.slice();
     }
 
-    return { proj, view, camWorld };
+    return { proj, view, camWorld, near, far };
     
   
   }

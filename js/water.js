@@ -24,6 +24,9 @@ let lodInstances = [];
 let LOD_DIVS = [];
 let waterProgram = null;
 let waterNormalTex = null;
+const WATER_HALF_EXTENT =
+  WATER_CONFIG.centerSize * WATER_CONFIG.ringCount + WATER_CONFIG.centerSize * 0.5;
+const WATER_RADIUS = Math.sqrt(2.0) * WATER_HALF_EXTENT; // dijagonala kvadrata
 
 // --- OPTIMIZOVANO BINDOVANJE TEKSTURA ---
 // pamti zadnju teksturu po slotu, da se ne radi gl.bindTexture bez potrebe
@@ -209,6 +212,7 @@ function omegaFromL(L) {
 // === inicijalizacija vode ===
 export async function initWater(gl) {
   gl.getExtension("OES_element_index_uint");
+  window.waterRadius = WATER_RADIUS;
 
   const vsSource = await fetch("shaders/water.vert").then((r) => r.text());
   const fsSource = await fetch("shaders/water.frag").then((r) => r.text());

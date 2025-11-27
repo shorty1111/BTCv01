@@ -464,10 +464,13 @@ export function drawSkyGeneric(gl, view, proj, sunDir, opts) {
   gl.enable(gl.CULL_FACE);
 }
 
-export function drawSky(gl, framebuffer, view, proj, sunDir, opts) {
+export function drawSky(gl, framebuffer, view, proj, sunDir, opts = {}) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-  gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-  drawSkyGeneric(gl, view, proj, sunDir, { ...opts });
+  const { viewportSize, ...restOpts } = opts || {};
+  const w = viewportSize ? viewportSize[0] : gl.canvas.width;
+  const h = viewportSize ? viewportSize[1] : gl.canvas.height;
+  gl.viewport(0, 0, w, h);
+  drawSkyGeneric(gl, view, proj, sunDir, { ...restOpts });
 }
 
 export function bakeSkyToCubemap(

@@ -369,12 +369,16 @@ function buildVariantSidebar() {
               }
               else if (c.type === "color" && c.color) {
                   for (const r of node.renderIdxs) {
-                    if (mainMat && r.matName === mainMat) {
-                      modelBaseColors[r.idx] = new Float32Array(c.color);
-                      modelBaseTextures[r.idx] = null;
-                    } else if (!mainMat && r === node.renderIdxs[0]) {
-                      modelBaseColors[r.idx] = new Float32Array(c.color);
-                      modelBaseTextures[r.idx] = null;
+                    const isTargetMat = mainMat ? r.matName === mainMat : r === node.renderIdxs[0];
+                    if (!isTargetMat) continue;
+
+                    modelBaseColors[r.idx] = new Float32Array(c.color);
+                    modelBaseTextures[r.idx] = null;
+
+                    // Ako prelazimo sa teksture na flat boju, očisti normal/rough tex da se ne zadrže stari slotovi
+                    if (originalParts[r.idx]) {
+                      originalParts[r.idx].normalTex = null;
+                      originalParts[r.idx].roughnessTex = null;
                     }
                   }
                 }
