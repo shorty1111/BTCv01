@@ -34,6 +34,120 @@ window.textureCache = textureCache;
 
 let shadowFBO, shadowDepthTex;
 const SHADOW_RES = 2048;
+const UNIT_SCALE = window.UNIT_SCALE ?? 1;
+
+const COMPONENT_BYTE_SIZE = {
+  5120: 1, // BYTE
+  5121: 1, // UNSIGNED_BYTE
+  5122: 2, // SHORT
+  5123: 2, // UNSIGNED_SHORT
+  5125: 4, // UNSIGNED_INT
+  5126: 4, // FLOAT
+};
+
+const TYPE_COMPONENT_COUNT = {
+  SCALAR: 1,
+  VEC2: 2,
+  VEC3: 3,
+  VEC4: 4,
+  MAT4: 16,
+};
+
+function readAccessorAsFloat(gltf, bin, accessorIndex) {
+  const accessor = gltf.accessors[accessorIndex];
+  const view = gltf.bufferViews[accessor.bufferView];
+  const compSize = COMPONENT_BYTE_SIZE[accessor.componentType];
+  const numComp = TYPE_COMPONENT_COUNT[accessor.type] || 1;
+  const stride = view.byteStride || numComp * compSize;
+  const offsetBase = (view.byteOffset || 0) + (accessor.byteOffset || 0);
+  const count = accessor.count;
+  const dv = new DataView(bin, offsetBase, stride * count);
+  const out = new Float32Array(count * numComp);
+  const normalized = !!accessor.normalized;
+
+  const readComp = (byteOffset) => {
+    switch (accessor.componentType) {
+      case 5126:
+        return dv.getFloat32(byteOffset, true);
+      case 5125:
+        return dv.getUint32(byteOffset, true);
+      case 5123:
+        return dv.getUint16(byteOffset, true);
+      case 5121:
+        return dv.getUint8(byteOffset);
+      case 5122:
+        return dv.getInt16(byteOffset, true);
+      case 5120:
+        return dv.getInt8(byteOffset);
+      default:
+        return 0;
+    }
+  };
+
+  const normFactorUnsigned = (max) => (max ? 1.0 / max : 1.0);
+  const normFactorSigned = (max) => (max ? 1.0 / max : 1.0);
+
+  let unsignedMax = 1;
+  let signedMax = 1;
+  if (accessor.componentType === 5125) unsignedMax = 4294967295;
+  else if (accessor.componentType === 5123) unsignedMax = 65535;
+  else if (accessor.componentType === 5121) unsignedMax = 255;
+  else if (accessor.componentType === 5122) signedMax = 32767;
+  else if (accessor.componentType === 5120) signedMax = 127;
+
+  for (let i = 0; i < count; ++i) {
+    const base = i * stride;
+    for (let c = 0; c < numComp; ++c) {
+      const byteOffset = base + c * compSize;
+      let v = readComp(byteOffset);
+      if (normalized) {
+        if (
+          accessor.componentType === 5125 ||
+          accessor.componentType === 5123 ||
+          accessor.componentType === 5121
+        ) {
+          v *= normFactorUnsigned(unsignedMax);
+        } else if (
+          accessor.componentType === 5122 ||
+          accessor.componentType === 5120
+        ) {
+          v = Math.max(-1, Math.min(1, v * normFactorSigned(signedMax)));
+        }
+      }
+      out[i * numComp + c] = v;
+    }
+  }
+  return out;
+}
+
+function readIndices(gltf, bin, accessorIndex) {
+  const accessor = gltf.accessors[accessorIndex];
+  const view = gltf.bufferViews[accessor.bufferView];
+  const offset = (view.byteOffset || 0) + (accessor.byteOffset || 0);
+  let array;
+  let glType;
+
+  switch (accessor.componentType) {
+    case 5121:
+      array = new Uint8Array(bin, offset, accessor.count);
+      glType = gl.UNSIGNED_BYTE;
+      break;
+    case 5123:
+      array = new Uint16Array(bin, offset, accessor.count);
+      glType = gl.UNSIGNED_SHORT;
+      break;
+    case 5125:
+      array = new Uint32Array(bin, offset, accessor.count);
+      glType = gl.UNSIGNED_INT;
+      break;
+    default:
+      array = new Uint16Array(bin, offset, accessor.count);
+      glType = gl.UNSIGNED_SHORT;
+      break;
+  }
+
+  return { array, glType };
+}
 
 async function preloadAllConfigTextures() {
   const allPaths = [];
@@ -2136,9 +2250,13 @@ if (shadowDirty) {
 
   for (let i = 0; i < modelVAOs.length; ++i) {
     if (!idxCounts[i]) continue;
+    const ds = !!originalParts[i]?.doubleSided;
+    if (ds) gl.disable(gl.CULL_FACE);
+    else gl.enable(gl.CULL_FACE);
     gl.uniformMatrix4fv(shadowUniforms.uModel, false, modelMatrices[i]);
     gl.bindVertexArray(modelVAOs[i]);
     gl.drawElements(gl.TRIANGLES, idxCounts[i], idxTypes[i], 0);
+    if (ds) gl.enable(gl.CULL_FACE);
   }
 
   gl.disable(gl.POLYGON_OFFSET_FILL);
@@ -2211,6 +2329,9 @@ if (showWater) {
       continue;
     if (!idxCounts[i]) continue;
 
+    const ds = !!originalParts[i]?.doubleSided;
+    if (ds) gl.disable(gl.CULL_FACE);
+    else gl.enable(gl.CULL_FACE);
     gl.uniformMatrix4fv(reflectionUniforms.uModel, false, modelMatrices[i]);
     gl.uniform3fv(reflectionUniforms.uBaseColor, modelBaseColors[i] || [1, 1, 1]);
 
@@ -2225,6 +2346,7 @@ if (showWater) {
 
     gl.bindVertexArray(modelVAOs[i]);
     gl.drawElements(gl.TRIANGLES, idxCounts[i], idxTypes[i], 0);
+    if (ds) gl.enable(gl.CULL_FACE);
   }
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -2247,6 +2369,9 @@ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.uniformMatrix4fv(gBufferUniforms.uView, false, view);
   for (let i = 0; i < modelVAOs.length; ++i) {
     if (!idxCounts[i]) continue;
+    const ds = !!originalParts[i]?.doubleSided;
+    if (ds) gl.disable(gl.CULL_FACE);
+    else gl.enable(gl.CULL_FACE);
         gl.uniformMatrix4fv(gBufferUniforms.uModel, false, modelMatrices[i]);
         gl.uniform3fv(gBufferUniforms.uBaseColor, modelBaseColors[i] || [1,1,1]);
         gl.uniform1f(gBufferUniforms.uMetallic, modelMetallics[i] ?? 1.0);
@@ -2285,6 +2410,7 @@ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
     gl.bindVertexArray(modelVAOs[i]);
     gl.drawElements(gl.TRIANGLES, idxCounts[i], idxTypes[i], 0);
+    if (ds) gl.enable(gl.CULL_FACE);
   }
   
 if (ssaoDirty) {
@@ -3018,8 +3144,9 @@ async function loadGLB(buf) {
         typeof pbr.roughnessFactor === "number" ? pbr.roughnessFactor : 1.0;
 
       const opacity = baseColorFactor[3];
-      const alphaMode = mat.alphaMode || "OPAQUE";
-      const isBlend = alphaMode === "BLEND" || opacity < 0.99999;
+      const alphaMode = (mat.alphaMode || "OPAQUE").toUpperCase();
+      const alphaCutoff = mat.alphaCutoff ?? 0.5;
+      const isBlend = alphaMode === "BLEND" || (alphaMode === "OPAQUE" && opacity < 0.99999);
 
       const baseColorTexIndex = pbr.baseColorTexture?.index;
       if (typeof baseColorTexIndex === "number") {
@@ -3035,37 +3162,18 @@ async function loadGLB(buf) {
         roughnessTex = loadTextureFromImage(gltf, bin, pbr.metallicRoughnessTexture.index);
       }
       /* ----- Geometrija ----- */
-      const pa = ac[pr.attributes.POSITION];
-      const pv = bv[pa.bufferView];
-      const pos = new Float32Array(bin, pv.byteOffset, pa.count * 3);
-
-      const na = ac[pr.attributes.NORMAL];
-      const nv = bv[na.bufferView];
-      const nor = new Float32Array(bin, nv.byteOffset, na.count * 3);
-      // ✅ NOVO: Tangenti (ako ih ima u glb fajlu)
+      const pos = readAccessorAsFloat(gltf, bin, pr.attributes.POSITION);
+      const nor = readAccessorAsFloat(gltf, bin, pr.attributes.NORMAL);
       let tangents = null;
       if (pr.attributes.TANGENT !== undefined) {
-        const ta = ac[pr.attributes.TANGENT];
-        const tv = bv[ta.bufferView];
-        tangents = new Float32Array(bin, tv.byteOffset, ta.count * 4); // x,y,z,w
+        tangents = readAccessorAsFloat(gltf, bin, pr.attributes.TANGENT);
       }
-      const ia = ac[pr.indices];
-      const iv = bv[ia.bufferView];
-      const ind =
-        ia.componentType === 5125
-          ? new Uint32Array(bin, iv.byteOffset, ia.count)
-          : new Uint16Array(bin, iv.byteOffset, ia.count);
-      const type =
-        ia.componentType === 5125 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT;
+      const { array: ind, glType: type } = readIndices(gltf, bin, pr.indices);
 
       let uvArray = null;
       const uvAttr = pr.attributes.TEXCOORD_0;
       if (uvAttr !== undefined) {
-        const uvAccessor = gltf.accessors[uvAttr];
-        const uvView = gltf.bufferViews[uvAccessor.bufferView];
-        const uvOffset =
-          (uvView.byteOffset || 0) + (uvAccessor.byteOffset || 0);
-        uvArray = new Float32Array(bin, uvOffset, uvAccessor.count * 2);
+        uvArray = readAccessorAsFloat(gltf, bin, uvAttr);
       }
 
       /* ----- Kreiranje VAO / VBO ----- */
@@ -3132,99 +3240,115 @@ async function loadGLB(buf) {
       gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, ind, gl.STATIC_DRAW);
       gl.bindVertexArray(null);
 
-      /* ----- Matrica noda ----- */
-      const myNode = (gltf.nodes || []).find((n) => n.mesh === meshIdx) || {};
-      const t = myNode.translation || [0, 0, 0];
-      const r = myNode.rotation || [0, 0, 0, 1];
-      const s = myNode.scale || [1, 1, 1];
-      const modelMat = composeTRS(t, r, s);
+      const meshNodes = (gltf.nodes || [])
+        .map((n, idx) => (n.mesh === meshIdx ? { node: n, idx } : null))
+        .filter(Boolean);
+      const instances = meshNodes.length
+        ? meshNodes
+        : [{ node: {}, idx: -1 }];
 
-      if (isBlend) {
-        /* ————————— PROVIDNI PRIMITIV ————————— */
-        const meshObj = {
-          vao,
-          count: ind.length,
-          type,
-          modelMat,
-          vbo: vb,
-          ebo: eb,
-          baseColor,
-          roughness,
-          metallic,
-          opacity,
-          baseColorTex,
-          partName: myNode.name || `mesh_${meshIdx}`,
+      for (const inst of instances) {
+        const myNode = inst.node || {};
+        const t = myNode.translation || [0, 0, 0];
+        const r = myNode.rotation || [0, 0, 0, 1];
+        const s = myNode.scale || [1, 1, 1];
+        const tScaled = [t[0] * UNIT_SCALE, t[1] * UNIT_SCALE, t[2] * UNIT_SCALE];
+        const sScaled = [s[0] * UNIT_SCALE, s[1] * UNIT_SCALE, s[2] * UNIT_SCALE];
+        const modelMat = composeTRS(tScaled, r, sScaled);
 
-          //  🔑   DODATO  —  potrebno za thumbnail:
-          pos: pos.slice(),
-          nor: nor.slice(),
-          ind: ind.slice(),
-        };
+        if (isBlend) {
+          /* ————————— PROVIDNI PRIMITIV ————————— */
+          const meshObj = {
+            vao,
+            count: ind.length,
+            type,
+            modelMat,
+            vbo: vb,
+            ebo: eb,
+            baseColor,
+            roughness,
+            metallic,
+            opacity,
+            baseColorTex,
+            partName: myNode.name || `mesh_${meshIdx}`,
+            alphaMode,
+            alphaCutoff,
+            doubleSided,
 
-        transparentMeshes.push(meshObj);
+            //  🔑   DODATO  —  potrebno za thumbnail:
+            pos: pos.slice(),
+            nor: nor.slice(),
+            ind: ind.slice(),
+          };
 
-        /*  Zapamti fabričko (A) staklo za kasnije vraćanje  */
-        const tag = meshObj.partName;
-        if (!originalGlassByPart[tag]) originalGlassByPart[tag] = [];
-        originalGlassByPart[tag].push({ ...meshObj });
-      } else {
-        /* OPAQUE → standardni nizovi */
-        modelVAOs.push(vao);
-        idxCounts.push(ind.length);
-        idxTypes.push(type);
+          transparentMeshes.push(meshObj);
 
-        modelBaseColors.push(baseColor);
-        modelMetallics.push(metallic);
-        modelRoughnesses.push(roughness);
-        modelBaseTextures.push(baseColorTex || null);
+          /*  Zapamti fabričko (A) staklo za kasnije vraćanje  */
+          const tag = meshObj.partName;
+          if (!originalGlassByPart[tag]) originalGlassByPart[tag] = [];
+          originalGlassByPart[tag].push({ ...meshObj });
+        } else {
+          /* OPAQUE → standardni nizovi */
+          modelVAOs.push(vao);
+          idxCounts.push(ind.length);
+          idxTypes.push(type);
 
-        modelMatrices.push(modelMat);
-        const renderIdx = modelMatrices.length - 1;
+          modelBaseColors.push(baseColor);
+          modelMetallics.push(metallic);
+          modelRoughnesses.push(roughness);
+          modelBaseTextures.push(baseColorTex || null);
 
-  originalParts[renderIdx] = {
-    vao,
-    count: ind.length,
-    type,
-    baseColor,
-    metallic,
-    roughness,
-    baseColorTex,
-    pos: pos.slice(),
-    nor: nor.slice(),
-    ind: ind.slice(),
-    vbo: vb,
-    ebo: eb,
-    opacity,
-    alphaMode,
-    normalTex: normalTex || window.defaultNormalTex,
-    roughnessTex: roughnessTex || window.whiteTex,
-    localAABB: { min: localMin, max: localMax },
-  };
-      if (!realOriginalParts[renderIdx]) {
-        realOriginalParts[renderIdx] = {
-          ...originalParts[renderIdx],
-          normalTex: normalTex || window.defaultNormalTex,
-          roughnessTex: roughnessTex || window.whiteTex,
-          modelMatrix: modelMat.slice(),
-        };
-      }
+          modelMatrices.push(modelMat);
+          const renderIdx = modelMatrices.length - 1;
 
-        let nodeId = nodesMeta.findIndex(
-          (n) => n.name === (myNode.name || `mesh_${meshIdx}`)
-        );
-        if (nodeId === -1) {
-          nodeId = nodesMeta.length;
-          nodesMeta.push({
-            id: nodeId,
-            name: myNode.name || `mesh_${meshIdx}`,
-            renderIdxs: [],
+          originalParts[renderIdx] = {
+            vao,
+            count: ind.length,
+            type,
+            baseColor,
+            metallic,
+            roughness,
+            baseColorTex,
+            pos: pos.slice(),
+            nor: nor.slice(),
+            ind: ind.slice(),
+            vbo: vb,
+            ebo: eb,
+            opacity,
+            alphaMode,
+            alphaCutoff,
+            doubleSided,
+            normalTex: normalTex || window.defaultNormalTex,
+            roughnessTex: roughnessTex || window.whiteTex,
+            localAABB: { min: localMin, max: localMax },
+            modelMatrix: modelMat.slice(),
+          };
+          if (!realOriginalParts[renderIdx]) {
+            realOriginalParts[renderIdx] = {
+              ...originalParts[renderIdx],
+              normalTex: normalTex || window.defaultNormalTex,
+              roughnessTex: roughnessTex || window.whiteTex,
+              modelMatrix: modelMat.slice(),
+            };
+          }
+
+          let nodeId = nodesMeta.findIndex(
+            (n) => n.name === (myNode.name || `mesh_${meshIdx}`)
+          );
+          if (nodeId === -1) {
+            nodeId = nodesMeta.length;
+            nodesMeta.push({
+              id: nodeId,
+              name: myNode.name || `mesh_${meshIdx}`,
+              renderIdxs: [],
+            });
+          }
+          nodesMeta[nodeId].renderIdxs.push({
+            idx: renderIdx,
+            matName: mat.name || `material_${renderIdx}`,
           });
+          renderToNodeId[renderIdx] = nodeId;
         }
-        nodesMeta[nodeId].renderIdxs.push({
-          idx: renderIdx,
-          matName: mat.name || `material_${renderIdx}`,
-        });
-        renderToNodeId[renderIdx] = nodeId;
       }
     }
   }
@@ -3355,99 +3479,85 @@ async function parseGLBToPrepared(buf, url) {
       const prim = mesh.primitives[p];
 
       /* ========== GEOMETRIJA ========== */
-      const aPos = acc[prim.attributes.POSITION];
-      const vPos = views[aPos.bufferView];
-      const pos = new Float32Array(bin, vPos.byteOffset, aPos.count * 3);
+      const pos = readAccessorAsFloat(gltf, bin, prim.attributes.POSITION);
+      const nor = readAccessorAsFloat(gltf, bin, prim.attributes.NORMAL);
+      const uvArray =
+        prim.attributes.TEXCOORD_0 !== undefined
+          ? readAccessorAsFloat(gltf, bin, prim.attributes.TEXCOORD_0)
+          : null;
+      const tangents =
+        prim.attributes.TANGENT !== undefined
+          ? readAccessorAsFloat(gltf, bin, prim.attributes.TANGENT)
+          : null;
 
-      const aNor = acc[prim.attributes.NORMAL];
-      const vNor = views[aNor.bufferView];
-      const nor = new Float32Array(bin, vNor.byteOffset, aNor.count * 3);
-
-      const aIdx = acc[prim.indices];
-      const vIdx = views[aIdx.bufferView];
-      const ind =
-        aIdx.componentType === 5125 /* UNSIGNED_INT ? */
-          ? new Uint32Array(bin, vIdx.byteOffset, aIdx.count)
-          : new Uint16Array(bin, vIdx.byteOffset, aIdx.count);
-      const glIdxType =
-        aIdx.componentType === 5125 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT;
+      const { array: ind, glType: glIdxType } = readIndices(
+        gltf,
+        bin,
+        prim.indices
+      );
 
       /* interleaved POS+NOR(+UV+TANGENT)  ->  VBO / VAO */
-const vao = gl.createVertexArray();
-gl.bindVertexArray(vao);
+      const vao = gl.createVertexArray();
+      gl.bindVertexArray(vao);
 
-const vbo = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+      const vbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
 
-// --- UV atribut ---
-const uvAttr = prim.attributes.TEXCOORD_0;
-let uvArray = null;
-if (uvAttr !== undefined) {
-  const uvAccessor = gltf.accessors[uvAttr];
-  const uvView = gltf.bufferViews[uvAccessor.bufferView];
-  const uvOffset = (uvView.byteOffset || 0) + (uvAccessor.byteOffset || 0);
-  uvArray = new Float32Array(bin, uvOffset, uvAccessor.count * 2);
-}
+      const hasTangent = !!tangents;
+      const stride = (3 + 3 + (uvArray ? 2 : 0) + (hasTangent ? 4 : 0)) * 4;
+      const inter = new Float32Array(
+        pos.length +
+          nor.length +
+          (uvArray ? uvArray.length : 0) +
+          (hasTangent ? tangents.length : 0)
+      );
 
-// --- Tangenti ---
-let tangents = null;
-if (prim.attributes.TANGENT !== undefined) {
-  const ta = acc[prim.attributes.TANGENT];
-  const tv = views[ta.bufferView];
-  tangents = new Float32Array(bin, tv.byteOffset, ta.count * 4);
-}
+      for (let i = 0, j = 0; i < pos.length / 3; ++i) {
+        inter[j++] = pos[i * 3];
+        inter[j++] = pos[i * 3 + 1];
+        inter[j++] = pos[i * 3 + 2];
+        inter[j++] = nor[i * 3];
+        inter[j++] = nor[i * 3 + 1];
+        inter[j++] = nor[i * 3 + 2];
+        if (uvArray) {
+          inter[j++] = uvArray[i * 2];
+          inter[j++] = uvArray[i * 2 + 1];
+        }
+        if (hasTangent) {
+          inter[j++] = tangents[i * 4];
+          inter[j++] = tangents[i * 4 + 1];
+          inter[j++] = tangents[i * 4 + 2];
+          inter[j++] = tangents[i * 4 + 3];
+        }
+      }
 
-// --- interleaved: pos + nor + uv + tangent ---
-const hasTangent = !!tangents;
-const stride = (3 + 3 + (uvArray ? 2 : 0) + (hasTangent ? 4 : 0)) * 4;
-const inter = new Float32Array(
-  pos.length + nor.length + (uvArray ? uvArray.length : 0) + (hasTangent ? tangents.length : 0)
-);
+      gl.bufferData(gl.ARRAY_BUFFER, inter, gl.STATIC_DRAW);
 
-for (let i = 0, j = 0; i < pos.length / 3; ++i) {
-  inter[j++] = pos[i * 3];
-  inter[j++] = pos[i * 3 + 1];
-  inter[j++] = pos[i * 3 + 2];
-  inter[j++] = nor[i * 3];
-  inter[j++] = nor[i * 3 + 1];
-  inter[j++] = nor[i * 3 + 2];
-  if (uvArray) {
-    inter[j++] = uvArray[i * 2];
-    inter[j++] = uvArray[i * 2 + 1];
-  }
-  if (hasTangent) {
-    inter[j++] = tangents[i * 4];
-    inter[j++] = tangents[i * 4 + 1];
-    inter[j++] = tangents[i * 4 + 2];
-    inter[j++] = tangents[i * 4 + 3];
-  }
-}
+      // --- attributes ---
+      let offset = 0;
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 3, gl.FLOAT, false, stride, offset);
+      offset += 12;
 
-gl.bufferData(gl.ARRAY_BUFFER, inter, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(1);
+      gl.vertexAttribPointer(1, 3, gl.FLOAT, false, stride, offset);
+      offset += 12;
 
-// --- attributes ---
-let offset = 0;
-gl.enableVertexAttribArray(0);
-gl.vertexAttribPointer(0, 3, gl.FLOAT, false, stride, offset); offset += 12;
+      if (uvArray) {
+        gl.enableVertexAttribArray(2);
+        gl.vertexAttribPointer(2, 2, gl.FLOAT, false, stride, offset);
+        offset += 8;
+      }
 
-gl.enableVertexAttribArray(1);
-gl.vertexAttribPointer(1, 3, gl.FLOAT, false, stride, offset); offset += 12;
+      if (hasTangent) {
+        gl.enableVertexAttribArray(3);
+        gl.vertexAttribPointer(3, 4, gl.FLOAT, false, stride, offset);
+      }
 
-if (uvArray) {
-  gl.enableVertexAttribArray(2);
-  gl.vertexAttribPointer(2, 2, gl.FLOAT, false, stride, offset);
-  offset += 8;
-}
-
-if (hasTangent) {
-  gl.enableVertexAttribArray(3);
-  gl.vertexAttribPointer(3, 4, gl.FLOAT, false, stride, offset);
-}
-
-const ebo = gl.createBuffer();
-gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo);
-gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, ind, gl.STATIC_DRAW);
-gl.bindVertexArray(null);
+      const ebo = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, ind, gl.STATIC_DRAW);
+      gl.bindVertexArray(null);
 
 
 /* ========== MATERIJAL ========== */
@@ -3456,6 +3566,8 @@ let metallic = 1.0;
 let roughness = 1.0;
 let opacity = 1.0;
 let isBlend = false;
+let alphaMode = "OPAQUE";
+let alphaCutoff = 0.5;
 let baseColorTex = null;
 let normalTex = null;
 let roughnessTex = null;
@@ -3489,29 +3601,51 @@ if (prim.material !== undefined) {
     roughnessTex = loadTextureFromImage(gltf, bin, pbr.metallicRoughnessTexture.index);
   }
 
-  const alphaMode = mat.alphaMode || "OPAQUE";
-  isBlend = alphaMode === "BLEND" || opacity < 0.99999;
+  alphaMode = (mat.alphaMode || "OPAQUE").toUpperCase();
+  alphaCutoff = mat.alphaCutoff ?? 0.5;
+  isBlend = alphaMode === "BLEND" || (alphaMode === "OPAQUE" && opacity < 0.99999);
 }
 
-/* ---------- push rezultat ---------- */
-      out.push({
-        vao,
-        count: ind.length,
-        type: glIdxType,
-        pos: pos.slice(),
-        nor: nor.slice(),
-        ind: ind.slice(),
-        baseColor: new Float32Array(baseColor),
-        metallic,
-        roughness,
-        opacity,
-        isBlend,
-        baseColorTex,
-        normalTex,
-        roughnessTex,
-        matName: gltf.materials[prim.material]?.name || `Mat_${p}`,
-        trisWorld: [],
-      });
+      const meshNodes = (gltf.nodes || [])
+        .map((n, idx) => (n.mesh === m ? { node: n, idx } : null))
+        .filter(Boolean);
+      const instances = meshNodes.length
+        ? meshNodes
+        : [{ node: {}, idx: -1 }];
+
+      /* ---------- push rezultat ---------- */
+      for (const inst of instances) {
+        const myNode = inst.node || {};
+        const t = myNode.translation || [0, 0, 0];
+        const r = myNode.rotation || [0, 0, 0, 1];
+        const s = myNode.scale || [1, 1, 1];
+        const tScaled = [t[0] * UNIT_SCALE, t[1] * UNIT_SCALE, t[2] * UNIT_SCALE];
+        const sScaled = [s[0] * UNIT_SCALE, s[1] * UNIT_SCALE, s[2] * UNIT_SCALE];
+        const modelMat = composeTRS(tScaled, r, sScaled);
+
+        out.push({
+          vao,
+          count: ind.length,
+          type: glIdxType,
+          pos: pos.slice(),
+          nor: nor.slice(),
+          ind: ind.slice(),
+          baseColor: new Float32Array(baseColor),
+          metallic,
+          roughness,
+          opacity,
+          isBlend,
+          baseColorTex,
+          normalTex,
+          roughnessTex,
+          alphaMode,
+          alphaCutoff,
+          doubleSided: !!(gltf.materials?.[prim.material]?.doubleSided),
+          matName: gltf.materials[prim.material]?.name || `Mat_${p}`,
+          modelMat,
+          trisWorld: [],
+        });
+      }
     }
   }
 
@@ -3595,12 +3729,15 @@ if (node) {
         ...vm,
         renderIdx,
         partName,
-        modelMat: modelMatrices[renderIdx],
+        modelMat: vm.modelMat ? vm.modelMat.slice() : modelMatrices[renderIdx],
       });
       idxCounts[renderIdx] = 0;
       continue;
     }
 
+    modelMatrices[renderIdx] = vm.modelMat
+      ? vm.modelMat.slice()
+      : modelMatrices[renderIdx];
     modelVAOs[renderIdx] = vm.vao;
     idxCounts[renderIdx] = vm.count;
     idxTypes[renderIdx] = vm.type;
@@ -3619,8 +3756,12 @@ if (node) {
       pos: vm.pos,
       nor: vm.nor,
       ind: vm.ind,
-      normalTex: vm.normalTex || window.defaultNormalTex,     // 👈 dodaj ovo
-      roughnessTex: vm.roughnessTex || window.whiteTex,       // 👈 i ovo
+      normalTex: vm.normalTex || window.defaultNormalTex,
+      roughnessTex: vm.roughnessTex || window.whiteTex,
+      alphaMode: vm.alphaMode || "OPAQUE",
+      alphaCutoff: vm.alphaCutoff ?? 0.5,
+      doubleSided: !!vm.doubleSided,
+      modelMatrix: vm.modelMat ? vm.modelMat.slice() : modelMatrices[renderIdx],
     };
   }
 
