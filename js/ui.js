@@ -1166,6 +1166,9 @@ setupExclusiveButtons("#camera-controls button[data-weather]");
   toggleWaterBtn.addEventListener("click", () => {
     showWater = !showWater;
     toggleWaterBtn.innerText = showWater ? "Studio" : "Env";
+    if (typeof window.setEnvMode === "function") {
+      window.setEnvMode(showWater ? "sky" : "studio");
+    }
     sceneChanged = true;
     render();
   });

@@ -36,6 +36,36 @@ mieStrength: 0.1,
   groundScatter: 0.85,
 };
 
+// ===== Studio env defaults (procedural softbox HDR) =====
+const MAX_STUDIO_BOXES = 4;
+export const DEFAULT_STUDIO = {
+  topColor: [0.36, 0.38, 0.42],
+  midColor: [0.22, 0.23, 0.26],
+  bottomColor: [0.16, 0.17, 0.18],
+  exposure: 1.0,
+  ambient: 0.24,
+  boxes: [
+    // key (warm) front-right on horizon
+    { dir: [0.88, 0.04, 0.30], right: [0, 1, 0], size: [0.12, 0.20], color: [1.06, 0.95, 0.86], intensity: 0.6, roundness: 0.48 },
+    // fill (cool) back-left on horizon
+    { dir: [-0.82, 0.04, -0.52], right: [0, 1, 0], size: [0.12, 0.26], color: [0.90, 0.98, 1.08], intensity: 0.3, roundness: 0.48 },
+    // rim (neutral) left-front on horizon
+    { dir: [-0.35, 0.04, 0.93], right: [0, 1, 0], size: [0.14, 0.24], color: [1.02, 1.02, 1.06], intensity: 1.4, roundness: 0.45 },
+    // back-right kicker on horizon
+    { dir: [0.60, 0.04, -0.80], right: [0, 1, 0], size: [0.14, 0.24], color: [0.96, 0.99, 1.05], intensity: 1.1, roundness: 0.45 },
+  ],
+};
+
+let studioProg = null;
+const studioUniforms = {
+  boxDir: [],
+  boxRight: [],
+  boxSize: [],
+  boxColor: [],
+  boxIntensity: [],
+  boxRoundness: [],
+};
+
 // ===== Helpers =====
 function createSphere(latBands = 4, longBands = 4, radius = 10.0) {
   const positions = [], indices = [];
@@ -72,6 +102,97 @@ function createCubemap(gl, size, useHDR = true) {
   gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
   return tex;
+}
+
+function ensureStudioProgram(gl) {
+  if (studioProg) return;
+
+  const vs = `#version 300 es
+layout(location=0) in vec3 aPos;
+uniform mat4 uView;
+uniform mat4 uProj;
+out vec3 vDir;
+void main() {
+  mat4 viewNoTrans = uView;
+  viewNoTrans[3] = vec4(0.0, 0.0, 0.0, viewNoTrans[3].w);
+  vec3 dir = (transpose(mat3(viewNoTrans)) * aPos);
+  vDir = normalize(dir);
+  vec4 pos = uProj * vec4(aPos, 1.0);
+  pos.z = pos.w;
+  gl_Position = pos;
+}`;
+
+  const fs = `#version 300 es
+precision highp float;
+in vec3 vDir;
+out vec4 fragColor;
+
+const int MAX_BOXES = ${MAX_STUDIO_BOXES};
+uniform vec3  uTopColor;
+uniform vec3  uMidColor;
+uniform vec3  uBottomColor;
+uniform float uExposure;
+uniform float uAmbient;
+uniform int   uBoxCount;
+uniform vec3  uBoxDir[MAX_BOXES];
+uniform vec3  uBoxRight[MAX_BOXES];
+uniform vec2  uBoxSize[MAX_BOXES];
+uniform vec3  uBoxColor[MAX_BOXES];
+uniform float uBoxIntensity[MAX_BOXES];
+uniform float uBoxRoundness[MAX_BOXES];
+
+float evalBox(int idx, vec3 dir) {
+  vec3 n = normalize(uBoxDir[idx]);
+  float cosTheta = dot(dir, n);
+  if (cosTheta <= 0.0) return 0.0;
+
+  vec3 r = normalize(uBoxRight[idx]);
+  vec3 u = normalize(cross(n, r));
+  r = normalize(cross(u, n));
+
+  // clamp kosinus da highlight ne eksplodira kod tangencijalnih pravaca (ali i dalje reaguje na size)
+  float denom = max(cosTheta, 0.05);
+  vec2 uv = vec2(dot(dir, r), dot(dir, u)) / denom;
+  vec2 d = abs(uv) - uBoxSize[idx];
+  float dist = max(d.x, d.y);
+  float edge = max(uBoxRoundness[idx], 0.001);
+  float mask = 1.0 - smoothstep(0.0, edge, dist);
+  mask = pow(mask, 0.8); // malo manje peglanja da se vidi promena size
+  float fres = pow(cosTheta, 0.45);
+  // area factor: veći panel = više fluksa (približno proporcionalno površini)
+  float area = max(uBoxSize[idx].x * uBoxSize[idx].y, 0.001);
+  return mask * fres * uBoxIntensity[idx] * area * 2.0;
+}
+
+void main() {
+  vec3 dir = normalize(vDir);
+  float t = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
+  vec3 grad = mix(uBottomColor, mix(uMidColor, uTopColor, t), t);
+
+  vec3 light = vec3(0.0);
+  for (int i = 0; i < MAX_BOXES; ++i) {
+    if (i >= uBoxCount) break;
+    float l = evalBox(i, dir);
+    light += uBoxColor[i] * l;
+  }
+
+  vec3 color = (grad * (0.6 + uAmbient)) + light;
+  color *= uExposure;
+  fragColor = vec4(color, 1.0);
+}`;
+
+  studioProg = createShaderProgram(gl, vs, fs);
+
+  const names = ["uView", "uProj", "uTopColor", "uMidColor", "uBottomColor", "uExposure", "uAmbient", "uBoxCount"];
+  for (const n of names) studioUniforms[n] = gl.getUniformLocation(studioProg, n);
+  for (let i = 0; i < MAX_STUDIO_BOXES; i++) {
+    studioUniforms.boxDir[i] = gl.getUniformLocation(studioProg, `uBoxDir[${i}]`);
+    studioUniforms.boxRight[i] = gl.getUniformLocation(studioProg, `uBoxRight[${i}]`);
+    studioUniforms.boxSize[i] = gl.getUniformLocation(studioProg, `uBoxSize[${i}]`);
+    studioUniforms.boxColor[i] = gl.getUniformLocation(studioProg, `uBoxColor[${i}]`);
+    studioUniforms.boxIntensity[i] = gl.getUniformLocation(studioProg, `uBoxIntensity[${i}]`);
+    studioUniforms.boxRoundness[i] = gl.getUniformLocation(studioProg, `uBoxRoundness[${i}]`);
+  }
 }
 
 function lookAt(eye, center, up) {
@@ -384,6 +505,59 @@ sunLight += uSunColor *
 }
 
 
+function applyStudioUniforms(gl, view, proj, opts) {
+  ensureStudioProgram(gl);
+  const o = opts || DEFAULT_STUDIO;
+  const boxes = o.boxes || DEFAULT_STUDIO.boxes;
+  const count = Math.min(boxes.length, MAX_STUDIO_BOXES);
+
+  gl.useProgram(studioProg);
+  gl.uniformMatrix4fv(studioUniforms.uView, false, view);
+  gl.uniformMatrix4fv(studioUniforms.uProj, false, proj);
+  gl.uniform3fv(studioUniforms.uTopColor, o.topColor || DEFAULT_STUDIO.topColor);
+  gl.uniform3fv(studioUniforms.uMidColor, o.midColor || DEFAULT_STUDIO.midColor);
+  gl.uniform3fv(studioUniforms.uBottomColor, o.bottomColor || DEFAULT_STUDIO.bottomColor);
+  gl.uniform1f(studioUniforms.uExposure, o.exposure ?? DEFAULT_STUDIO.exposure);
+  gl.uniform1f(studioUniforms.uAmbient, o.ambient ?? DEFAULT_STUDIO.ambient);
+  gl.uniform1i(studioUniforms.uBoxCount, count);
+
+  for (let i = 0; i < MAX_STUDIO_BOXES; i++) {
+    const b = boxes[i] || { dir: [0, 0, 0], right: [1, 0, 0], size: [0, 0], color: [0, 0, 0], intensity: 0, roundness: 0.05 };
+    gl.uniform3fv(studioUniforms.boxDir[i], b.dir);
+    gl.uniform3fv(studioUniforms.boxRight[i], b.right);
+    gl.uniform2fv(studioUniforms.boxSize[i], b.size);
+    gl.uniform3fv(studioUniforms.boxColor[i], b.color);
+    gl.uniform1f(studioUniforms.boxIntensity[i], b.intensity ?? 0.0);
+    gl.uniform1f(studioUniforms.boxRoundness[i], b.roundness ?? 0.05);
+  }
+}
+
+function drawStudioGeneric(gl, view, proj, opts) {
+  gl.disable(gl.CULL_FACE);
+  gl.disable(gl.DEPTH_TEST);
+  gl.depthMask(false);
+
+  applyStudioUniforms(gl, view, proj, opts);
+  gl.frontFace(gl.CCW);
+  gl.bindVertexArray(skyVAO);
+  gl.drawElements(gl.TRIANGLES, skyIdxCount, gl.UNSIGNED_SHORT, 0);
+  gl.bindVertexArray(null);
+
+  gl.depthMask(true);
+  gl.enable(gl.DEPTH_TEST);
+  gl.enable(gl.CULL_FACE);
+}
+
+export function drawStudio(gl, framebuffer, view, proj, opts = {}) {
+  ensureStudioProgram(gl);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+  const { viewportSize, ...restOpts } = opts || {};
+  const w = viewportSize ? viewportSize[0] : gl.canvas.width;
+  const h = viewportSize ? viewportSize[1] : gl.canvas.height;
+  gl.viewport(0, 0, w, h);
+  drawStudioGeneric(gl, view, proj, restOpts);
+}
+
 // ===== Uniforms =====
 function applySkyUniforms(gl, view, proj, sunDir, opts) {
   // koristi referencu umesto novog objekta svaku frame-u
@@ -550,6 +724,72 @@ export function bakeSkyToCubemap(
     gl.TEXTURE_MIN_FILTER,
     gl.LINEAR_MIPMAP_LINEAR
   );
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+  gl.deleteRenderbuffer(rbo);
+  gl.deleteFramebuffer(fbo);
+
+  return cubeTex;
+}
+
+export function bakeStudioToCubemap(gl, size = 512, opts = DEFAULT_STUDIO) {
+  ensureStudioProgram(gl);
+
+  gl.getExtension("EXT_color_buffer_float");
+  gl.getExtension("OES_texture_float_linear");
+
+  const cubeTex = createCubemap(gl, size, true);
+  const fbo = gl.createFramebuffer();
+  const rbo = gl.createRenderbuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.bindRenderbuffer(gl.RENDERBUFFER, rbo);
+  gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, size, size);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rbo);
+
+  const proj = (function (fovyDeg, aspect, near, far) {
+    const f = 1.0 / Math.tan((fovyDeg * Math.PI) / 360.0);
+    const nf = 1.0 / (near - far);
+    const out = new Float32Array(16);
+    out[0] = f / aspect;
+    out[5] = f;
+    out[10] = (far + near) * nf;
+    out[11] = -1;
+    out[14] = 2 * far * near * nf;
+    out[15] = 1;
+    return out;
+  })(90, 1, 0.1, 2000);
+
+  const views = [
+    lookAt([0, 0, 0], [1, 0, 0], [0, -1, 0]),
+    lookAt([0, 0, 0], [-1, 0, 0], [0, -1, 0]),
+    lookAt([0, 0, 0], [0, 1, 0], [0, 0, 1]),
+    lookAt([0, 0, 0], [0, -1, 0], [0, 0, -1]),
+    lookAt([0, 0, 0], [0, 0, 1], [0, -1, 0]),
+    lookAt([0, 0, 0], [0, 0, -1], [0, -1, 0]),
+  ];
+
+  gl.viewport(0, 0, size, size);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubeTex);
+
+  for (let face = 0; face < 6; face++) {
+    gl.framebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT0,
+      gl.TEXTURE_CUBE_MAP_POSITIVE_X + face,
+      cubeTex,
+      0
+    );
+
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    drawStudioGeneric(gl, views[face], proj, opts);
+  }
+
+  gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
   gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);

@@ -2,7 +2,7 @@ import { createShaderProgram } from "./shader.js";
 import { initWater, drawWater } from "./water.js";
 import { resetBoundTextures } from "./water.js";
 import { initCamera } from "./camera.js";
-import { initSky, drawSky, bakeSkyToCubemap, bakeIrradianceFromSky } from "./sky.js";
+import { initSky, drawSky, bakeSkyToCubemap, bakeIrradianceFromSky, bakeStudioToCubemap, drawStudio, DEFAULT_STUDIO } from "./sky.js";
 import { DEFAULT_SKY } from "./sky.js";
 import {DEFAULT_MODEL,BASE_PRICE,VARIANT_GROUPS,BOAT_INFO,SIDEBAR_INFO } from "./config.js";
 import {mat4mul,persp,ortho,look,composeTRS,computeBounds,mulMat4Vec4, v3,} from "./math.js";
@@ -158,6 +158,9 @@ function setWeather(presetName) {
   SUN.dir = v3.norm([-0.90, preset.y, 0.3]);
   shadowDirty = true;
   updateSun();
+  if (envMode === ENV_MODE.STUDIO) {
+    SUN.intensity = Math.max(SUN.intensity, 0.6);
+  }
 
   rebuildEnvironmentTextures();
   sceneChanged = true;
@@ -168,6 +171,9 @@ function setWeather(presetName) {
 
 function refreshLighting() {
   updateSun();
+  if (envMode === ENV_MODE.STUDIO) {
+    SUN.intensity = Math.max(SUN.intensity, 0.6);
+  }
   shadowDirty = true;
   rebuildEnvironmentTextures();
 }
@@ -176,13 +182,17 @@ function rebuildEnvironmentTextures() {
   const previousEnvTex = envTex;
   const previousEnvDiffuse = window.envDiffuse;
 
-  envTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
-    ...DEFAULT_SKY,
-    sunColor: SUN.color,
-    sunIntensity: SUN.intensity,
-    useTonemap: false,
-    hideSun: true,
-  });
+  if (envMode === ENV_MODE.STUDIO) {
+    envTex = bakeStudioToCubemap(gl, envSize, studioEnvOpts);
+  } else {
+    envTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
+      ...DEFAULT_SKY,
+      sunColor: SUN.color,
+      sunIntensity: SUN.intensity,
+      useTonemap: false,
+      hideSun: true,
+    });
+  }
 
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
   gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
@@ -198,6 +208,22 @@ function rebuildEnvironmentTextures() {
     gl.deleteTexture(previousEnvDiffuse);
   }
 }
+
+function setEnvMode(mode) {
+  const next = mode === ENV_MODE.STUDIO ? ENV_MODE.STUDIO : ENV_MODE.SKY;
+  if (envMode === next) return;
+  envMode = next;
+  if (envMode === ENV_MODE.STUDIO) {
+    SUN.intensity = Math.max(SUN.intensity, 0.6);
+  } else {
+    updateSun();
+  }
+  shadowDirty = true;
+  rebuildEnvironmentTextures();
+  sceneChanged = true;
+  render();
+}
+window.setEnvMode = setEnvMode;
 
 function smoothstep(edge0, edge1, x) {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
@@ -264,6 +290,9 @@ let envSize = 512; // kontrola kvaliteta/performansi
 let cubeMaxMip = Math.floor(Math.log2(envSize));
 window.showWater = true;
 window.showDimensions = false;
+const ENV_MODE = { SKY: "sky", STUDIO: "studio" };
+let envMode = ENV_MODE.SKY;
+const studioEnvOpts = { ...DEFAULT_STUDIO };
 let originalGlassByPart = {};
 let transparentMeshes = [];
 let envTex = null;
@@ -1709,22 +1738,7 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   try {
     await initWater(gl);
     await initSky(gl);
-
-    envTex = bakeSkyToCubemap(gl, envSize, SUN.dir, {
-      ...DEFAULT_SKY,
-      sunColor: SUN.color,
-      sunIntensity: SUN.intensity,
-      useTonemap: false,
-      hideSun: true,
-    });
-    // 🟢 OBAVEZNO dodaj:
-    gl.bindTexture(gl.TEXTURE_CUBE_MAP, envTex);
-    gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
-    gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
-    cubeMaxMip = Math.floor(Math.log2(envSize));
-    
-    window.envDiffuse = bakeIrradianceFromSky(gl, envTex, 32);
-
+    rebuildEnvironmentTextures();
     generateSSAOKernel();
     generateNoiseTexture();
     createSSAOBuffers(canvas.width, canvas.height);
@@ -2154,15 +2168,22 @@ if (showWater) {
   gl.enable(gl.DEPTH_TEST);
 
   // Nacrtaj nebo
-  drawSky(gl, reflectionFBO, reflView, reflProj, SUN.dir, {
-    ...DEFAULT_SKY,
-    viewportSize: reflViewport,
-    worldLocked: 1,
-    sunColor: SUN.color,
-    sunIntensity: SUN.intensity,
-    hideSun: true,
-    useTonemap: false,
-  });
+  if (envMode === ENV_MODE.STUDIO) {
+    drawStudio(gl, reflectionFBO, reflView, reflProj, {
+      ...studioEnvOpts,
+      viewportSize: reflViewport,
+    });
+  } else {
+    drawSky(gl, reflectionFBO, reflView, reflProj, SUN.dir, {
+      ...DEFAULT_SKY,
+      viewportSize: reflViewport,
+      worldLocked: 1,
+      sunColor: SUN.color,
+      sunIntensity: SUN.intensity,
+      hideSun: true,
+      useTonemap: false,
+    });
+  }
 
   gl.useProgram(reflectionColorProgram);
   gl.uniform4f(
@@ -2323,12 +2344,16 @@ if (ssaoDirty) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, finalFBO);
     gl.viewport(0, 0, canvas.width, canvas.height);
     beginDrawPass("sky");
-    drawSky(gl, finalFBO, view, proj, SUN.dir, {
-      ...DEFAULT_SKY,
-      sunColor: SUN.color,
-      sunIntensity: SUN.intensity,
-      useTonemap: false,
-    });
+    if (envMode === ENV_MODE.STUDIO) {
+      drawStudio(gl, finalFBO, view, proj, studioEnvOpts);
+    } else {
+      drawSky(gl, finalFBO, view, proj, SUN.dir, {
+        ...DEFAULT_SKY,
+        sunColor: SUN.color,
+        sunIntensity: SUN.intensity,
+        useTonemap: false,
+      });
+    }
 
       // --- Lighting pass (PBR shading) ---
     beginDrawPass("lighting");
