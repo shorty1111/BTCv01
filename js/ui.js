@@ -30,6 +30,10 @@ export function hideLoading() {
   loadingScr.addEventListener("transitionend", onEnd);
 }
 
+// Global cache boja/tekstura po varijantama (delimo sa main.js)
+let savedColorsByPart = window.savedColorsByPart || {};
+window.savedColorsByPart = savedColorsByPart;
+
 export function updateLoadingProgress(
   stage = "",
   pendingTextures = window.pendingTextures || 0,
@@ -256,8 +260,7 @@ function buildVariantSidebar() {
         thumbWrapper.className = "thumb-wrapper";
 
         const preview = document.createElement("img");
-        preview.src =
-          thumbnails?.[partKey]?.[variant.name] || "assets/part_placeholder.png";
+        preview.src = getVariantPreviewSrc(partKey, variant);
         preview.className = "thumb";
         thumbWrapper.appendChild(preview);
 
@@ -294,17 +297,33 @@ function buildVariantSidebar() {
               e.stopPropagation();
               const card = colorEl.closest(".variant-item");
               const partKey = card.dataset.part;
+              const variantName = card.dataset.variant;
               const node = nodesMeta.find((n) => n.name === partKey);
               if (!node) return;
-
-              // ako kartica nije aktivna, prvo je aktiviraj
-              if (!card.classList.contains("active")) {
-                card.click();
-              }
 
               // primeni boju
               const cfgGroup = Object.values(VARIANT_GROUPS).find((g) => partKey in g) || {};
               const mainMat = cfgGroup[partKey]?.mainMat || "";
+              const partData = cfgGroup[partKey] || {};
+              const variantData = partData.models?.find((v) => v.name === variantName);
+
+              // ako kartica nije aktivna, prvo je zaista ucitaj varijantu (bez oslanjanja na .click)
+              if (!card.classList.contains("active") && variantData) {
+                const itemsDiv = card.parentElement;
+                if (itemsDiv) {
+                  itemsDiv.querySelectorAll(".variant-item").forEach((el) => el.classList.remove("active"));
+                  card.classList.add("active");
+                }
+                // sacuvaj boju stare varijante pre prelaska
+                const prev = currentParts[partKey];
+                if (prev && prev.selectedColor) {
+                  if (!savedColorsByPart[partKey]) savedColorsByPart[partKey] = {};
+                  savedColorsByPart[partKey][prev.name] = prev.selectedColor;
+                }
+                updatePartsTable(partKey, variantData.name);
+                currentParts[partKey] = variantData;
+                await replaceSelectedWithURL(variantData.src, variantData.name, partKey);
+              }
 
               if (c.type === "texture" && c.texture) {
                 const textureLoader = window.loadTextureWithCache;
@@ -318,11 +337,14 @@ function buildVariantSidebar() {
                   ]);
 
                   for (const r of node.renderIdxs) {
-                    if (!mainMat || r.matName === mainMat) {
+                    const shouldApply = mainMat ? r.matName === mainMat : r === node.renderIdxs[0];
+                    if (shouldApply) {
                       modelBaseTextures[r.idx] = texBase;
-                      originalParts[r.idx].baseColorTex = texBase;
-                      if (texNormal) originalParts[r.idx].normalTex = texNormal;
-                      if (texRough) originalParts[r.idx].roughnessTex = texRough;
+                      if (originalParts[r.idx]) {
+                        originalParts[r.idx].baseColorTex = texBase;
+                        if (texNormal) originalParts[r.idx].normalTex = texNormal;
+                        if (texRough) originalParts[r.idx].roughnessTex = texRough;
+                      }
                     }
                   }
 
@@ -353,11 +375,14 @@ function buildVariantSidebar() {
                   ]);
 
                   for (const r of node.renderIdxs) {
-                    if (!mainMat || r.matName === mainMat) {
+                    const shouldApply = mainMat ? r.matName === mainMat : r === node.renderIdxs[0];
+                    if (shouldApply) {
                       modelBaseTextures[r.idx] = texBase;
-                      originalParts[r.idx].baseColorTex = texBase;
-                      if (texNormal) originalParts[r.idx].normalTex = texNormal;
-                      if (texRough) originalParts[r.idx].roughnessTex = texRough;
+                      if (originalParts[r.idx]) {
+                        originalParts[r.idx].baseColorTex = texBase;
+                        if (texNormal) originalParts[r.idx].normalTex = texNormal;
+                        if (texRough) originalParts[r.idx].roughnessTex = texRough;
+                      }
                     }
                   }
                 }
@@ -384,7 +409,7 @@ function buildVariantSidebar() {
                   // ažuriraj selekciju u UI
                   colorsDiv.querySelectorAll(".color-swatch").forEach(el => el.classList.remove("selected"));
                   colorEl.classList.add("selected");
-                    sceneChanged = true;   // 🔹 dodaj ovde
+                  sceneChanged = true;   // 🔹 dodaj ovde
                   render();
                   showPartInfo(`${variant.name} (${c.name})`);
                 });
@@ -1139,6 +1164,19 @@ function setupExclusiveButtons(selector) {
 
 setupExclusiveButtons("#camera-controls button[data-view]");
 setupExclusiveButtons("#camera-controls button[data-weather]");
+
+function getVariantPreviewSrc(partKey, variant) {
+  const savedColorName = savedColorsByPart?.[partKey]?.[variant.name];
+  const colorData =
+    variant.colors?.find((c) => c.name === savedColorName) ||
+    variant.colors?.[0];
+
+  if (colorData?.type === "texture" && colorData.texture) {
+    return colorData.texture;
+  }
+
+  return thumbnails?.[partKey]?.[variant.name] || "assets/part_placeholder.png";
+}
   
   const input = document.getElementById("glbInput");
   const loadingScr = document.getElementById("loading-screen");
@@ -1274,6 +1312,10 @@ render();             // sad tek nacrtaj prvi frame
 });
 
 export function initUI(ctx) {
+  // Uskladi lokalni i globalni cache boja/tekstrura
+  savedColorsByPart = window.savedColorsByPart || savedColorsByPart || {};
+  window.savedColorsByPart = savedColorsByPart;
+
   window.render = ctx.render;
   window.BOAT_INFO = ctx.BOAT_INFO;
   window.VARIANT_GROUPS = ctx.VARIANT_GROUPS;
