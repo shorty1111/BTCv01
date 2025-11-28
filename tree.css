@@ -812,6 +812,7 @@ canvas,
   flex: 1;
   overflow-y: auto;
   min-height: 0;               /* bitno za iOS */
+  background: var(--background-secondary);
 }
 
 .variant-group:first-child {
