@@ -4,9 +4,12 @@
   <head>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-    <link rel="stylesheet" href="tree.css?v=s13c1c1" />
+    <link rel="stylesheet" href="tree.css?v=sdbvsSSSSfc1" />
 
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, height=device-height, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
     <meta charset="UTF-8" />
     <title>Less Engine</title>
     <style></style>
@@ -116,24 +119,10 @@
       </div>
     </aside>
 
-    <script type="module" src="js/main.js?v=31c51"></script>
-    <script>
-      // Blokiraj landscape samo na touch uređajima manjeg ekrana (telefoni/tableti)
-      (function () {
-        const updateBlock = () => {
-          const isTouch = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
-          const narrowScreen = Math.min(screen.width, screen.height) <= 1400;
-          const isLandscape = window.matchMedia("(orientation: landscape)").matches;
-          document.body.classList.toggle("block-landscape", isTouch && narrowScreen && isLandscape);
-        };
-        window.addEventListener("resize", updateBlock);
-        window.addEventListener("orientationchange", updateBlock);
-        updateBlock();
-      })();
-    </script>
-    <div id="fps-meter" class="">FPS: <span id="fps-value">0</span></div>
-    <div id="drawcall-meter" class="">Draw Calls: <span id="drawcalls-value">0</span></div>
-      <div id="res-meter" class=""></div>
+    <script type="module" src="js/main.js?v=31sdfS8d5251"></script>
+    <div id="fps-meter hidden" class="">FPS: <span id="fps-value">0</span></div>
+    <div id="drawcall-meter hidden" class="">Draw Calls: <span id="drawcalls-value">0</span></div>
+      <div id="res-meter hidden" class=""></div>
     <div id="info-panel">
       <div class="canvas-actions">
         <div class="info-actions">

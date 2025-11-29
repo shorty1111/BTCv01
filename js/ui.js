@@ -145,6 +145,8 @@ function focusHotspotPart(partKey, groupDiv) {
   if (firstItem) {
     firstItem.scrollIntoView({ behavior: "smooth", block: "center" });
     firstItem.classList.add("active");
+    firstItem.style.borderColor = "var(--primary)";
+    firstItem.style.boxShadow = "0 0 0 2px rgba(56, 189, 248, 0.7)";
   }
   const node = nodesMeta.find((n) => n.name === partKey);
   if (node) {
@@ -229,15 +231,24 @@ function buildVariantSidebar() {
     const header = document.createElement("h3");
     header.textContent = groupName;
     header.addEventListener("click", () => {
+      const wasOpen = groupDiv.classList.contains("open");
+
+      // zatvori sve ostale
       document.querySelectorAll(".variant-group").forEach((g) => {
         if (g !== groupDiv) {
           if (g.classList.contains("open")) revealGroupHotspots(g);
           g.classList.remove("open");
         }
       });
-      const wasOpen = groupDiv.classList.contains("open");
-      groupDiv.classList.toggle("open");
-      if (wasOpen) revealGroupHotspots(groupDiv);
+
+      if (wasOpen) {
+        // ako je već bila otvorena → zatvori je
+        groupDiv.classList.remove("open");
+        revealGroupHotspots(groupDiv);
+      } else {
+        // ako je bila zatvorena → otvori
+        groupDiv.classList.add("open");
+      }
     });
 
     groupDiv.appendChild(header);
@@ -250,9 +261,12 @@ function buildVariantSidebar() {
       registerPartHotspot(partKey, data, groupName, groupDiv);
       const variants = data.models;
 
+      const isCompactCard = data.generateThumbs === false;
+
       variants.forEach((variant) => {
         const itemEl = document.createElement("div");
         itemEl.className = "variant-item";
+        if (isCompactCard) itemEl.classList.add("compact");
         itemEl.dataset.part = partKey;
         itemEl.dataset.variant = variant.name;
 
@@ -260,7 +274,13 @@ function buildVariantSidebar() {
         thumbWrapper.className = "thumb-wrapper";
 
         const preview = document.createElement("img");
-        preview.src = getVariantPreviewSrc(partKey, variant);
+        const previewInfo = getVariantPreviewSrc(partKey, variant);
+        preview.src = previewInfo.src;
+        if (previewInfo.isPlaceholder) {
+          preview.dataset.thumbKind = "placeholder";
+        } else {
+          delete preview.dataset.thumbKind;
+        }
         preview.className = "thumb";
         thumbWrapper.appendChild(preview);
 
@@ -276,9 +296,11 @@ function buildVariantSidebar() {
         label.textContent = variant.name;
         body.appendChild(label);
 
+        // uvek pripremi kontejner za boje
+        const colorsDiv = document.createElement("div");
+        colorsDiv.className = "colors";
+
         if (variant.colors && variant.colors.length > 0) {
-          const colorsDiv = document.createElement("div");
-          colorsDiv.className = "colors";
           variant.colors.forEach((c) => {
             const colorEl = document.createElement("div");
             colorEl.className = "color-swatch";
@@ -305,12 +327,18 @@ function buildVariantSidebar() {
               const variantData = partData.models?.find((v) => v.name === variantName);
 
               // ako kartica nije aktivna, prvo je zaista ucitaj varijantu (bez oslanjanja na .click)
-              if (!card.classList.contains("active") && variantData) {
-                const itemsDiv = card.parentElement;
-                if (itemsDiv) {
-                  itemsDiv.querySelectorAll(".variant-item").forEach((el) => el.classList.remove("active"));
-                  card.classList.add("active");
-                }
+               if (!card.classList.contains("active") && variantData) {
+                 const itemsDiv = card.parentElement;
+                 if (itemsDiv) {
+                   itemsDiv.querySelectorAll(".variant-item").forEach((el) => {
+                     el.classList.remove("active");
+                     el.style.borderColor = "";
+                     el.style.boxShadow = "";
+                   });
+                   card.classList.add("active");
+                   card.style.borderColor = "var(--primary)";
+                   card.style.boxShadow = "0 0 0 2px rgba(56, 189, 248, 0.7)";
+                 }
                 // sacuvaj boju stare varijante pre prelaska
                 const prev = currentParts[partKey];
                 if (prev && prev.selectedColor) {
@@ -414,25 +442,21 @@ function buildVariantSidebar() {
               colorsDiv.appendChild(colorEl);
             });
 
-      
-
-        // 🔹 Nakon što su sve boje dodate, ponovo označi izabranu
-
-
-        const saved = currentParts[partKey];
-        if (saved && saved.selectedColor) {
-          const sel = Array.from(colorsDiv.children).find(
-            (el) => el.title === saved.selectedColor
-          );
-          if (sel) sel.classList.add("selected");
+            // 🔹 Nakon što su sve boje dodate, ponovo označi izabranu
+            const saved = currentParts[partKey];
+            if (saved && saved.selectedColor) {
+              const sel = Array.from(colorsDiv.children).find(
+                (el) => el.title === saved.selectedColor
+              );
+              if (sel) sel.classList.add("selected");
+            }
+        } else {
+          // nema definisanih boja → obeleži da je default varijanta bez eksplicitnih boja
+          colorsDiv.classList.add("no-colors");
         }
 
-
-          body.appendChild(colorsDiv);
-        }
-
-        itemEl.appendChild(body);
-
+        // 1) naslov je već gore
+        // 2) zatim cena
         const footer = document.createElement("div");
         footer.className = "variant-footer";
         const rawPrice = variant.price ?? 0;
@@ -441,6 +465,11 @@ function buildVariantSidebar() {
           : `+${rawPrice} € (incl. VAT)`;
         footer.innerHTML = `<span class="price">${priceText}</span>`;
         body.appendChild(footer);
+
+        // 3) boje (ako ih ima)
+        body.appendChild(colorsDiv);
+
+        itemEl.appendChild(body);
       // ➕ Dodaj dugme i opis ako postoji opis u configu
       if (variant.description) {
         const descBtn = document.createElement("button");
@@ -454,73 +483,89 @@ function buildVariantSidebar() {
         itemEl.appendChild(descEl);
       }
 
-      itemEl.addEventListener("click", (e) => {
+      const handleItemClick = (e) => {
         // ako klik potiče sa dugmeta za opis, ignoriši
         if (e.target.closest(".desc-toggle")) return;
         hideHotspot(partKey);
         const isEquipmentOnly = !variant.src && !data.mainMat;
-      if (isEquipmentOnly) {
-        // 🚫 Ako je "Included" u additional grupi → ignoriši klik
-        if ((variant.price ?? 0) === 0) {
-          return; // ne radi ništa
+        if (isEquipmentOnly) {
+          // 🚫 Ako je "Included" u additional grupi → ignoriši klik
+          if ((variant.price ?? 0) === 0) {
+            return; // ne radi ništa
+          }
+
+          // toggle logika za additional kartice
+          const key = variant.name;
+          const alreadyActive = itemEl.classList.contains("active");
+
+          if (alreadyActive) {
+            itemEl.classList.remove("active");
+            delete currentParts[key];
+            const row = document.querySelector(`#partsTable tr[data-part="${key}"]`);
+            if (row) row.remove();
+            // vizuelno resetuj border i shadow
+            itemEl.style.borderColor = "";
+            itemEl.style.boxShadow = "";
+          } else {
+            itemEl.classList.add("active");
+            currentParts[key] = variant;
+            updatePartsTable(key, variant.name);
+            // vizuelno istakni karticu odmah (inline stil pobedi sve CSS konflikte)
+            itemEl.style.borderColor = "var(--primary)";
+            itemEl.style.boxShadow = "0 0 0 2px rgba(56, 189, 248, 0.7)";
+          }
+
+          updateTotalPrice();
+          return;
         }
 
-  const key = variant.name;
-  const alreadyActive = itemEl.classList.contains("active");
+        const node = nodesMeta.find((n) => n.name === partKey);
+        if (!node) return;
 
-  if (alreadyActive) {
-    itemEl.classList.remove("active");
-    delete currentParts[key];
-    const row = document.querySelector(`#partsTable tr[data-part="${key}"]`);
-    if (row) row.remove();
-  } else {
-    itemEl.classList.add("active");
-    currentParts[key] = variant;
-    updatePartsTable(key, variant.name);
-  }
+        highlightTreeSelection(node.id);
+        // ⬇️ pre replaceSelectedWithURL
+        const prev = currentParts[partKey];
+        if (prev && prev.selectedColor) {
+          // zapamti boju za varijantu koju napuštamo
+          if (!savedColorsByPart[partKey]) savedColorsByPart[partKey] = {};
+          savedColorsByPart[partKey][prev.name] = prev.selectedColor;
+        }
+        replaceSelectedWithURL(variant.src, variant.name, partKey);
+        
+        // ✅ Ako varijanta ima boje, automatski primeni prvu ako nije već izabrana
+      const variantData = variant;
+      if (variantData.colors && variantData.colors.length > 0) {
+        const savedColor = savedColorsByPart[partKey]?.[variant.name];
+        if (!savedColor) {
+          const first = variantData.colors[0];
+          savedColorsByPart[partKey] = savedColorsByPart[partKey] || {};
+          savedColorsByPart[partKey][variant.name] = first.name;
 
-  updateTotalPrice();
-  return;
-}
-  const node = nodesMeta.find((n) => n.name === partKey);
-  if (!node) return;
-
-  highlightTreeSelection(node.id);
-  // ⬇️ pre replaceSelectedWithURL
-const prev = currentParts[partKey];
-if (prev && prev.selectedColor) {
-  // zapamti boju za varijantu koju napuštamo
-  if (!savedColorsByPart[partKey]) savedColorsByPart[partKey] = {};
-  savedColorsByPart[partKey][prev.name] = prev.selectedColor;
-}
-  replaceSelectedWithURL(variant.src, variant.name, partKey);
-  
-  // ✅ Ako varijanta ima boje, automatski primeni prvu ako nije već izabrana
-const variantData = variant;
-if (variantData.colors && variantData.colors.length > 0) {
-  const savedColor = savedColorsByPart[partKey]?.[variant.name];
-  if (!savedColor) {
-    const first = variantData.colors[0];
-    savedColorsByPart[partKey] = savedColorsByPart[partKey] || {};
-    savedColorsByPart[partKey][variant.name] = first.name;
-
-    // primeni kroz isti mehanizam kao kad korisnik klikne boju
-    const colorsDiv = itemEl.querySelector(".colors");
-    const firstEl = colorsDiv?.querySelector(".color-swatch");
-    if (firstEl) {
-      setTimeout(() => firstEl.click(), 50); // ⏳ da sačeka render modela
-    }
-  }
-}
-  updatePartsTable(partKey, variant.name);
+          // primeni kroz isti mehanizam kao kad korisnik klikne boju
+          const colorsDiv = itemEl.querySelector(".colors");
+          const firstEl = colorsDiv?.querySelector(".color-swatch");
+          if (firstEl) {
+            setTimeout(() => firstEl.click(), 50); // ⏳ da sačeka render modela
+          }
+        }
+      }
+   updatePartsTable(partKey, variant.name);
   currentParts[partKey] = variant;
-  itemsDiv.querySelectorAll(".variant-item").forEach((el) => el.classList.remove("active"));
+  itemsDiv.querySelectorAll(".variant-item").forEach((el) => {
+    el.classList.remove("active");
+    el.style.borderColor = "";
+    el.style.boxShadow = "";
+  });
   itemEl.classList.add("active");
+  itemEl.style.borderColor = "var(--primary)";
+  itemEl.style.boxShadow = "0 0 0 2px rgba(56, 189, 248, 0.7)";
   focusCameraOnNode(node);
   render();
   showPartInfo(variant.name);
-});
+};
 
+// Klik handler (radi isto na desktopu i touch uređajima)
+itemEl.addEventListener("click", handleItemClick);
 
    itemsDiv.appendChild(itemEl);
       });
@@ -902,7 +947,11 @@ async function loadSavedConfig(index) {
   savedColorsByPart = colorsTarget;
   setWeather(cfg.weather || "day");
   // reset UI selekcija
-  document.querySelectorAll(".variant-item").forEach(el => el.classList.remove("active"));
+  document.querySelectorAll(".variant-item").forEach(el => {
+    el.classList.remove("active");
+    el.style.borderColor = "";
+    el.style.boxShadow = "";
+  });
   document.querySelectorAll(".color-swatch").forEach(el => el.classList.remove("selected"));
   // 1️⃣ Učitaj standardne delove
   for (const [part, variant] of Object.entries(currentPartsRef)) {
@@ -1008,8 +1057,10 @@ if (variant.selectedColor) {
 
     // selektuj u UI
     const item = document.querySelector(`.variant-item[data-part="${part}"][data-variant="${variant.name}"]`);
-    if (item) {
-      item.classList.add("active");
+      if (item) {
+        item.classList.add("active");
+        item.style.borderColor = "var(--primary)";
+        item.style.boxShadow = "0 0 0 2px rgba(56, 189, 248, 0.7)";
       const colors = item.querySelectorAll(".color-swatch");
       colors.forEach(sw => {
         if (sw.title === variant.selectedColor) sw.classList.add("selected");
@@ -1027,6 +1078,8 @@ if (variant.selectedColor) {
       const addItem = document.querySelector(`.variant-item[data-variant="${variant.name}"]`);
       if (addItem) {
         addItem.classList.add("active");
+        addItem.style.borderColor = "var(--primary)";
+        addItem.style.boxShadow = "0 0 0 2px rgba(56, 189, 248, 0.7)";
         // osveži cenu odmah ispod kartice (ako postoji)
         const footer = addItem.querySelector(".price");
         if (footer) footer.textContent = variant.price === 0 ? "Included" : `+${variant.price} €`;
@@ -1163,16 +1216,22 @@ setupExclusiveButtons("#camera-controls button[data-view]");
 setupExclusiveButtons("#camera-controls button[data-weather]");
 
 function getVariantPreviewSrc(partKey, variant) {
+  const generatedThumb = thumbnails?.[partKey]?.[variant.name];
+  if (generatedThumb) {
+    const isPlaceholder = generatedThumb.includes("part_placeholder");
+    return { src: generatedThumb, isPlaceholder };
+  }
+
   const savedColorName = savedColorsByPart?.[partKey]?.[variant.name];
   const colorData =
     variant.colors?.find((c) => c.name === savedColorName) ||
     variant.colors?.[0];
 
   if (colorData?.type === "texture" && colorData.texture) {
-    return colorData.texture;
+    return { src: colorData.texture, isPlaceholder: false };
   }
 
-  return thumbnails?.[partKey]?.[variant.name] || "assets/part_placeholder.png";
+  return { src: "assets/part_placeholder.png", isPlaceholder: true };
 }
   
   const input = document.getElementById("glbInput");

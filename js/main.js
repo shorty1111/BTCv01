@@ -412,7 +412,6 @@ let transparentMeshes = [];
 let envTex = null;
 let brdfTex = null;
 let realOriginalParts = {}; // permanentno čuvamo početni model (A)
-let previewGL = null;
 let boatMin = null;
 let boatMax = null;
 let program;
@@ -463,8 +462,21 @@ const DIM_TICK_COLOR = [0.65, 0.9, 1.0];
 const KERNEL_SIZE = 48;
 const SSAO_NOISE_SIZE = 3;
 const thumbnails = {};
+window.__suppressThumbnailUI = window.__suppressThumbnailUI || false;
 const cachedVariants = {}; // url -> ArrayBuffer
 const preparedVariants = {}; // url -> [ { vao, count, type, baseColor, metallic, roughness, trisWorld }... ]
+let firstFramePromise = null;
+let resolveFirstFrame = null;
+// NOTE: Hiding canvas breaks thumbnail capture on some mobile browsers,
+// so these are now no-ops that just return the canvas element.
+function hideCanvasForThumbnails() {
+  const canvasEl = document.getElementById("glCanvas");
+  return canvasEl || null;
+}
+
+function restoreCanvasAfterThumbnails() {
+  __canvasHiddenForThumbs = false;
+}
 
 const lineVertSrc = `#version 300 es
 layout(location=0) in vec3 aPos;
@@ -482,16 +494,6 @@ void main() {
   fragColor = vec4(uColor, 1.0);
 }
 `;
-
-const previewPrograms = new WeakMap();
-function getPreviewProgram(gl) {
-  let prog = previewPrograms.get(gl);
-  if (!prog) {
-    prog = createPreviewProgram(gl);
-    previewPrograms.set(gl, prog);
-  }
-  return prog;
-}
 
 function disposeReflectionTarget() {
   if (reflectionTex) {
@@ -581,7 +583,7 @@ function createFinalColorTarget(w, h) {
 
 function focusCameraOnNode(node) {
   if (!node) return;
-  camera.useOrtho = false; // dY"? prebaci nazad u perspektivu
+  camera.useOrtho = false; // prebaci nazad u perspektivu
   // osveži bbox pre fokusa da bude tačan posle zamene varijante
   delete node.cachedBounds;
   const bounds = ensureNodeBounds(node);
@@ -601,13 +603,31 @@ function focusCameraOnNode(node) {
     bounds.dist = targetDist;
   }
   camera.distTarget = targetDist;
-  camera.rxTarget = Math.PI / 6;       // dY"1 koristi target
+  camera.rxTarget = Math.PI / 5;       // koristi target
   camera.ryTarget = 0;
+
+  // računaj centriranje na ciljnom uglu, ali zadrži glatku rotaciju
+  const prevRx = camera.rx;
+  const prevRy = camera.ry;
+  const prevDist = camera.dist;
+  camera.rx = camera.rxTarget;
+  camera.ry = camera.ryTarget;
+  camera.dist = camera.distTarget;
+  recenterCameraToBounds(bounds, { snap: false });
+  camera.rx = prevRx;
+  camera.ry = prevRy;
+  camera.dist = prevDist;
+  sceneChanged = true;
 }
 
 function ensureNodeBounds(node) {
   if (!node) return null;
-  if (node.cachedBounds && node.cachedBounds.center) {
+  if (
+    node.cachedBounds &&
+    node.cachedBounds.center &&
+    node.cachedBounds.min &&
+    node.cachedBounds.max
+  ) {
     return node.cachedBounds;
   }
 
@@ -678,6 +698,8 @@ function ensureNodeBounds(node) {
     center,
     size,
     radius,
+    min: min.slice(),
+    max: max.slice(),
   };
   return node.cachedBounds;
 }
@@ -717,54 +739,8 @@ function getPartScreenPosition(partKey) {
   };
 }
 
-function createPreviewProgram(gl2) {
-  const vsSource = `#version 300 es
-  layout(location=0) in vec3 aPos;
-  layout(location=1) in vec3 aNor;
-  uniform mat4 uProjection;
-  uniform mat4 uView;
-  uniform mat4 uModel;
-  out vec3 vNor;
-  void main() {
-    vNor = normalize(mat3(uModel) * aNor);
-    gl_Position = uProjection * uView * uModel * vec4(aPos, 1.0);
-  }`;
-
-  const fsSource = `#version 300 es
-  precision highp float;
-  in vec3 vNor;
-  uniform vec3 uBaseColor;
-  uniform float uOpacity;   // 👈 NOVO
-  out vec4 fragColor;
-  void main() {
-    float l = max(dot(normalize(vNor), normalize(vec3(0.3,0.8,0.6))), 0.0);
-    vec3 lit = uBaseColor * l + uBaseColor * 0.2; 
-    fragColor = vec4(lit, uOpacity);   // 👈 KORISTI OPACITY
-  }`;
-
-  function compile(src, type) {
-    const sh = gl2.createShader(type);
-    gl2.shaderSource(sh, src);
-    gl2.compileShader(sh);
-    if (!gl2.getShaderParameter(sh, gl2.COMPILE_STATUS))
-      throw new Error(gl2.getShaderInfoLog(sh));
-    return sh;
-  }
-
-  const vs = compile(vsSource, gl2.VERTEX_SHADER);
-  const fs = compile(fsSource, gl2.FRAGMENT_SHADER);
-
-  const prog = gl2.createProgram();
-  gl2.attachShader(prog, vs);
-  gl2.attachShader(prog, fs);
-  gl2.linkProgram(prog);
-  if (!gl2.getProgramParameter(prog, gl2.LINK_STATUS))
-    throw new Error(gl2.getProgramInfoLog(prog));
-  return prog;
-}
-
-async function loadDefaultModel(url) {
-  showLoading();
+async function loadDefaultModel(url, { showSpinner = true } = {}) {
+  if (showSpinner) showLoading();
   window.pendingMeshes = true;
   updateLoadingProgress("Loading model", window.pendingTextures || 0, 1);
   try {
@@ -778,7 +754,7 @@ async function loadDefaultModel(url) {
   } finally {
     window.pendingMeshes = false;
     updateLoadingProgress("Loading textures", window.pendingTextures || 0, 0);
-    hideLoading();     
+    if (showSpinner) hideLoading();     
     render();       
   }
 }
@@ -797,13 +773,17 @@ if (canvas.__glContext) {
   const loseExt = canvas.__glContext.getExtension("WEBGL_lose_context");
   if (loseExt) loseExt.loseContext();
 }
-const gl = canvas.getContext("webgl2", { alpha: true, antialias: false });
+// preserveDrawingBuffer pomaže da canvas bude čitljiv za thumbnail capture na mobilnim browserima
+const gl = canvas.getContext("webgl2", { alpha: true, antialias: false, preserveDrawingBuffer: true });
 const drawStats = {
   frame: 0,
   drawCalls: 0,
   perPass: {},
   currentPass: "frame",
 };
+let __canvasHiddenForThumbs = false;
+let __prevCanvasVisibility = "";
+let __prevCanvasEvents = "";
 
 window.drawStats = drawStats;
 
@@ -2052,7 +2032,10 @@ async function waitForPendingTextures(timeoutMs = 8000) {
 }
 // ✅ Glavna sekvenca
 async function initializeApp() {
+  document.body.classList.add("app-loading");
   showLoading();
+  window.__firstFrameDone = false;
+  firstFramePromise = Promise.resolve();
   const glOk = await initGL();
   if (!glOk) return;
 
@@ -2065,7 +2048,7 @@ async function initializeApp() {
 
   try {
     // Sacekaj i model
-    await loadDefaultModel(DEFAULT_MODEL);
+    await loadDefaultModel(DEFAULT_MODEL, { showSpinner: false });
 
 
     if (!program || !(program instanceof WebGLProgram)) {
@@ -2082,7 +2065,7 @@ async function initializeApp() {
     render();
     renderBoatInfo(BOAT_INFO);
 
-    // Pokreni UI i loop tek sada
+    // Pokreni UI tek sada
     initUI({ render, BOAT_INFO, VARIANT_GROUPS, BASE_PRICE, SIDEBAR_INFO });
     Object.assign(window, {
       gl, camera, nodesMeta, modelBaseColors, modelBaseTextures,
@@ -2095,16 +2078,28 @@ async function initializeApp() {
       getPartScreenPosition
     });
 
-    // 🔹 start loop tek kad je sve učitano
-  renderLoop();
+    showLoading();
+    await preloadAllVariants();
+    await waitForPendingTextures(12000);
+    await generateAllThumbnails();
+    refreshThumbnailsInUI();
+    await waitForThumbnailsToSettle();
 
-    generateAllThumbnails().then(refreshThumbnailsInUI).catch(console.warn);
-    setTimeout(() => preloadAllVariants().catch(console.warn), 2000);
+    // pripremi finalni frame
+    render();
+    window.__firstFrameDone = true;
   } catch (err) {
     console.error("[initializeApp] Failed:", err);
     alert("App initialization failed — check console.");
   } finally {
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    );
+    restoreCanvasAfterThumbnails();
+    document.body.classList.remove("app-loading");
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     hideLoading();
+    renderLoop(); // startuj loop tek kada se loading skine
   }
 }
 
@@ -2783,8 +2778,6 @@ function renderLoop(now) {
 const infoPanel = document.getElementById("info-panel");
 const toggleBtn = document.getElementById("toggle-info");
 const loadToggleBtn = document.getElementById("loadConfigToggle");
-if (loadToggleBtn) loadToggleBtn.classList.remove("active");
-if (toggleBtn) toggleBtn.classList.remove("active");
 const toggleLabel = toggleBtn ? toggleBtn.querySelector(".label") : null;
 const loadLabel = loadToggleBtn ? loadToggleBtn.querySelector(".label") : null;
 const mobileTabs = document.getElementById("mobileTabs");
@@ -2824,6 +2817,7 @@ function updateToggleLabelForDevice() {
     toggleBtn.classList.add("text-label");
     mobileTabs?.classList.remove("hidden");
     setMobileTab("info");
+    toggleBtn?.classList.add("active");
   } else {
     toggleBtn.classList.remove("text-label");
     mobileTabs?.classList.add("hidden");
@@ -2868,6 +2862,14 @@ function closePanelsIfClickOutside(e) {
   const isLoadOpen = infoPanel.classList.contains("load-open");
   if (!isInfoOpen && !isLoadOpen) return;
 
+  // U portrait/touch režimu uvek ostavi info panel otvoren
+  const isTouchMode =
+    toggleBtn?.classList.contains("text-label") ||
+    document.body.classList.contains("mobile-tab-info") ||
+    document.body.classList.contains("mobile-tab-variants");
+  const isPortrait = window.matchMedia("(orientation: portrait)").matches;
+  if (isTouchMode && isPortrait) return;
+
   const target = e.target;
   const clickedInsidePanel = infoPanel.contains(target);
   const clickedToggle =
@@ -2881,17 +2883,19 @@ function closePanelsIfClickOutside(e) {
   }
 }
 
-toggleBtn.addEventListener("click", () => {
-  const isTouchMode =
-    toggleBtn.classList.contains("text-label") ||
-    document.body.classList.contains("mobile-tab-info") ||
-    document.body.classList.contains("mobile-tab-variants");
-  if (isTouchMode) {
-    setMobileTab("info");
-    return;
-  }
-  toggleInfoPanel();
-});
+if (toggleBtn) {
+  toggleBtn.addEventListener("click", () => {
+    const isTouchMode =
+      toggleBtn.classList.contains("text-label") ||
+      document.body.classList.contains("mobile-tab-info") ||
+      document.body.classList.contains("mobile-tab-variants");
+    if (isTouchMode) {
+      setMobileTab("info");
+      return;
+    }
+    toggleInfoPanel();
+  });
+}
 
 if (loadToggleBtn) {
   loadToggleBtn.addEventListener("click", () => {
@@ -3652,11 +3656,11 @@ if (prim.material !== undefined) {
   return out;
 }
 
-async function replaceSelectedWithURL(url, variantName, partName) {
+async function replaceSelectedWithURL(url, variantName, partName, { suppressLoading = false } = {}) {
 
     const alreadyCached = !url || preparedVariants[url];
-  
-  if (!alreadyCached) {
+    const shouldShowLoading = !suppressLoading && !alreadyCached;
+  if (shouldShowLoading) {
     showLoading(); // 👈 prikaži SAMO ako treba da fetchuje
   }
   
@@ -3666,7 +3670,7 @@ if (node) {
   delete node.cachedBounds; // 👈 UVEK obriši, čak i ako je isti variant
 }
   if (!node) {
-    if (!alreadyCached) hideLoading(); // 👈 sakrij SAMO ako si pokazao
+    if (shouldShowLoading) hideLoading(); // 👈 sakrij SAMO ako si pokazao
     return;
   }
   const cfgGroup = Object.values(VARIANT_GROUPS).find((g) => partName in g) || {};
@@ -3834,7 +3838,7 @@ if (activeColor) {
   if (!window.__suppressFocusCamera) {
       focusCameraOnNode(node);
     }
-  if (!alreadyCached) {
+  if (shouldShowLoading) {
     hideLoading(); // 👈 zameni безусловни hideLoading() sa uslovnim
   }
 
@@ -3847,10 +3851,13 @@ ssaoDirty = true;
 sceneChanged = true;
 
 render();
-showPartInfo(variantName);
+if (!window.__suppressThumbnailUI) {
+  showPartInfo(variantName);
+}
 }
 
 function refreshThumbnailsInUI() {
+  if (window.__suppressThumbnailUI) return;
   document.querySelectorAll(".variant-item").forEach((itemEl) => {
     const part = itemEl.dataset.part;
     const variant = itemEl.dataset.variant;
@@ -3860,6 +3867,280 @@ function refreshThumbnailsInUI() {
       img.src = thumbnails[part][variant]; // 👈 zameni placeholder sa pravom slikom
     }
   });
+}
+
+async function waitForThumbnailsToSettle() {
+  const imgs = Array.from(
+    document.querySelectorAll(".variant-item img.thumb")
+  );
+  if (!imgs.length) return;
+
+  const jobs = imgs.map(
+    (img) =>
+      new Promise((resolve) => {
+        if (img.complete && img.naturalWidth) return resolve();
+        const done = () => resolve();
+        img.addEventListener("load", done, { once: true });
+        img.addEventListener("error", done, { once: true });
+      })
+  );
+  await Promise.all(jobs);
+}
+
+function cloneState(value) {
+  if (value == null) return value;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return value;
+  }
+}
+
+function restoreObject(target, snapshot) {
+  if (!target) return;
+  const keys = Object.keys(target);
+  for (const key of keys) {
+    delete target[key];
+  }
+  if (!snapshot) return;
+  for (const [key, val] of Object.entries(snapshot)) {
+    target[key] = cloneState(val);
+  }
+}
+
+function captureCameraState() {
+  return {
+    pan: camera.pan ? camera.pan.slice() : [0, 0, 0],
+    panTarget: camera.panTarget ? camera.panTarget.slice() : [0, 0, 0],
+    rx: camera.rx,
+    ry: camera.ry,
+    rxTarget: camera.rxTarget,
+    ryTarget: camera.ryTarget,
+    dist: camera.dist,
+    distTarget: camera.distTarget,
+    useOrtho: camera.useOrtho,
+    currentView: camera.currentView,
+    fovOverride: camera.fovOverride,
+  };
+}
+
+function restoreCameraState(state) {
+  if (!state) return;
+  camera.useOrtho = state.useOrtho;
+  camera.currentView = state.currentView;
+  camera.pan = state.pan.slice();
+  camera.panTarget = state.panTarget.slice();
+  camera.rx = state.rx;
+  camera.rxTarget = state.rxTarget;
+  camera.ry = state.ry;
+  camera.ryTarget = state.ryTarget;
+  camera.dist = state.dist;
+  camera.distTarget = state.distTarget;
+  camera.moved = true;
+  camera.fovOverride = state.fovOverride ?? null;
+}
+
+function getBoundsCorners(bounds) {
+  if (!bounds?.min || !bounds?.max) return [];
+  const mn = bounds.min;
+  const mx = bounds.max;
+  return [
+    [mn[0], mn[1], mn[2]],
+    [mn[0], mn[1], mx[2]],
+    [mn[0], mx[1], mn[2]],
+    [mn[0], mx[1], mx[2]],
+    [mx[0], mn[1], mn[2]],
+    [mx[0], mn[1], mx[2]],
+    [mx[0], mx[1], mn[2]],
+    [mx[0], mx[1], mx[2]],
+  ];
+}
+
+function getCameraUpVector() {
+  const target = camera.pan || [0, 0, 0];
+  const dist = camera.dist || 1;
+  const rx = camera.rx || 0;
+  const ry = camera.ry || 0;
+  const eye = [
+    target[0] + dist * Math.cos(rx) * Math.sin(ry),
+    target[1] + dist * Math.sin(rx),
+    target[2] + dist * Math.cos(rx) * Math.cos(ry),
+  ];
+  const forward = v3.norm(v3.sub(target, eye));
+  let right = v3.cross(forward, [0, 1, 0]);
+  const len = Math.hypot(...right);
+  if (len < 1e-5) right = [1, 0, 0];
+  else right = v3.scale(right, 1 / len);
+  const up = v3.norm(v3.cross(right, forward));
+  return up;
+}
+
+function shiftCameraAlong(dir, amount) {
+  if (!dir || !Number.isFinite(amount)) return;
+  camera.pan[0] += dir[0] * amount;
+  camera.pan[1] += dir[1] * amount;
+  camera.pan[2] += dir[2] * amount;
+  camera.panTarget[0] += dir[0] * amount;
+  camera.panTarget[1] += dir[1] * amount;
+  camera.panTarget[2] += dir[2] * amount;
+}
+
+function recenterCameraToBounds(bounds, { snap = true } = {}) {
+  if (!bounds?.min || !bounds?.max) return;
+  const corners = getBoundsCorners(bounds);
+  if (!corners.length) return;
+
+  const computeOffset = (panOverride = null) => {
+    let restorePan = null;
+    if (panOverride) {
+      restorePan = camera.pan;
+      camera.pan = panOverride;
+    }
+    const { view, proj } = camera.updateView();
+    if (restorePan) {
+      camera.pan = restorePan;
+    }
+    const viewProj = mat4mul(proj, view);
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    for (const c of corners) {
+      const clip = mulMat4Vec4([], viewProj, [c[0], c[1], c[2], 1]);
+      if (Math.abs(clip[3]) < 1e-5) continue;
+      const ndcY = clip[1] / clip[3];
+      minY = Math.min(minY, ndcY);
+      maxY = Math.max(maxY, ndcY);
+    }
+
+    if (!isFinite(minY) || !isFinite(maxY)) return 0;
+    return (minY + maxY) * 0.5;
+  };
+
+  if (snap) {
+    const baseOffset = computeOffset();
+    if (!isFinite(baseOffset) || Math.abs(baseOffset) < 0.005) return;
+
+    const upDir = getCameraUpVector();
+    if (!upDir) return;
+
+    const span = Math.max(
+      bounds.max[1] - bounds.min[1],
+      bounds.max[0] - bounds.min[0],
+      bounds.max[2] - bounds.min[2],
+      1
+    );
+    const sampleShift = span * 0.02;
+
+    shiftCameraAlong(upDir, sampleShift);
+    const sampleOffset = computeOffset();
+    shiftCameraAlong(upDir, -sampleShift);
+
+    const derivative = (sampleOffset - baseOffset) / sampleShift;
+    if (!isFinite(derivative) || Math.abs(derivative) < 1e-4) return;
+
+    let delta = -baseOffset / derivative;
+    const maxShift = span * 0.5;
+    delta = Math.max(Math.min(delta, maxShift), -maxShift);
+
+    shiftCameraAlong(upDir, delta);
+    camera.updateView();
+    camera.moved = true;
+    return;
+  }
+
+  const savedTarget = camera.panTarget ? camera.panTarget.slice() : [0, 0, 0];
+  let workingPan = savedTarget.slice();
+
+  const baseOffset = computeOffset(workingPan);
+  if (!isFinite(baseOffset) || Math.abs(baseOffset) < 0.005) {
+    camera.panTarget = workingPan.slice();
+    return;
+  }
+
+  const savedPanForUp = camera.pan.slice();
+  camera.pan = workingPan.slice();
+  const upDir = getCameraUpVector();
+  camera.pan = savedPanForUp;
+  if (!upDir) return;
+
+  const span = Math.max(
+    bounds.max[1] - bounds.min[1],
+    bounds.max[0] - bounds.min[0],
+    bounds.max[2] - bounds.min[2],
+    1
+  );
+  const sampleShift = span * 0.02;
+
+  const applyShift = (amount) => {
+    workingPan[0] += upDir[0] * amount;
+    workingPan[1] += upDir[1] * amount;
+    workingPan[2] += upDir[2] * amount;
+  };
+
+  applyShift(sampleShift);
+  const sampleOffset = computeOffset(workingPan);
+  applyShift(-sampleShift);
+
+  const derivative = (sampleOffset - baseOffset) / sampleShift;
+  if (!isFinite(derivative) || Math.abs(derivative) < 1e-4) {
+    camera.panTarget = workingPan.slice();
+    return;
+  }
+
+  let delta = -baseOffset / derivative;
+  const maxShift = span * 0.5;
+  delta = Math.max(Math.min(delta, maxShift), -maxShift);
+
+  applyShift(delta);
+  camera.panTarget = workingPan.slice();
+  camera.moved = true;
+}
+
+// Backward-compatibility name used by thumbnail generation
+const recenterCameraForThumbnail = recenterCameraToBounds;
+
+
+const PLACEHOLDER_THUMB = "assets/part_placeholder.png";
+let thumbnailCaptureCanvas = null;
+async function captureCanvasThumbnail(maxWidth = 384) {
+  if (!canvas) return PLACEHOLDER_THUMB;
+  if (!thumbnailCaptureCanvas) {
+    thumbnailCaptureCanvas = document.createElement("canvas");
+  }
+  const aspect = canvas.width / Math.max(1, canvas.height);
+  const targetW = maxWidth;
+  const targetH = Math.round(targetW / aspect);
+  thumbnailCaptureCanvas.width = targetW;
+  thumbnailCaptureCanvas.height = targetH;
+  const ctx = thumbnailCaptureCanvas.getContext("2d");
+  if (!ctx) return PLACEHOLDER_THUMB;
+  ctx.clearRect(0, 0, targetW, targetH);
+  ctx.drawImage(canvas, 0, 0, targetW, targetH);
+
+  if (typeof thumbnailCaptureCanvas.toBlob === "function") {
+    return new Promise((resolve) => {
+      thumbnailCaptureCanvas.toBlob(
+        (blob) => {
+          if (!blob) return resolve(PLACEHOLDER_THUMB);
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            resolve(reader.result || PLACEHOLDER_THUMB);
+          };
+          reader.onerror = () => resolve(PLACEHOLDER_THUMB);
+          reader.readAsDataURL(blob);
+        },
+        "image/png",
+        0.92
+      );
+    });
+  }
+
+  try {
+    const data = thumbnailCaptureCanvas.toDataURL("image/png");
+    return data || PLACEHOLDER_THUMB;
+  } catch {
+    return PLACEHOLDER_THUMB;
+  }
 }
 async function preloadAllVariants() {
   const jobs = [];
@@ -3894,252 +4175,184 @@ async function preloadAllVariants() {
   await Promise.all(workers);
 }
 
-async function generateThumbnailForVariant(partName, variant) {
-  if (!window.previewGL) {
-    const previewCanvas = document.createElement("canvas");
-    previewCanvas.width = 384;
-    previewCanvas.height = 384;
-    window.previewGL = previewCanvas.getContext("webgl2");
-  }
-  const gl2 = window.previewGL;
-  gl2.canvas.width = 384;
-  gl2.canvas.height = 384;
-  const preview = await prepareVariantPreview(variant, partName, gl2);
-  if (!preview || !preview.draws || !preview.draws.length) return null;
+async function generateThumbnailForVariant(partName, variant, baselineVariant, fallbackVariantName = "") {
+  const node = nodesMeta.find((n) => n.name === partName);
+  if (!node) return null;
 
-  const prog = getPreviewProgram(gl2);
-  gl2.useProgram(prog);
+  const previousFocusState = window.__suppressFocusCamera;
+  window.__suppressFocusCamera = true;
+  const cameraState = captureCameraState();
 
-  // Kamera iz ukupnog boundinga (preko svih materijala)
-  const bounds = preview.bounds;
-  const spanX = bounds.max[0] - bounds.min[0];
-  const spanY = bounds.max[1] - bounds.min[1];
-  const spanZ = bounds.max[2] - bounds.min[2];
-  const yaw = Math.PI / 4;
-  const pitch = Math.PI / 5;
-  const projectedHorizontal =
-    Math.abs(spanX * Math.cos(yaw)) + Math.abs(spanZ * Math.sin(yaw));
-  const spanHorizontal = Math.max(projectedHorizontal, 0.001);
-  const projectedVertical =
-    spanY * Math.cos(pitch) +
-    Math.abs(spanX * Math.sin(pitch) * Math.sin(yaw)) +
-    Math.abs(spanZ * Math.sin(pitch) * Math.cos(yaw));
-  const spanVertical = Math.max(projectedVertical, 0.001);
-  const center = [
-    (bounds.min[0] + bounds.max[0]) / 2,
-    (bounds.min[1] + bounds.max[1]) / 2,
-    (bounds.min[2] + bounds.max[2]) / 2,
-  ];
-  const fov = Math.PI / 4;
-  const fillX = 0.8;
-  const fillY = 0.8;
-  const distForWidth = (spanHorizontal * 0.5) / Math.tan(fov / 2) / fillX;
-  const distForHeight = (spanVertical * 0.5) / Math.tan(fov / 2) / fillY;
-  const dist = Math.max(distForWidth, distForHeight, 0.01);
-  const proj = persp(45, 1, 0.1, dist * 4);
-  const eye = [
-    center[0] + dist * Math.cos(pitch) * Math.sin(yaw),
-    center[1] + dist * Math.sin(pitch),
-    center[2] + dist * Math.cos(pitch) * Math.cos(yaw),
-  ];
-  const panOffset = spanVertical * 0.2; // lagano pomeri gore-dole da bude bolje centrirano
-  const target = [center[0], center[1] - panOffset, center[2]];
-  const view = look(eye, target, [0, 1, 0]);
-  const model = new Float32Array([
-    1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
-  ]);
+  const applyVariant = async (targetVariant, label) => {
+    await replaceSelectedWithURL(
+      targetVariant?.src || null,
+      label || targetVariant?.name || "Default",
+      partName,
+      { suppressLoading: true }
+    );
+    await waitForPendingTextures(6000);
+  };
 
-  gl2.uniformMatrix4fv( gl2.getUniformLocation(prog, "uProjection"), false,proj);
-  gl2.uniformMatrix4fv(gl2.getUniformLocation(prog, "uView"), false, view);
-  gl2.uniformMatrix4fv(gl2.getUniformLocation(prog, "uModel"), false, model);
+  const revertVariant = async () => {
+    const target = baselineVariant || null;
+    const label =
+      target?.name ||
+      fallbackVariantName ||
+      variant?.name ||
+      partName;
+    await applyVariant(target, label);
+  };
 
-  gl2.viewport(0, 0, 384, 384);
-  gl2.clearColor(0.15, 0.15, 0.18, 1);
-  gl2.clear(gl2.COLOR_BUFFER_BIT | gl2.DEPTH_BUFFER_BIT);
-  gl2.enable(gl2.DEPTH_TEST);
+  await applyVariant(variant, variant?.name || fallbackVariantName);
 
-  const uColorLoc = gl2.getUniformLocation(prog, "uBaseColor");
-  const uOpacityLoc = gl2.getUniformLocation(prog, "uOpacity"); 
-
-  // 🔑 nacrtaj SVE materijale/primitive
-  for (const d of preview.draws) {
-    if (d.isBlend) {
-      gl2.enable(gl2.BLEND);
-      gl2.blendFunc(gl2.SRC_ALPHA, gl2.ONE_MINUS_SRC_ALPHA);
-    }
-
-    gl2.uniform3fv(uColorLoc, d.baseColor || new Float32Array([0.7, 0.7, 0.7]));
-    gl2.uniform1f(uOpacityLoc, d.opacity !== undefined ? d.opacity : 1.0);
-    gl2.bindVertexArray(d.vao);
-    gl2.drawElements(gl2.TRIANGLES, d.count, d.type, 0);
-
-    if (d.isBlend) {gl2.disable(gl2.BLEND);}
+  const bounds = ensureNodeBounds(node);
+  if (!bounds) {
+    await revertVariant();
+    restoreCameraState(cameraState);
+    window.__suppressFocusCamera = previousFocusState;
+    return null;
   }
 
-  gl2.bindVertexArray(null);
-  return gl2.canvas.toDataURL("image/png");
+  focusCameraOnNode(node);
+  // preskoči animaciju i koristi točno fokusirane vrednosti
+  camera.pan = camera.panTarget.slice();
+  camera.rx = camera.rxTarget;
+  camera.ry = camera.ryTarget;
+  camera.dist = camera.distTarget;
+  camera.moved = true;
+  recenterCameraForThumbnail(bounds);
+
+  sceneChanged = true;
+  render();
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  if (gl && typeof gl.finish === "function") {
+    gl.finish();
+  }
+  const dataUrl = await captureCanvasThumbnail();
+
+  await revertVariant();
+
+  restoreCameraState(cameraState);
+  camera.moved = true;
+  sceneChanged = true;
+  render();
+  window.__suppressFocusCamera = previousFocusState;
+  return dataUrl;
 }
 async function generateAllThumbnails() {
-  for (const [groupName, parts] of Object.entries(VARIANT_GROUPS)) {
-    for (const [partName, data] of Object.entries(parts)) {
-      thumbnails[partName] = {};
+  const partsSnapshot = cloneState(currentParts || {});
+  const colorsSnapshot = cloneState(savedColorsByPart || {});
+  const cameraSnapshot = captureCameraState();
 
-      for (const variant of data.models) {
-        thumbnails[partName][variant.name] = await generateThumbnailForVariant(
+  const previousThumbnailFlag = window.__suppressThumbnailUI;
+  const previousFocusState = window.__suppressFocusCamera;
+  window.__suppressThumbnailUI = true;
+  window.__suppressFocusCamera = true;
+  hideCanvasForThumbnails();
+
+  try {
+    const missingNodeEntries = [];
+    const placeholderEntries = [];
+    const collectRenderableVariants = () => {
+      const entries = [];
+      for (const parts of Object.values(VARIANT_GROUPS)) {
+        for (const [partName, data] of Object.entries(parts)) {
+          const shouldGenerateThumbs = data?.generateThumbs !== false;
+          if (!shouldGenerateThumbs) {
+            placeholderEntries.push({
+              partName,
+              variants: data.models || [],
+            });
+            continue;
+          }
+          const node = nodesMeta.find((n) => n.name === partName);
+          if (!node) {
+            if (data.models?.length) {
+              missingNodeEntries.push({ partName, variants: data.models });
+            }
+            continue;
+          }
+          const models = data.models || [];
+          if (!models.length) continue;
+          const variants = [];
+          models.forEach((variant, idx) => {
+            if (!variant) return;
+            if (idx === 0) {
+              variants.push(variant);
+            } else if (variant.src) {
+              variants.push(variant);
+            }
+          });
+          if (!variants.length) continue;
+          const baseline =
+            partsSnapshot?.[partName] ||
+            (variants.length ? variants[0] : null);
+          const fallbackName = baseline?.name || models[0]?.name || partName;
+          entries.push({ partName, node, variants, baseline, fallbackName });
+        }
+      }
+      return entries;
+    };
+
+    const renderEntries = collectRenderableVariants();
+    const totalCount = renderEntries.reduce((sum, entry) => sum + entry.variants.length, 0);
+    let doneCount = 0;
+
+    for (const entry of renderEntries) {
+      const { partName, variants, baseline, fallbackName } = entry;
+      thumbnails[partName] = {};
+      for (const variant of variants) {
+        let thumb = await generateThumbnailForVariant(
           partName,
-          variant
+          variant,
+          baseline,
+          fallbackName
+        );
+        if (!thumb) {
+          thumb = PLACEHOLDER_THUMB;
+        }
+        thumbnails[partName][variant.name] = thumb;
+        doneCount += 1;
+        updateLoadingProgress(
+          `Generating thumbnails (${doneCount}/${totalCount})`,
+          window.pendingTextures || 0,
+          window.pendingMeshes ? 1 : 0
         );
       }
     }
-  }
-}
-async function prepareVariantPreview(variant, partName, gl2) {
-  /* helper – pravi VAO u gl2 kontekstu */
-  function makeVAO(gl2, pos, nor, ind) {
-    const vao = gl2.createVertexArray();
-    gl2.bindVertexArray(vao);
 
-    const vb = gl2.createBuffer();
-    gl2.bindBuffer(gl2.ARRAY_BUFFER, vb);
-
-    /* interleaved POS+NOR */
-    const inter = new Float32Array(pos.length + nor.length);
-    for (let i = 0, j = 0; i < pos.length / 3; i++) {
-      inter[j++] = pos[i * 3];
-      inter[j++] = pos[i * 3 + 1];
-      inter[j++] = pos[i * 3 + 2];
-      inter[j++] = nor[i * 3];
-      inter[j++] = nor[i * 3 + 1];
-      inter[j++] = nor[i * 3 + 2];
-    }
-    gl2.bufferData(gl2.ARRAY_BUFFER, inter, gl2.STATIC_DRAW);
-
-    gl2.enableVertexAttribArray(0);
-    gl2.vertexAttribPointer(0, 3, gl2.FLOAT, false, 24, 0);
-    gl2.enableVertexAttribArray(1);
-    gl2.vertexAttribPointer(1, 3, gl2.FLOAT, false, 24, 12);
-
-    const eb = gl2.createBuffer();
-    gl2.bindBuffer(gl2.ELEMENT_ARRAY_BUFFER, eb);
-    gl2.bufferData(gl2.ELEMENT_ARRAY_BUFFER, ind, gl2.STATIC_DRAW);
-
-    /* ⬇️  OVO JE BILO POGREŠNO – mora bindVertexArray */
-    gl2.bindVertexArray(null);
-    return vao;
-  }
-
-  if (!variant || !variant.src) {
-    const node = nodesMeta.find((n) => n.name === partName);
-    if (!node) return null;
-
-    const draws = [];
-    let bbMin = [Infinity, Infinity, Infinity];
-    let bbMax = [-Infinity, -Infinity, -Infinity];
-
-    /* opaque */
-    for (const r of node.renderIdxs) {
-      const op = originalParts[r.idx];
-      if (!op || !op.pos) continue;
-
-      const vao = makeVAO(gl2, op.pos, op.nor, op.ind);
-      draws.push({
-        vao,
-        count: op.ind.length,
-        type:
-          op.type === gl.UNSIGNED_INT ? gl2.UNSIGNED_INT : gl2.UNSIGNED_SHORT,
-        baseColor: op.baseColor,
-        opacity: 1.0,
-        isBlend: false,
-      });
-
-      const b = computeBounds(op.pos);
-      bbMin = [
-        Math.min(bbMin[0], b.min[0]),
-        Math.min(bbMin[1], b.min[1]),
-        Math.min(bbMin[2], b.min[2]),
-      ];
-      bbMax = [
-        Math.max(bbMax[0], b.max[0]),
-        Math.max(bbMax[1], b.max[1]),
-        Math.max(bbMax[2], b.max[2]),
-      ];
+    if (missingNodeEntries.length) {
+      for (const entry of missingNodeEntries) {
+        const { partName, variants } = entry;
+        if (!variants?.length) continue;
+        thumbnails[partName] = thumbnails[partName] || {};
+        for (const variant of variants) {
+          thumbnails[partName][variant.name] = PLACEHOLDER_THUMB;
+        }
+      }
     }
 
-    /* fabričko staklo */
-    (originalGlassByPart[partName] || []).forEach((g) => {
-      const vao = makeVAO(gl2, g.pos, g.nor, g.ind);
-      draws.push({
-        vao,
-        count: g.ind.length,
-        type:
-          g.type === gl.UNSIGNED_INT ? gl2.UNSIGNED_INT : gl2.UNSIGNED_SHORT,
-        baseColor: g.baseColor,
-        opacity: g.opacity,
-        isBlend: true,
-      });
-
-      const b = computeBounds(g.pos);
-      bbMin = [
-        Math.min(bbMin[0], b.min[0]),
-        Math.min(bbMin[1], b.min[1]),
-        Math.min(bbMin[2], b.min[2]),
-      ];
-      bbMax = [
-        Math.max(bbMax[0], b.max[0]),
-        Math.max(bbMax[1], b.max[1]),
-        Math.max(bbMax[2], b.max[2]),
-      ];
-    });
-
-    if (!draws.length) return null;
-    return { draws, bounds: { min: bbMin, max: bbMax } };
-  }
-  if (variant.src) {
-    if (!preparedVariants[variant.src]) {
-      let buf = cachedVariants[variant.src];
-      if (!buf) buf = await fetch(variant.src).then((r) => r.arrayBuffer());
-      preparedVariants[variant.src] = await parseGLBToPrepared(
-        buf,
-        variant.src
-      );
+    if (placeholderEntries.length) {
+      for (const entry of placeholderEntries) {
+        const { partName, variants } = entry;
+        if (!variants?.length) continue;
+        thumbnails[partName] = thumbnails[partName] || {};
+        for (const variant of variants) {
+          thumbnails[partName][variant.name] = PLACEHOLDER_THUMB;
+        }
+      }
     }
-
-    const meshes = preparedVariants[variant.src];
-    if (!meshes || !meshes.length) return null;
-
-    const draws = [];
-    let bbMin = [Infinity, Infinity, Infinity];
-    let bbMax = [-Infinity, -Infinity, -Infinity];
-
-    meshes.forEach((vm) => {
-      const vao = makeVAO(gl2, vm.pos, vm.nor, vm.ind);
-      draws.push({
-        vao,
-        count: vm.count,
-        type:
-          vm.type === gl.UNSIGNED_INT ? gl2.UNSIGNED_INT : gl2.UNSIGNED_SHORT,
-        baseColor: vm.baseColor,
-        opacity: vm.opacity,
-        isBlend: vm.isBlend,
-      });
-
-      const b = computeBounds(vm.pos);
-      bbMin = [
-        Math.min(bbMin[0], b.min[0]),
-        Math.min(bbMin[1], b.min[1]),
-        Math.min(bbMin[2], b.min[2]),
-      ];
-      bbMax = [
-        Math.max(bbMax[0], b.max[0]),
-        Math.max(bbMax[1], b.max[1]),
-        Math.max(bbMax[2], b.max[2]),
-      ];
-    });
-
-    return { draws, bounds: { min: bbMin, max: bbMax } };
+  } finally {
+    restoreObject(currentParts, partsSnapshot);
+    restoreObject(savedColorsByPart, colorsSnapshot);
+    window.savedColorsByPart = savedColorsByPart;
+    restoreCameraState(cameraSnapshot);
+    window.__suppressThumbnailUI = previousThumbnailFlag;
+    window.__suppressFocusCamera = previousFocusState;
+    sceneChanged = true;
+    render();
   }
-
-  return null; /* fallback */
 }
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

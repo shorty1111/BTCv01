@@ -19,6 +19,8 @@ export function initCamera(canvas) {
   let view = new Float32Array(16);
   const BASE_NEAR = 0.1;
   const MIN_FAR = 500.0;
+  let fovDegrees = 60;
+  let fovOverride = null;
 
   function computeFarPlane(currentDist) {
     const sceneRadius = window.sceneBoundingRadius || 50.0;
@@ -32,7 +34,7 @@ export function initCamera(canvas) {
   let moved = false;
   let viewUpdateQueued = false;
   // === ✅ POČETNI UGAO I VISINA — KAO U STAROM main.js ===
-  rx = rxTarget = Math.PI / 10;   // ~18° nagib iznad horizonta
+  rx = rxTarget = Math.PI / 7;    // ~26° nagib iznad horizonta (više podignuta kamera)
   ry = ryTarget = Math.PI / 20;   // blagi yaw
   dist = distTarget = 5;          // inicijalna udaljenost
   const initialState = {
@@ -53,7 +55,9 @@ export function initCamera(canvas) {
     rx += (rxTarget - rx) * 0.16;
     ry += (ryTarget - ry) * 0.16;
 
-    const fovY = Math.PI / 4;
+    const fovDegCurrent =
+      typeof fovOverride === "number" ? fovOverride : fovDegrees;
+    const fovY = (fovDegCurrent * Math.PI) / 180;
     let minDistDynamic =
       ((window.currentBoundingRadius || window.sceneBoundingRadius || 1.5) /
         Math.tan(fovY / 2)) *
@@ -93,7 +97,9 @@ export function initCamera(canvas) {
     const aspect = canvas.width / canvas.height;
     const perspNear = BASE_NEAR;
     const perspFar = computeFarPlane(dist);
-    let proj = persp(60, aspect, perspNear, perspFar);
+    const targetFov =
+      typeof fovOverride === "number" ? fovOverride : fovDegrees;
+    let proj = persp(targetFov, aspect, perspNear, perspFar);
     let near = perspNear;
     let far = perspFar;
     window.currentNear = near;
@@ -396,6 +402,20 @@ canvas.addEventListener("touchend", (e) => {
     set distTarget(v) { distTarget = v; },
     get moved() { return moved; },
     set moved(v) { moved = v; },
+    get fovOverride() { return fovOverride; },
+    set fovOverride(v) {
+      if (typeof v === "number" && Number.isFinite(v)) {
+        fovOverride = v;
+      } else {
+        fovOverride = null;
+      }
+    },
+    get fovDegrees() { return fovDegrees; },
+    set fovDegrees(v) {
+      if (typeof v === "number" && Number.isFinite(v)) {
+        fovDegrees = v;
+      }
+    },
     reset: resetCamera,
   };
 }

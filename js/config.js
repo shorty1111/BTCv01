@@ -13,6 +13,7 @@ export const BOAT_INFO = {
 export const VARIANT_GROUPS = {
   "Seats": {
     "BT_Base_03_A": {
+      "generateThumbs": true,
       "mainMat": "M_Leather_A",
       "models": [
         {
@@ -85,6 +86,7 @@ export const VARIANT_GROUPS = {
   },
   "Hull": {
     "BT_Base_00_A": {
+      "generateThumbs": true,
       "mainMat": "M_Base_Color_Graphics_A",
       "models": [
         {
@@ -134,6 +136,7 @@ export const VARIANT_GROUPS = {
   },
   "Center Console": {
     "BT_Base_Center_Console_A": {
+      "generateThumbs": true,
       "mainMat": "M_Base_A",
       "models": [
         {
@@ -218,6 +221,7 @@ export const VARIANT_GROUPS = {
   },
   "Additional Equipment": {
     "EquipmentGroup": {
+      "generateThumbs": false,
       "mainMat": null,
       "models": [
         {
@@ -253,6 +257,7 @@ export const VARIANT_GROUPS = {
   },
   "Additional Equipment3": {
     "EquipmentGroup2": {
+      "generateThumbs": false,
       "mainMat": null,
       "models": [
         {
