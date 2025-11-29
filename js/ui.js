@@ -108,6 +108,104 @@ const hotspotButtons = new Map();
 const partFirstItems = new Map();
 let hotspotLayer = null;
 let hotspotLoopActive = false;
+let showSelectedOnly = false;
+
+function getPartConfig(partKey) {
+  for (const parts of Object.values(VARIANT_GROUPS)) {
+    if (parts[partKey]) return parts[partKey];
+  }
+  return null;
+}
+
+function isPartModified(partKey) {
+  const cfg = getPartConfig(partKey);
+  const def = cfg?.models?.[0];
+  const current = currentParts[partKey];
+  if (!def || !current) return false;
+  return current.name !== def.name || !!current.selectedColor;
+}
+
+function applySelectedFilter() {
+  const groups = document.querySelectorAll(".variant-group");
+  groups.forEach((group) => {
+    const header = group.querySelector("h3");
+    const controls = group.querySelector(".variant-group-controls");
+    const itemsDiv = group.querySelector(".variant-items");
+    const parts = (group.dataset.parts || "").split(",").filter(Boolean);
+    let groupHasVisible = false;
+    parts.forEach((partKey) => {
+      const cfg = getPartConfig(partKey);
+      const modified = isPartModified(partKey);
+      const items = Array.from(
+        document.querySelectorAll(`.variant-item[data-part="${partKey}"]`)
+      );
+      items.forEach((item) => {
+        if (showSelectedOnly) {
+          const isSelectedItem = item.classList.contains("active");
+          item.style.display = isSelectedItem ? "" : "none";
+          if (isSelectedItem) groupHasVisible = true;
+        } else {
+          item.style.display = "";
+          groupHasVisible = true;
+        }
+      });
+      const resetBtn = group.querySelector(".reset-group-btn");
+      if (resetBtn) {
+        resetBtn.disabled = !modified;
+        resetBtn.classList.toggle("disabled", !modified);
+      }
+    });
+    if (showSelectedOnly) {
+      group.classList.add("filter-only");
+      group.classList.add("open");
+      if (header) header.style.display = "none";
+      if (controls) controls.style.display = "none";
+      if (itemsDiv) {
+        itemsDiv.style.maxHeight = "unset";
+        itemsDiv.style.opacity = "1";
+        itemsDiv.style.transform = "none";
+        itemsDiv.style.padding = "12px";
+      }
+      group.style.display = groupHasVisible ? "" : "none";
+    } else {
+      group.classList.remove("filter-only");
+      if (header) header.style.display = "";
+      if (controls) controls.style.display = "";
+      if (itemsDiv) {
+        itemsDiv.style.maxHeight = "";
+        itemsDiv.style.opacity = "";
+        itemsDiv.style.transform = "";
+        itemsDiv.style.padding = "";
+      }
+      group.style.display = groupHasVisible ? "" : "none";
+    }
+  });
+}
+
+function toggleSelectedOnly() {
+  showSelectedOnly = !showSelectedOnly;
+  const btn = document.getElementById("variantSelectedOnlyToggle");
+  if (btn) {
+    btn.classList.toggle("active", showSelectedOnly);
+    btn.textContent = showSelectedOnly ? "Show all variants" : "Show selected only";
+  }
+  applySelectedFilter();
+}
+
+function resetGroupToDefaults(parts) {
+  if (!parts) return;
+  for (const [partKey, data] of Object.entries(parts)) {
+    const def = data?.models?.[0];
+    if (!def) continue;
+    const card = document.querySelector(
+      `.variant-item[data-part="${partKey}"][data-variant="${def.name}"]`
+    );
+    if (card) {
+      card.click();
+    }
+  }
+  applySelectedFilter();
+}
 
 function ensureHotspotLayer() {
   if (!hotspotLayer) {
@@ -222,6 +320,19 @@ function buildVariantSidebar() {
     <h2>Customize Your Boat</h2>
     <p>Select materials, colors, and parts to create a configuration that matches your vision.</p>
   `;
+  const filterBar = document.createElement("div");
+  filterBar.className = "variant-filter-bar";
+  const selectedToggle = document.createElement("button");
+  selectedToggle.id = "variantSelectedOnlyToggle";
+  selectedToggle.className = "action-button mini";
+  selectedToggle.type = "button";
+  selectedToggle.textContent = "Show selected only";
+  selectedToggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleSelectedOnly();
+  });
+  filterBar.appendChild(selectedToggle);
+  sidebar.insertBefore(filterBar, sidebar.firstChild);
   sidebar.insertBefore(intro, sidebar.firstChild);
 
   for (const [groupName, parts] of Object.entries(VARIANT_GROUPS)) {
@@ -252,6 +363,19 @@ function buildVariantSidebar() {
     });
 
     groupDiv.appendChild(header);
+    const groupControls = document.createElement("div");
+    groupControls.className = "variant-group-controls";
+    const resetBtn = document.createElement("button");
+    resetBtn.type = "button";
+    resetBtn.className = "reset-group-btn disabled";
+    resetBtn.textContent = "Reset";
+    resetBtn.disabled = true;
+    resetBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      resetGroupToDefaults(parts);
+    });
+    groupControls.appendChild(resetBtn);
+    groupDiv.appendChild(groupControls);
     const itemsDiv = document.createElement("div");
     itemsDiv.className = "variant-items";
     const groupPartKeys = [];
@@ -437,6 +561,7 @@ function buildVariantSidebar() {
                   sceneChanged = true;   // 🔹 dodaj ovde
                   render();
                   showPartInfo(`${variant.name} (${c.name})`);
+                  applySelectedFilter();
                 });
 
               colorsDiv.appendChild(colorEl);
@@ -495,27 +620,27 @@ function buildVariantSidebar() {
           }
 
           // toggle logika za additional kartice
-          const key = variant.name;
           const alreadyActive = itemEl.classList.contains("active");
 
           if (alreadyActive) {
             itemEl.classList.remove("active");
-            delete currentParts[key];
-            const row = document.querySelector(`#partsTable tr[data-part="${key}"]`);
+            delete currentParts[partKey];
+            const row = document.querySelector(`#partsTable tr[data-part="${partKey}"]`);
             if (row) row.remove();
             // vizuelno resetuj border i shadow
             itemEl.style.borderColor = "";
             itemEl.style.boxShadow = "";
           } else {
             itemEl.classList.add("active");
-            currentParts[key] = variant;
-            updatePartsTable(key, variant.name);
+            currentParts[partKey] = variant;
+            updatePartsTable(partKey, variant.name);
             // vizuelno istakni karticu odmah (inline stil pobedi sve CSS konflikte)
             itemEl.style.borderColor = "var(--primary)";
             itemEl.style.boxShadow = "0 0 0 2px rgba(56, 189, 248, 0.7)";
           }
 
           updateTotalPrice();
+          applySelectedFilter();
           return;
         }
 
@@ -562,12 +687,20 @@ function buildVariantSidebar() {
   focusCameraOnNode(node);
   render();
   showPartInfo(variant.name);
+  applySelectedFilter();
 };
 
 // Klik handler (radi isto na desktopu i touch uređajima)
 itemEl.addEventListener("click", handleItemClick);
 
-   itemsDiv.appendChild(itemEl);
+    itemsDiv.appendChild(itemEl);
+
+        const selectedName = currentParts[partKey]?.name || variants[0]?.name;
+        if (variant.name === selectedName) {
+          itemEl.classList.add("active");
+          itemEl.style.borderColor = "var(--primary)";
+          itemEl.style.boxShadow = "0 0 0 2px rgba(56, 189, 248, 0.7)";
+        }
       });
     }
 
@@ -576,6 +709,7 @@ itemEl.addEventListener("click", handleItemClick);
     sidebar.appendChild(groupDiv);
   }
   startHotspotLoop();
+  applySelectedFilter();
 }
 function buildPartsTable() {
   const tbody = document.querySelector("#partsTable tbody");
