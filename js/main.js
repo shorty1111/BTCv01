@@ -3897,13 +3897,13 @@ async function preloadAllVariants() {
 async function generateThumbnailForVariant(partName, variant) {
   if (!window.previewGL) {
     const previewCanvas = document.createElement("canvas");
-    previewCanvas.width = 256;
-    previewCanvas.height = 256;
+    previewCanvas.width = 384;
+    previewCanvas.height = 384;
     window.previewGL = previewCanvas.getContext("webgl2");
   }
   const gl2 = window.previewGL;
-  gl2.canvas.width = 256;
-  gl2.canvas.height = 256;
+  gl2.canvas.width = 384;
+  gl2.canvas.height = 384;
   const preview = await prepareVariantPreview(variant, partName, gl2);
   if (!preview || !preview.draws || !preview.draws.length) return null;
 
@@ -3912,25 +3912,39 @@ async function generateThumbnailForVariant(partName, variant) {
 
   // Kamera iz ukupnog boundinga (preko svih materijala)
   const bounds = preview.bounds;
-  const size = Math.max(
-    bounds.max[0] - bounds.min[0],
-    bounds.max[1] - bounds.min[1],
-    bounds.max[2] - bounds.min[2]
-  );
+  const spanX = bounds.max[0] - bounds.min[0];
+  const spanY = bounds.max[1] - bounds.min[1];
+  const spanZ = bounds.max[2] - bounds.min[2];
+  const yaw = Math.PI / 4;
+  const pitch = Math.PI / 5;
+  const projectedHorizontal =
+    Math.abs(spanX * Math.cos(yaw)) + Math.abs(spanZ * Math.sin(yaw));
+  const spanHorizontal = Math.max(projectedHorizontal, 0.001);
+  const projectedVertical =
+    spanY * Math.cos(pitch) +
+    Math.abs(spanX * Math.sin(pitch) * Math.sin(yaw)) +
+    Math.abs(spanZ * Math.sin(pitch) * Math.cos(yaw));
+  const spanVertical = Math.max(projectedVertical, 0.001);
   const center = [
     (bounds.min[0] + bounds.max[0]) / 2,
     (bounds.min[1] + bounds.max[1]) / 2,
     (bounds.min[2] + bounds.max[2]) / 2,
   ];
-  const dist = size * 1.8;
-
+  const fov = Math.PI / 4;
+  const fillX = 0.8;
+  const fillY = 0.8;
+  const distForWidth = (spanHorizontal * 0.5) / Math.tan(fov / 2) / fillX;
+  const distForHeight = (spanVertical * 0.5) / Math.tan(fov / 2) / fillY;
+  const dist = Math.max(distForWidth, distForHeight, 0.01);
   const proj = persp(45, 1, 0.1, dist * 4);
   const eye = [
-    center[0] + dist * Math.sin(Math.PI / 4),
-    center[1] + size * 0.5,
-    center[2] + dist * Math.cos(Math.PI / 4),
+    center[0] + dist * Math.cos(pitch) * Math.sin(yaw),
+    center[1] + dist * Math.sin(pitch),
+    center[2] + dist * Math.cos(pitch) * Math.cos(yaw),
   ];
-  const view = look(eye, center, [0, 1, 0]);
+  const panOffset = spanVertical * 0.2; // lagano pomeri gore-dole da bude bolje centrirano
+  const target = [center[0], center[1] - panOffset, center[2]];
+  const view = look(eye, target, [0, 1, 0]);
   const model = new Float32Array([
     1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
   ]);
@@ -3939,7 +3953,7 @@ async function generateThumbnailForVariant(partName, variant) {
   gl2.uniformMatrix4fv(gl2.getUniformLocation(prog, "uView"), false, view);
   gl2.uniformMatrix4fv(gl2.getUniformLocation(prog, "uModel"), false, model);
 
-  gl2.viewport(0, 0, 256, 256);
+  gl2.viewport(0, 0, 384, 384);
   gl2.clearColor(0.15, 0.15, 0.18, 1);
   gl2.clear(gl2.COLOR_BUFFER_BIT | gl2.DEPTH_BUFFER_BIT);
   gl2.enable(gl2.DEPTH_TEST);

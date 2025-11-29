@@ -279,7 +279,7 @@ export function initCamera(canvas) {
         y: (e.touches[0].clientY + e.touches[1].clientY) * 0.5,
       };
     }
-    e.preventDefault();
+    if (e.cancelable) e.preventDefault();
   }, { passive: false });
 
 canvas.addEventListener("touchmove", (e) => {
@@ -333,7 +333,7 @@ canvas.addEventListener("touchmove", (e) => {
     touchPanLastMid = { x: midX, y: midY };
   }
 
-  e.preventDefault();
+  if (e.cancelable) e.preventDefault();
 }, { passive: false });
 
 canvas.addEventListener("touchend", (e) => {
@@ -347,7 +347,7 @@ canvas.addEventListener("touchend", (e) => {
       touchDragging = false;
       pinchLastDist = null;
     }
-    e.preventDefault();
+    if (e.cancelable) e.preventDefault();
 }, { passive: false });
 
 

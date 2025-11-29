@@ -264,13 +264,6 @@ function buildVariantSidebar() {
         preview.className = "thumb";
         thumbWrapper.appendChild(preview);
 
-
-        const label = document.createElement("div");
-        label.className = "title";
-        label.textContent = variant.name;
-        thumbWrapper.appendChild(label);
-
-
         itemEl.appendChild(thumbWrapper);
         if (!partFirstItems.has(partKey)) {
           partFirstItems.set(partKey, itemEl);
@@ -278,6 +271,10 @@ function buildVariantSidebar() {
 
         const body = document.createElement("div");
         body.className = "variant-body";
+        const label = document.createElement("div");
+        label.className = "title";
+        label.textContent = variant.name;
+        body.appendChild(label);
 
         if (variant.colors && variant.colors.length > 0) {
           const colorsDiv = document.createElement("div");
@@ -443,7 +440,7 @@ function buildVariantSidebar() {
           ? "Included (incl. VAT)"
           : `+${rawPrice} € (incl. VAT)`;
         footer.innerHTML = `<span class="price">${priceText}</span>`;
-        itemEl.appendChild(footer);
+        body.appendChild(footer);
       // ➕ Dodaj dugme i opis ako postoji opis u configu
       if (variant.description) {
         const descBtn = document.createElement("button");
