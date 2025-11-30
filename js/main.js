@@ -3689,42 +3689,93 @@ if (prim.material !== undefined) {
   return out;
 }
 
-function applyViewCameraPreset(cameraInstance, variant) {
+function applyViewCameraPreset(cameraInstance, variant, basePose = null) {
   if (!cameraInstance) return false;
 
   const isFiniteNumber = (v) => typeof v === "number" && Number.isFinite(v);
-  const directView = variant?.viewCamera || variant?.view || variant?.cameraView;
+  const directView =
+    variant?.viewCamera || variant?.view || variant?.cameraView || variant?.viewCam;
   let applied = false;
 
   if (directView && typeof directView === "object") {
-    if (
-      Array.isArray(directView.pan) &&
-      directView.pan.length === 3 &&
-      directView.pan.every(isFiniteNumber)
-    ) {
-      cameraInstance.pan = directView.pan.slice();
-      cameraInstance.panTarget = directView.pan.slice();
-      applied = true;
+    const basePan =
+      basePose?.pan?.slice() ||
+      cameraInstance.panTarget?.slice() ||
+      cameraInstance.pan?.slice() ||
+      [0, 0, 0];
+    const baseRx =
+      (isFiniteNumber(basePose?.rx)
+        ? basePose.rx
+        : isFiniteNumber(cameraInstance.rxTarget)
+        ? cameraInstance.rxTarget
+        : cameraInstance.rx) || 0;
+    const baseRy =
+      (isFiniteNumber(basePose?.ry)
+        ? basePose.ry
+        : isFiniteNumber(cameraInstance.ryTarget)
+        ? cameraInstance.ryTarget
+        : cameraInstance.ry) || 0;
+    const baseDist =
+      (isFiniteNumber(basePose?.dist)
+        ? basePose.dist
+        : isFiniteNumber(cameraInstance.distTarget)
+        ? cameraInstance.distTarget
+        : cameraInstance.dist) || 1;
+
+    const hasOffsetFields =
+      directView.panOffset ||
+      isFiniteNumber(directView.rxOffset) ||
+      isFiniteNumber(directView.ryOffset) ||
+      isFiniteNumber(directView.distScale);
+
+    if (hasOffsetFields) {
+      if (directView.panOffset && directView.panOffset.length === 3) {
+        cameraInstance.panTarget = [
+          basePan[0] + (directView.panOffset[0] || 0),
+          basePan[1] + (directView.panOffset[1] || 0),
+          basePan[2] + (directView.panOffset[2] || 0),
+        ];
+        applied = true;
+      }
+      if (isFiniteNumber(directView.rxOffset)) {
+        cameraInstance.rxTarget = baseRx + directView.rxOffset;
+        applied = true;
+      }
+      if (isFiniteNumber(directView.ryOffset)) {
+        cameraInstance.ryTarget = baseRy + directView.ryOffset;
+        applied = true;
+      }
+      if (isFiniteNumber(directView.distScale)) {
+        cameraInstance.distTarget = baseDist * directView.distScale;
+        applied = true;
+      }
+    } else {
+      if (
+        Array.isArray(directView.pan) &&
+        directView.pan.length === 3 &&
+        directView.pan.every(isFiniteNumber)
+      ) {
+        cameraInstance.panTarget = directView.pan.slice();
+        applied = true;
+      }
+      if (isFiniteNumber(directView.rx)) {
+        cameraInstance.rxTarget = directView.rx;
+        applied = true;
+      }
+      if (isFiniteNumber(directView.ry)) {
+        cameraInstance.ryTarget = directView.ry;
+        applied = true;
+      }
+      if (isFiniteNumber(directView.dist)) {
+        cameraInstance.distTarget = directView.dist;
+        applied = true;
+      }
+      if (isFiniteNumber(directView.fov)) {
+        cameraInstance.fovOverride = directView.fov;
+        applied = true;
+      }
     }
-    if (isFiniteNumber(directView.rx)) {
-      cameraInstance.rx = directView.rx;
-      cameraInstance.rxTarget = directView.rx;
-      applied = true;
-    }
-    if (isFiniteNumber(directView.ry)) {
-      cameraInstance.ry = directView.ry;
-      cameraInstance.ryTarget = directView.ry;
-      applied = true;
-    }
-    if (isFiniteNumber(directView.dist)) {
-      cameraInstance.dist = directView.dist;
-      cameraInstance.distTarget = directView.dist;
-      applied = true;
-    }
-    if (isFiniteNumber(directView.fov)) {
-      cameraInstance.fovOverride = directView.fov;
-      applied = true;
-    }
+
     if (applied) {
       cameraInstance.moved = true;
       return true;
@@ -3763,27 +3814,23 @@ function applyViewCameraPreset(cameraInstance, variant) {
     : cameraInstance.dist || 1;
 
   if (preset.panOffset) {
-    cameraInstance.pan = [
+    cameraInstance.panTarget = [
       basePan[0] + (preset.panOffset[0] || 0),
       basePan[1] + (preset.panOffset[1] || 0),
       basePan[2] + (preset.panOffset[2] || 0),
     ];
-    cameraInstance.panTarget = cameraInstance.pan.slice();
     applied = true;
   }
   if (isFiniteNumber(preset.rxOffset)) {
-    cameraInstance.rx = baseRx + preset.rxOffset;
-    cameraInstance.rxTarget = cameraInstance.rx;
+    cameraInstance.rxTarget = baseRx + preset.rxOffset;
     applied = true;
   }
   if (isFiniteNumber(preset.ryOffset)) {
-    cameraInstance.ry = baseRy + preset.ryOffset;
-    cameraInstance.ryTarget = cameraInstance.ry;
+    cameraInstance.ryTarget = baseRy + preset.ryOffset;
     applied = true;
   }
   if (isFiniteNumber(preset.distScale)) {
-    cameraInstance.dist = baseDist * preset.distScale;
-    cameraInstance.distTarget = cameraInstance.dist;
+    cameraInstance.distTarget = baseDist * preset.distScale;
     applied = true;
   }
 
@@ -3797,14 +3844,19 @@ function applyViewCameraPreset(cameraInstance, variant) {
 
 function getVariantViewKey(variant) {
   if (!variant) return null;
-  const directView = variant.viewCamera || variant.view || variant.cameraView;
+  const directView = variant.viewCamera || variant.view || variant.cameraView || variant.viewCam;
   if (directView && typeof directView === "object") {
+    const isFiniteNumber = (v) => typeof v === "number" && Number.isFinite(v);
     const pan = Array.isArray(directView.pan) ? directView.pan.join(",") : "nopan";
-    const rx = Number.isFinite(directView.rx) ? directView.rx : "norx";
-    const ry = Number.isFinite(directView.ry) ? directView.ry : "nory";
-    const dist = Number.isFinite(directView.dist) ? directView.dist : "nodist";
-    const fov = Number.isFinite(directView.fov) ? directView.fov : "nofov";
-    return `direct:${pan}:${rx}:${ry}:${dist}:${fov}`;
+    const rx = isFiniteNumber(directView.rx) ? directView.rx : "norx";
+    const ry = isFiniteNumber(directView.ry) ? directView.ry : "nory";
+    const dist = isFiniteNumber(directView.dist) ? directView.dist : "nodist";
+    const fov = isFiniteNumber(directView.fov) ? directView.fov : "nofov";
+    const panOff = Array.isArray(directView.panOffset) ? directView.panOffset.join(",") : "noPanOff";
+    const rxOff = isFiniteNumber(directView.rxOffset) ? directView.rxOffset : "noRxOff";
+    const ryOff = isFiniteNumber(directView.ryOffset) ? directView.ryOffset : "noRyOff";
+    const distScale = isFiniteNumber(directView.distScale) ? directView.distScale : "noDistScale";
+    return `direct:${pan}:${rx}:${ry}:${dist}:${fov}:${panOff}:${rxOff}:${ryOff}:${distScale}`;
   }
   const parsePresetIndex = (value) => {
     const n = parseInt(value, 10);
@@ -4004,29 +4056,26 @@ if (activeColor) {
       variantData ||
       (cfgGroup[partName]?.models || []).find((v) => v.name === variantName);
     const viewKey = getVariantViewKey(cfgVariant);
-    const prevKey = lastAppliedCameraPreset[partName];
-    const shouldApplyCamera = viewKey !== null && viewKey !== prevKey;
+    const hasViewPreset = viewKey !== null;
 
-    if (!wasSameVariant && shouldApplyCamera) {
+    if (!wasSameVariant && hasViewPreset) {
       focusCameraOnNode(node);
-      const viewApplied = applyViewCameraPreset(camera, cfgVariant);
+      const basePose = {
+        pan: camera.panTarget?.slice() || camera.pan?.slice() || [0, 0, 0],
+        rx: camera.rxTarget ?? camera.rx,
+        ry: camera.ryTarget ?? camera.ry,
+        dist: camera.distTarget ?? camera.dist,
+      };
+      const viewApplied = applyViewCameraPreset(camera, cfgVariant, basePose);
       if (viewApplied) {
         camera.updateView();
         sceneChanged = true;
         lastAppliedCameraPreset[partName] = viewKey;
       }
-    } else if (!wasSameVariant && !shouldApplyCamera) {
+    } else if (!wasSameVariant && !hasViewPreset) {
       // ako je ista kamera, barem centriraj novi bounding box bez pomeranja kamere
       delete node.cachedBounds;
       ensureNodeBounds(node);
-    } else if (wasSameVariant && shouldApplyCamera) {
-      // ista varijanta ali drugačiji preset iz URL-a
-      const viewApplied = applyViewCameraPreset(camera, cfgVariant);
-      if (viewApplied) {
-        camera.updateView();
-        sceneChanged = true;
-        lastAppliedCameraPreset[partName] = viewKey;
-      }
     }
   }
   if (shouldShowLoading) {

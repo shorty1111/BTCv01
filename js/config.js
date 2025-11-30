@@ -111,6 +111,7 @@ export const VARIANT_GROUPS = {
           src: null,
           price: 0,
           thumbCam: 2,
+          viewCam: 2,
           description:
             "A standard fiberglass hull offering a perfect balance between weight and strength.",
           colors: [],
@@ -120,6 +121,7 @@ export const VARIANT_GROUPS = {
           src: "variants/BT_Base_00_B.glb",
           price: 450,
           thumbCam: 2,
+          viewCam: 2,
           description:
             "Streamlined sport hull with improved hydrodynamics for higher performance and better control at speed.",
           colors: [

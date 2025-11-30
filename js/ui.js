@@ -741,7 +741,7 @@ function buildVariantSidebar() {
           }
         }
       }
-   updatePartsTable(partKey, variant.name);
+  updatePartsTable(partKey, variant.name);
   currentParts[partKey] = variant;
   itemsDiv.querySelectorAll(".variant-item").forEach((el) => {
     el.classList.remove("active");
@@ -751,8 +751,6 @@ function buildVariantSidebar() {
   itemEl.classList.add("active");
   itemEl.style.borderColor = "var(--primary)";
   itemEl.style.boxShadow = "0 0 0 2px rgba(56, 189, 248, 0.7)";
-  focusCameraOnNode(node);
-  render();
   showPartInfo(variant.name);
   applySelectedFilter();
 };
