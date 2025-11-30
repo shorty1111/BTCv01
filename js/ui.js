@@ -109,6 +109,8 @@ const partFirstItems = new Map();
 let hotspotLayer = null;
 let hotspotLoopActive = false;
 let showSelectedOnly = false;
+let filterButtonSelected = null;
+let filterButtonCollapseToggle = null;
 
 function getPartConfig(partKey) {
   for (const parts of Object.values(VARIANT_GROUPS)) {
@@ -182,14 +184,50 @@ function applySelectedFilter() {
   });
 }
 
-function toggleSelectedOnly() {
-  showSelectedOnly = !showSelectedOnly;
-  const btn = document.getElementById("variantSelectedOnlyToggle");
-  if (btn) {
-    btn.classList.toggle("active", showSelectedOnly);
-    btn.textContent = showSelectedOnly ? "Show all variants" : "Show selected only";
+function setFilterMode(mode) {
+  if (mode === "toggle-selected") {
+    showSelectedOnly = !showSelectedOnly;
+  } else {
+    showSelectedOnly = mode === "selected";
+  }
+  if (filterButtonSelected) {
+    filterButtonSelected.classList.toggle("active", showSelectedOnly);
+    filterButtonSelected.textContent = showSelectedOnly ? "Hide selected" : "Show selected";
+  }
+  if (filterButtonCollapseToggle) {
+    filterButtonCollapseToggle.disabled = showSelectedOnly;
+    filterButtonCollapseToggle.classList.toggle("disabled", showSelectedOnly);
+  }
+  if (!showSelectedOnly) {
+    collapseAllGroups();
   }
   applySelectedFilter();
+}
+
+function collapseAllGroups() {
+  document.querySelectorAll(".variant-group").forEach((group) => {
+    group.classList.remove("open");
+    const itemsDiv = group.querySelector(".variant-items");
+    if (itemsDiv) {
+      itemsDiv.style.maxHeight = "";
+      itemsDiv.style.opacity = "";
+      itemsDiv.style.transform = "";
+      itemsDiv.style.padding = "";
+    }
+  });
+}
+
+function openAllGroups() {
+  document.querySelectorAll(".variant-group").forEach((group) => {
+    group.classList.add("open");
+    const itemsDiv = group.querySelector(".variant-items");
+    if (itemsDiv) {
+      itemsDiv.style.maxHeight = "unset";
+      itemsDiv.style.opacity = "1";
+      itemsDiv.style.transform = "none";
+      itemsDiv.style.padding = "12px";
+    }
+  });
 }
 
 function resetGroupToDefaults(parts) {
@@ -322,16 +360,36 @@ function buildVariantSidebar() {
   `;
   const filterBar = document.createElement("div");
   filterBar.className = "variant-filter-bar";
-  const selectedToggle = document.createElement("button");
-  selectedToggle.id = "variantSelectedOnlyToggle";
-  selectedToggle.className = "action-button mini";
-  selectedToggle.type = "button";
-  selectedToggle.textContent = "Show selected only";
-  selectedToggle.addEventListener("click", (e) => {
+  const filterButtons = document.createElement("div");
+  filterButtons.className = "variant-filter-buttons";
+
+  filterButtonSelected = document.createElement("button");
+  filterButtonSelected.type = "button";
+  filterButtonSelected.className = "filter-btn";
+  filterButtonSelected.textContent = "Show selected";
+  filterButtonSelected.addEventListener("click", (e) => {
     e.stopPropagation();
-    toggleSelectedOnly();
+    setFilterMode("toggle-selected");
   });
-  filterBar.appendChild(selectedToggle);
+  filterButtonCollapseToggle = document.createElement("button");
+  filterButtonCollapseToggle.type = "button";
+  filterButtonCollapseToggle.className = "filter-btn collapsed";
+  filterButtonCollapseToggle.textContent = "Show all";
+  filterButtonCollapseToggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isCollapsed = filterButtonCollapseToggle.classList.toggle("collapsed");
+    if (isCollapsed) {
+      filterButtonCollapseToggle.textContent = "Show all";
+      collapseAllGroups();
+    } else {
+      filterButtonCollapseToggle.textContent = "Collapse all";
+      openAllGroups();
+    }
+  });
+
+  filterButtons.appendChild(filterButtonSelected);
+  filterButtons.appendChild(filterButtonCollapseToggle);
+  filterBar.appendChild(filterButtons);
   sidebar.insertBefore(filterBar, sidebar.firstChild);
   sidebar.insertBefore(intro, sidebar.firstChild);
 

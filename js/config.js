@@ -1,602 +1,520 @@
 export const DEFAULT_MODEL = "assets/boat.glb";
 export const BASE_PRICE = 30000;
 export const BOAT_INFO = {
-  "Model": "TIARA 56",
-  "Length": "6.5 m",
-  "Width": "2.4 m",
-  "Weight": "1200 kg",
-  "Capacity": "6 persons",
-  "Engine": "Yamaha 150 HP",
+  Model: "TIARA 56",
+  Length: "6.5 m",
+  Width: "2.4 m",
+  Weight: "1200 kg",
+  Capacity: "6 persons",
+  Engine: "Yamaha 150 HP",
   "Max Speed": "70 km/h",
-  "Material": "Fiberglass"
+  Material: "Fiberglass",
 };
+
+// Preset kamere za thumbnail generisanje kao offseti na osnovni auto-fokus.
+// cam_pos=1|2|3 u URL-u bira preset; 1 = bez promene (null).
+// Polja: panOffset [x,y,z], distScale (multiplier), rxOffset, ryOffset.
+export const THUMBNAIL_CAM_PRESETS = [
+  null, // 1: klasican auto fokus (bez offseta)
+  { panOffset: [0, 0.6, 0], distScale: 0.8, rxOffset: -0.5 }, // 2: malo vise
+  { panOffset: [0, -0.3, 0], distScale: 0.92, rxOffset: 0.4 }, // 3: malo nize / blize vodi
+];
+
 export const VARIANT_GROUPS = {
-  "Seats": {
-    "BT_Base_03_A": {
-      "generateThumbs": true,
-      "mainMat": "M_Leather_A",
-      "models": [
+  Seats: {
+    BT_Base_03_A: {
+      generateThumbs: true,
+      mainMat: "M_Leather_A",
+      models: [
         {
-          "name": "Standard Seats",
-          "src": null,
-          "price": 0,
-          "description": "Durable marine-grade seats designed for everyday comfort and reliability.",
-          "colors": []
+          name: "Standard Seats",
+          src: null,
+          price: 0,
+          thumbCam: 1,
+          description:
+            "Durable marine-grade seats designed for everyday comfort and reliability.",
+          colors: [],
         },
         {
-          "name": "Comfort Edition",
-          "src": "variants/BT_Base_03_B.glb",
-          "price": 500,
-          "description": "Enhanced seating with thicker cushions and premium leather textures for a smoother ride.",
-          "colors": [
+          name: "Comfort Edition",
+          src: "variants/BT_Base_03_B.glb",
+          price: 500,
+          thumbCam: 1,
+          description:
+            "Enhanced seating with thicker cushions and premium leather textures for a smoother ride.",
+          colors: [
             {
-              "name": "Default Leather",
-              "type": "texture",
-              "texture": "leather_default_B_C.jpg",
-              "normal": "leather_default_N_C.jpg",
-              "rough": "leather_default_R_C.jpg"
+              name: "Default Leather",
+              type: "texture",
+              texture: "leather_default_B_C.jpg",
+              normal: "leather_default_N_C.jpg",
+              rough: "leather_default_R_C.jpg",
             },
             {
-              "name": "Leather Black",
-              "type": "texture",
-              "texture": "leather_black_B_C.jpg",
-              "normal": "leather_black_N_C.jpg",
-              "rough": "leather_black_R_C.jpg"
+              name: "Leather Black",
+              type: "texture",
+              texture: "leather_black_B_C.jpg",
+              normal: "leather_black_N_C.jpg",
+              rough: "leather_black_R_C.jpg",
             },
             {
-              "name": "Leather Brown",
-              "type": "texture",
-              "texture": "leather_brown_B_C.jpg",
-              "normal": "leather_brown_N_C.jpg",
-              "rough": "leather_brown_R_C.jpg"
+              name: "Leather Brown",
+              type: "texture",
+              texture: "leather_brown_B_C.jpg",
+              normal: "leather_brown_N_C.jpg",
+              rough: "leather_brown_R_C.jpg",
             },
-          ]
+          ],
         },
         {
-          "name": "Luxury Leather",
-          "src": "variants/BT_Base_03_C.glb",
-          "price": 700,
-          "description": "Hand-stitched luxury seating with refined leather finishes and superior ergonomic support.",
-          "colors": [
+          name: "Luxury Leather",
+          src: "variants/BT_Base_03_C.glb",
+          price: 700,
+          thumbCam: 1,
+          description:
+            "Hand-stitched luxury seating with refined leather finishes and superior ergonomic support.",
+          colors: [
             {
-              "name": "Default Leather",
-              "type": "texture",
-              "texture": "leather_default_B_C.jpg",
-              "normal": "leather_default_N_C.jpg",
-              "rough": "leather_default_R_C.jpg"
+              name: "Default Leather",
+              type: "texture",
+              texture: "leather_default_B_C.jpg",
+              normal: "leather_default_N_C.jpg",
+              rough: "leather_default_R_C.jpg",
             },
             {
-              "name": "Leather Black",
-              "type": "texture",
-              "texture": "leather_black_B_C.jpg",
-              "normal": "leather_black_N_C.jpg",
-              "rough": "leather_black_R_C.jpg"
+              name: "Leather Black",
+              type: "texture",
+              texture: "leather_black_B_C.jpg",
+              normal: "leather_black_N_C.jpg",
+              rough: "leather_black_R_C.jpg",
             },
             {
-              "name": "Leather Brown",
-              "type": "texture",
-              "texture": "leather_brown_B_C.jpg",
-              "normal": "leather_brown_N_C.jpg",
-              "rough": "leather_brown_R_C.jpg"
-            }
-          ]
-        }
-      ]
-    }
+              name: "Leather Brown",
+              type: "texture",
+              texture: "leather_brown_B_C.jpg",
+              normal: "leather_brown_N_C.jpg",
+              rough: "leather_brown_R_C.jpg",
+            },
+          ],
+        },
+      ],
+    },
   },
-  "Hull": {
-    "BT_Base_00_A": {
-      "generateThumbs": true,
-      "mainMat": "M_Base_Color_Graphics_A",
-      "models": [
+
+  Hull: {
+    BT_Base_00_A: {
+      generateThumbs: true,
+      mainMat: "M_Base_Color_Graphics_A",
+      models: [
         {
-          "name": "Classic Hull",
-          "src": null,
-          "price": 0,
-          "description": "A standard fiberglass hull offering a perfect balance between weight and strength.",
-          "colors": []
+          name: "Classic Hull",
+          src: null,
+          price: 0,
+          thumbCam: 2,
+          description:
+            "A standard fiberglass hull offering a perfect balance between weight and strength.",
+          colors: [],
         },
         {
-          "name": "Sport Hull",
-          "src": "variants/BT_Base_00_B.glb",
-          "price": 450,
-          "description": "Streamlined sport hull with improved hydrodynamics for higher performance and better control at speed.",
-          "colors": [
+          name: "Sport Hull",
+          src: "variants/BT_Base_00_B.glb",
+          price: 450,
+          thumbCam: 2,
+          description:
+            "Streamlined sport hull with improved hydrodynamics for higher performance and better control at speed.",
+          colors: [
             {
-              "name": "White",
-              "type": "color",
-              "color": [
-                1,
-                1,
-                1
-              ]
+              name: "White",
+              type: "color",
+              color: [1, 1, 1],
             },
             {
-              "name": "Gray",
-              "type": "color",
-              "color": [
-                0.502,
-                0.502,
-                0.502
-              ]
+              name: "Gray",
+              type: "color",
+              color: [0.502, 0.502, 0.502],
             },
             {
-              "name": "Black",
-              "type": "color",
-              "color": [
-                0.051,
-                0.051,
-                0.051
-              ]
-            }
-          ]
-        }
-      ]
-    }
+              name: "Black",
+              type: "color",
+              color: [0.051, 0.051, 0.051],
+            },
+          ],
+        },
+      ],
+    },
   },
+
   "Center Console": {
-    "BT_Base_Center_Console_A": {
-      "generateThumbs": true,
-      "mainMat": "M_Base_A",
-      "models": [
+    BT_Base_Center_Console_A: {
+      generateThumbs: true,
+      mainMat: "M_Base_A",
+      models: [
         {
-          "name": "Standard Console",
-          "src": null,
-          "price": 0,
-          "description": "Functional and compact center console providing all essential controls and storage options.",
-          "colors": []
+          name: "Standard Console",
+          src: null,
+          price: 0,
+          thumbCam: 3,
+          description:
+            "Functional and compact center console providing all essential controls and storage options.",
+          colors: [],
         },
         {
-          "name": "Premium Console",
-          "src": "variants/BT_Base_Center_Console_B.glb",
-          "price": 300,
-          "description": "Refined console layout with upgraded materials and added convenience for modern navigation.",
-          "colors": [
-            {
-              "name": "White",
-              "type": "color",
-              "color": [
-                1,
-                1,
-                1
-              ]
-            },
-            {
-              "name": "Gray",
-              "type": "color",
-              "color": [
-                0.502,
-                0.502,
-                0.502
-              ]
-            },
-            {
-              "name": "Black",
-              "type": "color",
-              "color": [
-                0.051,
-                0.051,
-                0.051
-              ]
-            }
-          ]
+          name: "Premium Console",
+          src: "variants/BT_Base_Center_Console_B.glb",
+          price: 300,
+          thumbCam: 3,
+          description:
+            "Refined console layout with upgraded materials and added convenience for modern navigation.",
+          colors: [
+            { name: "White", type: "color", color: [1, 1, 1] },
+            { name: "Gray", type: "color", color: [0.502, 0.502, 0.502] },
+            { name: "Black", type: "color", color: [0.051, 0.051, 0.051] },
+          ],
         },
         {
-          "name": "Carbon Console",
-          "src": "variants/BT_Base_Center_Console_C.glb",
-          "price": 450,
-          "description": "Lightweight carbon-fiber console with a sport-inspired design and precision detailing.",
-          "colors": [
-            {
-              "name": "White",
-              "type": "color",
-              "color": [
-                1,
-                1,
-                1
-              ]
-            },
-            {
-              "name": "Gray",
-              "type": "color",
-              "color": [
-                0.502,
-                0.502,
-                0.502
-              ]
-            },
-            {
-              "name": "Black",
-              "type": "color",
-              "color": [
-                0.051,
-                0.051,
-                0.051
-              ]
-            }
-          ]
-        }
-      ]
-    }
+          name: "Carbon Console",
+          src: "variants/BT_Base_Center_Console_C.glb",
+          price: 450,
+          thumbCam: 3,
+          description:
+            "Lightweight carbon-fiber console with a sport-inspired design and precision detailing.",
+          colors: [
+            { name: "White", type: "color", color: [1, 1, 1] },
+            { name: "Gray", type: "color", color: [0.502, 0.502, 0.502] },
+            { name: "Black", type: "color", color: [0.051, 0.051, 0.051] },
+          ],
+        },
+      ],
+    },
   },
+
   "Additional Equipment": {
-    "EquipmentGroup": {
-      "generateThumbs": false,
-      "mainMat": null,
-      "models": [
+    EquipmentGroup: {
+      generateThumbs: false,
+      mainMat: null,
+      models: [
         {
-          "name": "Standard Package",
-          "src": null,
-          "price": 0,
-          "description": "Includes all essential onboard accessories for safe and comfortable cruising.",
-          "colors": []
+          name: "Standard Package",
+          src: null,
+          price: 0,
+          description:
+            "Includes all essential onboard accessories for safe and comfortable cruising.",
+          colors: [],
         },
         {
-          "name": "Premium Sound System",
-          "src": null,
-          "price": 900,
-          "description": "High-end marine audio system with multiple waterproof speakers and rich surround sound.",
-          "colors": []
+          name: "Premium Sound System",
+          src: null,
+          price: 900,
+          description:
+            "High-end marine audio system with multiple waterproof speakers and rich surround sound.",
+          colors: [],
         },
         {
-          "name": "GPS Navigation",
-          "src": null,
-          "price": 750,
-          "description": "Advanced GPS navigation unit with touchscreen and real-time route tracking.",
-          "colors": []
+          name: "GPS Navigation",
+          src: null,
+          price: 750,
+          description:
+            "Advanced GPS navigation unit with touchscreen and real-time route tracking.",
+          colors: [],
         },
         {
-          "name": "Underwater Lights",
-          "src": null,
-          "price": 650,
-          "description": "LED underwater lighting package for nighttime ambiance and enhanced visibility.",
-          "colors": []
-        }
-      ]
-    }
+          name: "Underwater Lights",
+          src: null,
+          price: 650,
+          description:
+            "LED underwater lighting package for nighttime ambiance and enhanced visibility.",
+          colors: [],
+        },
+      ],
+    },
   },
+
   "Additional Equipment3": {
-    "EquipmentGroup2": {
-      "generateThumbs": false,
-      "mainMat": null,
-      "models": [
+    EquipmentGroup2: {
+      generateThumbs: false,
+      mainMat: null,
+      models: [
         {
-          "name": "Standard Package3",
-          "src": null,
-          "price": 0,
-          "description": "Complete starter set including essential safety gear, ropes, and dock accessories.",
-          "colors": []
+          name: "Standard Package3",
+          src: null,
+          price: 0,
+          description:
+            "Complete starter set including essential safety gear, ropes, and dock accessories.",
+          colors: [],
         },
         {
-          "name": "Premium Sound System2",
-          "src": null,
-          "price": 1900,
-          "description": "Upgraded audio setup with subwoofers and an integrated Bluetooth amplifier for superior sound clarity.",
-          "colors": []
+          name: "Premium Sound System2",
+          src: null,
+          price: 1900,
+          description:
+            "Upgraded audio setup with subwoofers and an integrated Bluetooth amplifier for superior sound clarity.",
+          colors: [],
         },
         {
-          "name": "GPS Navigation2",
-          "src": null,
-          "price": 1750,
-          "description": "Full-featured marine GPS with expanded chart coverage and customizable navigation profiles.",
-          "colors": []
+          name: "GPS Navigation2",
+          src: null,
+          price: 1750,
+          description:
+            "Full-featured marine GPS with expanded chart coverage and customizable navigation profiles.",
+          colors: [],
         },
         {
-          "name": "Underwater Lights2",
-          "src": null,
-          "price": 1650,
-          "description": "Premium underwater LED system with adjustable colors and high output illumination.",
-          "colors": []
-        }
-      ]
-    }
-  }
+          name: "Underwater Lights2",
+          src: null,
+          price: 1650,
+          description:
+            "Premium underwater LED system with adjustable colors and high output illumination.",
+          colors: [],
+        },
+      ],
+    },
+  },
 };
+
 export const SIDEBAR_INFO = {
-  "contact": "\n  <form id=\"contactForm\" class=\"contact-form\">\n    <p><b>Get in touch</b><br>\n    Have a question or project in mind? Send us a message below.</p>\n\n    <label>Name</label>\n    <input type=\"text\" name=\"name\" placeholder=\"Your name\" required>\n\n    <label>Email</label>\n    <input type=\"email\" name=\"email\" placeholder=\"Your email\" required>\n\n    <label>Message</label>\n    <textarea name=\"message\" placeholder=\"Write your message here...\" rows=\"4\" required></textarea>\n\n    <button type=\"submit\">Send Message</button>\n  </form>\n",
-  "help": "Quick troubleshooting and usage guide for the Less Engine.",
-  "about": "\n  <p><b>Less Engine</b> is the technology that brings every model to life. It turns complex 3D design into a smooth, realistic, and interactive experience — right inside your browser, with no downloads or apps required.</p>\n\n  <p><b>How it works</b><br>\n  Every surface, reflection, and color you see reacts naturally to light and movement. The engine was built from the ground up to capture how materials truly look and feel — from polished metal and glass to the ocean surface and sky above.</p>\n\n  <p><b>Why it stands out</b><br>\n  Less Engine focuses on realism, speed, and immersion. It’s not just about viewing a model — it’s about feeling the product as if it were right in front of you. Each change in color, material, or detail appears instantly and seamlessly.</p>\n\n  <p><b>What it enables</b><br>\n  • Instantly customize and preview any configuration<br>\n  • Export beautiful presentation PDFs with images and pricing<br>\n  • Maintain smooth performance on any modern device<br>\n  • Present products in natural light and realistic environments<br>\n  • Adapt the experience to any brand or design style</p>\n\n  <p><b>The idea behind it</b><br>\n  Less Engine was created to close the gap between imagination and reality. It allows customers to explore, interact, and connect with the product — not just see it. That’s what makes it more than software. It’s a full experience.</p>\n",
-  "settings": "Customize preferences, performance options, and camera sensitivity here."
+  contact:
+    '\n  <form id="contactForm" class="contact-form">\n    <p><b>Get in touch</b><br>\n    Have a question or project in mind? Send us a message below.</p>\n\n    <label>Name</label>\n    <input type="text" name="name" placeholder="Your name" required>\n\n    <label>Email</label>\n    <input type="email" name="email" placeholder="Your email" required>\n\n    <label>Message</label>\n    <textarea name="message" placeholder="Write your message here..." rows="4" required></textarea>\n\n    <button type="submit">Send Message</button>\n  </form>\n',
+  help: "Quick troubleshooting and usage guide for the Less Engine.",
+  about:
+    "\n  <p><b>Less Engine</b> is the technology that brings every model to life. It turns complex 3D design into a smooth, realistic, and interactive experience \u2014 right inside your browser, with no downloads or apps required.</p>\n\n  <p><b>How it works</b><br>\n  Every surface, reflection, and color you see reacts naturally to light and movement. The engine was built from the ground up to capture how materials truly look and feel \u2014 from polished metal and glass to the ocean surface and sky above.</p>\n\n  <p><b>Why it stands out</b><br>\n  Less Engine focuses on realism, speed, and immersion. It\u2019s not just about viewing a model \u2014 it\u2019s about feeling the product as if it were right in front of you. Each change in color, material, or detail appears instantly and seamlessly.</p>\n\n  <p><b>What it enables</b><br>\n  \u2022 Instantly customize and preview any configuration<br>\n  \u2022 Export beautiful presentation PDFs with images and pricing<br>\n  \u2022 Maintain smooth performance on any modern device<br>\n  \u2022 Present products in natural light and realistic environments<br>\n  \u2022 Adapt the experience to any brand or design style</p>\n\n  <p><b>The idea behind it</b><br>\n  Less Engine was created to close the gap between imagination and reality. It allows customers to explore, interact, and connect with the product \u2014 not just see it. That\u2019s what makes it more than software. It\u2019s a full experience.</p>\n",
+  settings: "Customize preferences, performance options, and camera sensitivity here.",
 };
+
 export const CLIENTS = [
   {
-    "name": "Client 1",
-    "slug": "client-1",
-    "boatInfo": {
-      "Model": "TIARA 56",
-      "Length": "6.5 m",
-      "Width": "2.4 m",
-      "Weight": "1200 kg",
-      "Capacity": "6 persons",
-      "Engine": "Yamaha 150 HP",
+    name: "Client 1",
+    slug: "client-1",
+    boatInfo: {
+      Model: "TIARA 56",
+      Length: "6.5 m",
+      Width: "2.4 m",
+      Weight: "1200 kg",
+      Capacity: "6 persons",
+      Engine: "Yamaha 150 HP",
       "Max Speed": "70 km/h",
-      "Material": "Fiberglass"
+      Material: "Fiberglass",
     },
-    "variantGroups": {
-      "Seats": {
-        "BT_Base_03_A": {
-          "mainMat": "M_Leather_A",
-          "models": [
+    variantGroups: {
+      Seats: {
+        BT_Base_03_A: {
+          mainMat: "M_Leather_A",
+          models: [
             {
-              "name": "Standard Seats",
-              "src": null,
-              "price": 0,
-              "description": "Durable marine-grade seats designed for everyday comfort and reliability.",
-              "colors": []
+              name: "Standard Seats",
+              src: null,
+              price: 0,
+              description:
+                "Durable marine-grade seats designed for everyday comfort and reliability.",
+              colors: [],
             },
             {
-              "name": "Comfort Edition",
-              "src": "variants/BT_Base_03_B.glb",
-              "price": 500,
-              "description": "Enhanced seating with thicker cushions and premium leather textures for a smoother ride.",
-              "colors": [
+              name: "Comfort Edition",
+              src: "variants/BT_Base_03_B.glb",
+              price: 500,
+              description:
+                "Enhanced seating with thicker cushions and premium leather textures for a smoother ride.",
+              colors: [
                 {
-                  "name": "Default Leather",
-                  "type": "texture",
-                  "texture": "leather_default_B_C.jpg",
-                  "normal": "leather_default_N_C.jpg",
-                  "rough": "leather_default_R_C.jpg"
+                  name: "Default Leather",
+                  type: "texture",
+                  texture: "leather_default_B_C.jpg",
+                  normal: "leather_default_N_C.jpg",
+                  rough: "leather_default_R_C.jpg",
                 },
                 {
-                  "name": "Leather Black",
-                  "type": "texture",
-                  "texture": "leather_black_B_C.jpg",
-                  "normal": "leather_black_N_C.jpg",
-                  "rough": "leather_black_R_C.jpg"
+                  name: "Leather Black",
+                  type: "texture",
+                  texture: "leather_black_B_C.jpg",
+                  normal: "leather_black_N_C.jpg",
+                  rough: "leather_black_R_C.jpg",
                 },
                 {
-                  "name": "Leather Brown",
-                  "type": "texture",
-                  "texture": "leather_brown_B_C.jpg",
-                  "normal": "leather_brown_N_C.jpg",
-                  "rough": "leather_brown_R_C.jpg"
+                  name: "Leather Brown",
+                  type: "texture",
+                  texture: "leather_brown_B_C.jpg",
+                  normal: "leather_brown_N_C.jpg",
+                  rough: "leather_brown_R_C.jpg",
                 },
-                {
-                  "name": "Colors",
-                  "type": "color",
-                  "color": [
-                    1,
-                    0,
-                    0
-                  ]
-                }
-              ]
+                { name: "Colors", type: "color", color: [1, 0, 0] },
+              ],
             },
             {
-              "name": "Luxury Leather",
-              "src": "variants/BT_Base_03_C.glb",
-              "price": 700,
-              "description": "Hand-stitched luxury seating with refined leather finishes and superior ergonomic support.",
-              "colors": [
+              name: "Luxury Leather",
+              src: "variants/BT_Base_03_C.glb",
+              price: 700,
+              description:
+                "Hand-stitched luxury seating with refined leather finishes and superior ergonomic support.",
+              colors: [
                 {
-                  "name": "Default Leather",
-                  "type": "texture",
-                  "texture": "leather_default_B_C.jpg",
-                  "normal": "leather_default_N_C.jpg",
-                  "rough": "leather_default_R_C.jpg"
+                  name: "Default Leather",
+                  type: "texture",
+                  texture: "leather_default_B_C.jpg",
+                  normal: "leather_default_N_C.jpg",
+                  rough: "leather_default_R_C.jpg",
                 },
                 {
-                  "name": "Leather Black",
-                  "type": "texture",
-                  "texture": "leather_black_B_C.jpg",
-                  "normal": "leather_black_N_C.jpg",
-                  "rough": "leather_black_R_C.jpg"
+                  name: "Leather Black",
+                  type: "texture",
+                  texture: "leather_black_B_C.jpg",
+                  normal: "leather_black_N_C.jpg",
+                  rough: "leather_black_R_C.jpg",
                 },
                 {
-                  "name": "Leather Brown",
-                  "type": "texture",
-                  "texture": "leather_brown_B_C.jpg",
-                  "normal": "leather_brown_N_C.jpg",
-                  "rough": "leather_brown_R_C.jpg"
-                }
-              ]
-            }
-          ]
-        }
+                  name: "Leather Brown",
+                  type: "texture",
+                  texture: "leather_brown_B_C.jpg",
+                  normal: "leather_brown_N_C.jpg",
+                  rough: "leather_brown_R_C.jpg",
+                },
+              ],
+            },
+          ],
+        },
       },
-      "Hull": {
-        "BT_Base_00_A": {
-          "mainMat": "M_Base_Color_Graphics_A",
-          "models": [
+      Hull: {
+        BT_Base_00_A: {
+          mainMat: "M_Base_Color_Graphics_A",
+          models: [
             {
-              "name": "Classic Hull",
-              "src": null,
-              "price": 0,
-              "description": "A standard fiberglass hull offering a perfect balance between weight and strength.",
-              "colors": []
+              name: "Classic Hull",
+              src: null,
+              price: 0,
+              description:
+                "A standard fiberglass hull offering a perfect balance between weight and strength.",
+              colors: [],
             },
             {
-              "name": "Sport Hull",
-              "src": "variants/BT_Base_00_B.glb",
-              "price": 450,
-              "description": "Streamlined sport hull with improved hydrodynamics for higher performance and better control at speed.",
-              "colors": [
-                {
-                  "name": "White",
-                  "type": "color",
-                  "color": [
-                    1,
-                    1,
-                    1
-                  ]
-                },
-                {
-                  "name": "Gray",
-                  "type": "color",
-                  "color": [
-                    0.502,
-                    0.502,
-                    0.502
-                  ]
-                },
-                {
-                  "name": "Black",
-                  "type": "color",
-                  "color": [
-                    0.051,
-                    0.051,
-                    0.051
-                  ]
-                }
-              ]
-            }
-          ]
-        }
+              name: "Sport Hull",
+              src: "variants/BT_Base_00_B.glb",
+              price: 450,
+              description:
+                "Streamlined sport hull with improved hydrodynamics for higher performance and better control at speed.",
+              colors: [
+                { name: "White", type: "color", color: [1, 1, 1] },
+                { name: "Gray", type: "color", color: [0.502, 0.502, 0.502] },
+                { name: "Black", type: "color", color: [0.051, 0.051, 0.051] },
+              ],
+            },
+          ],
+        },
       },
       "Center Console": {
-        "BT_Base_Center_Console_A": {
-          "mainMat": "M_Base_A",
-          "models": [
+        BT_Base_Center_Console_A: {
+          mainMat: "M_Base_A",
+          models: [
             {
-              "name": "Standard Console",
-              "src": null,
-              "price": 0,
-              "description": "Functional and compact center console providing all essential controls and storage options.",
-              "colors": []
+              name: "Standard Console",
+              src: null,
+              price: 0,
+              description:
+                "Functional and compact center console providing all essential controls and storage options.",
+              colors: [],
             },
             {
-              "name": "Premium Console",
-              "src": "variants/BT_Base_Center_Console_B.glb",
-              "price": 300,
-              "description": "Refined console layout with upgraded materials and added convenience for modern navigation.",
-              "colors": [
-                {
-                  "name": "White",
-                  "type": "color",
-                  "color": [
-                    1,
-                    1,
-                    1
-                  ]
-                },
-                {
-                  "name": "Gray",
-                  "type": "color",
-                  "color": [
-                    0.502,
-                    0.502,
-                    0.502
-                  ]
-                },
-                {
-                  "name": "Black",
-                  "type": "color",
-                  "color": [
-                    0.051,
-                    0.051,
-                    0.051
-                  ]
-                }
-              ]
+              name: "Premium Console",
+              src: "variants/BT_Base_Center_Console_B.glb",
+              price: 300,
+              description:
+                "Refined console layout with upgraded materials and added convenience for modern navigation.",
+              colors: [
+                { name: "White", type: "color", color: [1, 1, 1] },
+                { name: "Gray", type: "color", color: [0.502, 0.502, 0.502] },
+                { name: "Black", type: "color", color: [0.051, 0.051, 0.051] },
+              ],
             },
             {
-              "name": "Carbon Console",
-              "src": "variants/BT_Base_Center_Console_C.glb",
-              "price": 450,
-              "description": "Lightweight carbon-fiber console with a sport-inspired design and precision detailing.",
-              "colors": [
-                {
-                  "name": "White",
-                  "type": "color",
-                  "color": [
-                    1,
-                    1,
-                    1
-                  ]
-                },
-                {
-                  "name": "Gray",
-                  "type": "color",
-                  "color": [
-                    0.502,
-                    0.502,
-                    0.502
-                  ]
-                },
-                {
-                  "name": "Black",
-                  "type": "color",
-                  "color": [
-                    0.051,
-                    0.051,
-                    0.051
-                  ]
-                }
-              ]
-            }
-          ]
-        }
+              name: "Carbon Console",
+              src: "variants/BT_Base_Center_Console_C.glb",
+              price: 450,
+              description:
+                "Lightweight carbon-fiber console with a sport-inspired design and precision detailing.",
+              colors: [
+                { name: "White", type: "color", color: [1, 1, 1] },
+                { name: "Gray", type: "color", color: [0.502, 0.502, 0.502] },
+                { name: "Black", type: "color", color: [0.051, 0.051, 0.051] },
+              ],
+            },
+          ],
+        },
       },
       "Additional Equipment": {
-        "EquipmentGroup": {
-          "mainMat": null,
-          "models": [
+        EquipmentGroup: {
+          mainMat: null,
+          models: [
             {
-              "name": "Standard Package",
-              "src": null,
-              "price": 0,
-              "description": "Includes all essential onboard accessories for safe and comfortable cruising.",
-              "colors": []
+              name: "Standard Package",
+              src: null,
+              price: 0,
+              description:
+                "Includes all essential onboard accessories for safe and comfortable cruising.",
+              colors: [],
             },
             {
-              "name": "Premium Sound System",
-              "src": null,
-              "price": 900,
-              "description": "High-end marine audio system with multiple waterproof speakers and rich surround sound.",
-              "colors": []
+              name: "Premium Sound System",
+              src: null,
+              price: 900,
+              description:
+                "High-end marine audio system with multiple waterproof speakers and rich surround sound.",
+              colors: [],
             },
             {
-              "name": "GPS Navigation",
-              "src": null,
-              "price": 750,
-              "description": "Advanced GPS navigation unit with touchscreen and real-time route tracking.",
-              "colors": []
+              name: "GPS Navigation",
+              src: null,
+              price: 750,
+              description:
+                "Advanced GPS navigation unit with touchscreen and real-time route tracking.",
+              colors: [],
             },
             {
-              "name": "Underwater Lights",
-              "src": null,
-              "price": 650,
-              "description": "LED underwater lighting package for nighttime ambiance and enhanced visibility.",
-              "colors": []
-            }
-          ]
-        }
+              name: "Underwater Lights",
+              src: null,
+              price: 650,
+              description:
+                "LED underwater lighting package for nighttime ambiance and enhanced visibility.",
+              colors: [],
+            },
+          ],
+        },
       },
       "Additional Equipment3": {
-        "EquipmentGroup2": {
-          "mainMat": null,
-          "models": [
+        EquipmentGroup2: {
+          mainMat: null,
+          models: [
             {
-              "name": "Standard Package3",
-              "src": null,
-              "price": 0,
-              "description": "Complete starter set including essential safety gear, ropes, and dock accessories.",
-              "colors": []
+              name: "Standard Package3",
+              src: null,
+              price: 0,
+              description:
+                "Complete starter set including essential safety gear, ropes, and dock accessories.",
+              colors: [],
             },
             {
-              "name": "Premium Sound System2",
-              "src": null,
-              "price": 1900,
-              "description": "Upgraded audio setup with subwoofers and an integrated Bluetooth amplifier for superior sound clarity.",
-              "colors": []
+              name: "Premium Sound System2",
+              src: null,
+              price: 1900,
+              description:
+                "Upgraded audio setup with subwoofers and an integrated Bluetooth amplifier for superior sound clarity.",
+              colors: [],
             },
             {
-              "name": "GPS Navigation2",
-              "src": null,
-              "price": 1750,
-              "description": "Full-featured marine GPS with expanded chart coverage and customizable navigation profiles.",
-              "colors": []
+              name: "GPS Navigation2",
+              src: null,
+              price: 1750,
+              description:
+                "Full-featured marine GPS with expanded chart coverage and customizable navigation profiles.",
+              colors: [],
             },
             {
-              "name": "Underwater Lights2",
-              "src": null,
-              "price": 1650,
-              "description": "Premium underwater LED system with adjustable colors and high output illumination.",
-              "colors": []
-            }
-          ]
-        }
-      }
-    }
-  }
+              name: "Underwater Lights2",
+              src: null,
+              price: 1650,
+              description:
+                "Premium underwater LED system with adjustable colors and high output illumination.",
+              colors: [],
+            },
+          ],
+        },
+      },
+    },
+  },
 ];

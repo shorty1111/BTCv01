@@ -4,7 +4,7 @@ import { resetBoundTextures } from "./water.js";
 import { initCamera } from "./camera.js";
 import { initSky, drawSky, bakeSkyToCubemap, bakeIrradianceFromSky, bakeStudioToCubemap, drawStudio, DEFAULT_STUDIO } from "./sky.js";
 import { DEFAULT_SKY } from "./sky.js";
-import {DEFAULT_MODEL,BASE_PRICE,VARIANT_GROUPS,BOAT_INFO,SIDEBAR_INFO } from "./config.js";
+import {DEFAULT_MODEL,BASE_PRICE,VARIANT_GROUPS,BOAT_INFO,SIDEBAR_INFO, THUMBNAIL_CAM_PRESETS } from "./config.js";
 import {mat4mul,persp,ortho,look,composeTRS,computeBounds,mulMat4Vec4, v3,} from "./math.js";
 import { initUI, renderBoatInfo, showPartInfo, showLoading, hideLoading, showToast, updateLoadingProgress } from "./ui.js";
 import { TEXTURE_SLOTS, bindTextureToSlot } from "./texture-slots.js";
@@ -35,6 +35,19 @@ window.textureCache = textureCache;
 let shadowFBO, shadowDepthTex;
 const SHADOW_RES = 2048;
 const UNIT_SCALE = window.UNIT_SCALE ?? 1;
+const THUMB_CAM_PARAM = new URLSearchParams(window.location.search).get("cam_pos");
+const THUMBNAIL_CAM_INDEX_PARAM =
+  Number.isFinite(parseInt(THUMB_CAM_PARAM, 10)) && parseInt(THUMB_CAM_PARAM, 10) > 0
+    ? parseInt(THUMB_CAM_PARAM, 10) - 1
+    : null;
+
+function getThumbnailCamPresetIndex(variant) {
+  const v = variant?.thumbCam;
+  const idxFromVariant =
+    Number.isFinite(parseInt(v, 10)) && parseInt(v, 10) > 0 ? parseInt(v, 10) - 1 : null;
+  if (idxFromVariant !== null) return idxFromVariant;
+  return THUMBNAIL_CAM_INDEX_PARAM;
+}
 
 const COMPONENT_BYTE_SIZE = {
   5120: 1, // BYTE
@@ -4221,6 +4234,43 @@ async function generateThumbnailForVariant(partName, variant, baselineVariant, f
   camera.dist = camera.distTarget;
   camera.moved = true;
   recenterCameraForThumbnail(bounds);
+
+  // Primeni preset kamere kao offset na postojeći fokus (prioritet: variant.thumbCam, zatim cam_pos param)
+  const camPresetIndex = getThumbnailCamPresetIndex(variant);
+  if (
+    Array.isArray(THUMBNAIL_CAM_PRESETS) &&
+    camPresetIndex !== null &&
+    THUMBNAIL_CAM_PRESETS[camPresetIndex]
+  ) {
+    const preset = THUMBNAIL_CAM_PRESETS[camPresetIndex];
+    // Sačuvaj bazu iz auto-fokusa
+    const basePan = camera.panTarget.slice();
+    const baseRx = camera.rxTarget;
+    const baseRy = camera.ryTarget;
+    const baseDist = camera.distTarget;
+
+    if (preset.panOffset) {
+      camera.pan = [
+        basePan[0] + (preset.panOffset[0] || 0),
+        basePan[1] + (preset.panOffset[1] || 0),
+        basePan[2] + (preset.panOffset[2] || 0),
+      ];
+      camera.panTarget = camera.pan.slice();
+    }
+    if (typeof preset.rxOffset === "number") {
+      camera.rx = baseRx + preset.rxOffset;
+      camera.rxTarget = camera.rx;
+    }
+    if (typeof preset.ryOffset === "number") {
+      camera.ry = baseRy + preset.ryOffset;
+      camera.ryTarget = camera.ry;
+    }
+    if (typeof preset.distScale === "number") {
+      camera.dist = baseDist * preset.distScale;
+      camera.distTarget = camera.dist;
+    }
+    camera.moved = true;
+  }
 
   sceneChanged = true;
   render();
