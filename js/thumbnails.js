@@ -2,6 +2,7 @@ import { THUMBNAIL_CAM_PRESETS } from "./config.js";
 
 export const PLACEHOLDER_THUMB = "assets/part_placeholder.png";
 export const thumbnails = {};
+const THUMB_DEFAULT_COLOR_KEY = "__default__";
 
 const THUMB_CAM_PARAM = new URLSearchParams(window.location.search).get("cam_pos");
 const THUMBNAIL_CAM_INDEX_PARAM =
@@ -40,6 +41,35 @@ export function createThumbnailGenerator({
 }) {
   let __canvasHiddenForThumbs = false;
   let thumbnailCaptureCanvas = null;
+
+  const colorsForVariant = (variant) => {
+    if (Array.isArray(variant?.colors) && variant.colors.length) {
+      return variant.colors.map((c) => c?.name).filter(Boolean);
+    }
+    return [null];
+  };
+
+  const findVariantData = (partName, variantName) => {
+    for (const parts of Object.values(variantGroups || {})) {
+      const partData = parts?.[partName];
+      if (partData?.models) {
+        const variant = partData.models.find((m) => m?.name === variantName);
+        if (variant) return { variant, partData };
+      }
+    }
+    return { variant: null, partData: null };
+  };
+
+  const storeThumbnail = (partName, variantName, colorName, thumb) => {
+    const key = colorName || THUMB_DEFAULT_COLOR_KEY;
+    thumbnails[partName] = thumbnails[partName] || {};
+    const bucket =
+      typeof thumbnails[partName][variantName] === "object"
+        ? thumbnails[partName][variantName]
+        : {};
+    bucket[key] = thumb;
+    thumbnails[partName][variantName] = bucket;
+  };
 
   const recenterCameraForThumbnail = recenterCameraToBounds;
   const markSceneChanged = () => {
@@ -184,7 +214,13 @@ export function createThumbnailGenerator({
     await Promise.all(workers);
   }
 
-  async function generateThumbnailForVariant(partName, variant, baselineVariant, fallbackVariantName = "") {
+  async function generateThumbnailForVariant(
+    partName,
+    variant,
+    baselineVariant,
+    fallbackVariantName = "",
+    colorName = null
+  ) {
     const targetNodes = typeof getNodesMeta === "function" ? getNodesMeta() : nodesMeta;
     const node = targetNodes?.find((n) => n.name === partName);
     if (!node) return null;
@@ -192,6 +228,11 @@ export function createThumbnailGenerator({
     const previousFocusState = window.__suppressFocusCamera;
     window.__suppressFocusCamera = true;
     const cameraState = captureCameraState();
+    const prevColorSelection = savedColorsByPart?.[partName]?.[variant.name];
+    if (colorName) {
+      savedColorsByPart[partName] = savedColorsByPart[partName] || {};
+      savedColorsByPart[partName][variant.name] = colorName;
+    }
 
     const applyVariant = async (targetVariant, label) => {
       await replaceSelectedWithURL(
@@ -204,6 +245,12 @@ export function createThumbnailGenerator({
     };
 
     const revertVariant = async () => {
+      if (prevColorSelection !== undefined) {
+        savedColorsByPart[partName] = savedColorsByPart[partName] || {};
+        savedColorsByPart[partName][variant.name] = prevColorSelection;
+      } else if (savedColorsByPart[partName]) {
+        delete savedColorsByPart[partName][variant.name];
+      }
       const target = baselineVariant || null;
       const label = target?.name || fallbackVariantName || variant?.name || partName;
       await applyVariant(target, label);
@@ -332,24 +379,38 @@ export function createThumbnailGenerator({
       };
 
       const renderEntries = collectRenderableVariants();
-      const totalCount = renderEntries.reduce((sum, entry) => sum + entry.variants.length, 0);
+      const totalCount = renderEntries.reduce(
+        (sum, entry) =>
+          sum +
+          entry.variants.reduce((acc, v) => acc + colorsForVariant(v).length, 0),
+        0
+      );
       let doneCount = 0;
 
       for (const entry of renderEntries) {
         const { partName, variants, baseline, fallbackName } = entry;
         thumbnails[partName] = {};
         for (const variant of variants) {
-          let thumb = await generateThumbnailForVariant(partName, variant, baseline, fallbackName);
-          if (!thumb) {
-            thumb = PLACEHOLDER_THUMB;
+          const colorNames = colorsForVariant(variant);
+          for (const colorName of colorNames) {
+            let thumb = await generateThumbnailForVariant(
+              partName,
+              variant,
+              baseline,
+              fallbackName,
+              colorName
+            );
+            if (!thumb) {
+              thumb = PLACEHOLDER_THUMB;
+            }
+            storeThumbnail(partName, variant.name, colorName, thumb);
+            doneCount += 1;
+            updateLoadingProgress(
+              `Generating thumbnails (${doneCount}/${totalCount})`,
+              window.pendingTextures || 0,
+              window.pendingMeshes ? 1 : 0
+            );
           }
-          thumbnails[partName][variant.name] = thumb;
-          doneCount += 1;
-          updateLoadingProgress(
-            `Generating thumbnails (${doneCount}/${totalCount})`,
-            window.pendingTextures || 0,
-            window.pendingMeshes ? 1 : 0
-          );
         }
       }
 
@@ -359,7 +420,9 @@ export function createThumbnailGenerator({
           if (!variants?.length) continue;
           thumbnails[partName] = thumbnails[partName] || {};
           for (const variant of variants) {
-            thumbnails[partName][variant.name] = PLACEHOLDER_THUMB;
+            for (const colorName of colorsForVariant(variant)) {
+              storeThumbnail(partName, variant.name, colorName, PLACEHOLDER_THUMB);
+            }
           }
         }
       }
@@ -370,7 +433,9 @@ export function createThumbnailGenerator({
           if (!variants?.length) continue;
           thumbnails[partName] = thumbnails[partName] || {};
           for (const variant of variants) {
-            thumbnails[partName][variant.name] = PLACEHOLDER_THUMB;
+            for (const colorName of colorsForVariant(variant)) {
+              storeThumbnail(partName, variant.name, colorName, PLACEHOLDER_THUMB);
+            }
           }
         }
       }
@@ -392,10 +457,11 @@ export function createThumbnailGenerator({
       const part = itemEl.dataset.part;
       const variant = itemEl.dataset.variant;
       const img = itemEl.querySelector("img.thumb");
-
-      if (thumbnails?.[part]?.[variant]) {
-        img.src = thumbnails[part][variant];
-      }
+      const savedColorName = savedColorsByPart?.[part]?.[variant] || null;
+      const { variant: variantData } = findVariantData(part, variant);
+      const defaultColor = variantData?.colors?.[0]?.name || null;
+      const thumbUrl = getThumbnailForVariant(part, variant, savedColorName || defaultColor);
+      img.src = thumbUrl || PLACEHOLDER_THUMB;
     });
   }
 
@@ -424,4 +490,14 @@ export function createThumbnailGenerator({
     restoreCanvasAfterThumbnails,
     captureCanvasThumbnail,
   };
+}
+
+export function getThumbnailForVariant(partName, variantName, colorName = null) {
+  const entry = thumbnails?.[partName]?.[variantName];
+  if (!entry) return null;
+  if (typeof entry === "string") return entry;
+  if (colorName && entry[colorName]) return entry[colorName];
+  if (entry[THUMB_DEFAULT_COLOR_KEY]) return entry[THUMB_DEFAULT_COLOR_KEY];
+  const first = Object.values(entry).find(Boolean);
+  return first || null;
 }

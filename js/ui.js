@@ -1,3 +1,5 @@
+﻿import { getThumbnailForVariant, PLACEHOLDER_THUMB } from "./thumbnails.js";
+
 export function renderBoatInfo(infoObj) {
   const container = document.getElementById("boat-info");
   container.innerHTML = `
@@ -44,7 +46,7 @@ export function updateLoadingProgress(
   const progressEl = loadingScr.querySelector(".progress");
   let labelEl = loadingScr.querySelector(".progress-label");
   if (!labelEl && progressEl) {
-    // kreiraj labelu odmah posle progress bara da ne pišemo tekst u sam bar
+    // kreiraj labelu odmah posle progress bara da ne piÅ¡emo tekst u sam bar
     labelEl = document.createElement("div");
     labelEl.className = "progress-label";
     progressEl.insertAdjacentElement("afterend", labelEl);
@@ -411,11 +413,11 @@ function buildVariantSidebar() {
       });
 
       if (wasOpen) {
-        // ako je već bila otvorena → zatvori je
+        // ako je veÄ‡ bila otvorena â†’ zatvori je
         groupDiv.classList.remove("open");
         revealGroupHotspots(groupDiv);
       } else {
-        // ako je bila zatvorena → otvori
+        // ako je bila zatvorena â†’ otvori
         groupDiv.classList.add("open");
       }
     });
@@ -602,30 +604,37 @@ function buildVariantSidebar() {
                     modelBaseColors[r.idx] = new Float32Array(c.color);
                     modelBaseTextures[r.idx] = null;
 
-                    // Ako prelazimo sa teksture na flat boju, očisti normal/rough tex da se ne zadrže stari slotovi
+                    // Ako prelazimo sa teksture na flat boju, oÄisti normal/rough tex da se ne zadrÅ¾e stari slotovi
                     if (originalParts[r.idx]) {
                       originalParts[r.idx].normalTex = null;
                       originalParts[r.idx].roughnessTex = null;
                     }
                   }
-                }
+              }
 
               currentParts[partKey] = { ...variant, selectedColor: c.name };
+              if (!savedColorsByPart[partKey]) savedColorsByPart[partKey] = {};
+              savedColorsByPart[partKey][variant.name] = c.name;
               updatePartsTable(partKey, `${variant.name} (${c.name})`);
 
-                  // ažuriraj selekciju u UI
-                  colorsDiv.querySelectorAll(".color-swatch").forEach(el => el.classList.remove("selected"));
-                  colorEl.classList.add("selected");
-                  sceneChanged = true;   // 🔹 dodaj ovde
-                  render();
-                  showPartInfo(`${variant.name} (${c.name})`);
-                  applySelectedFilter();
-                });
+              // a�_uriraj selekciju u UI
+              colorsDiv.querySelectorAll(".color-swatch").forEach(el => el.classList.remove("selected"));
+              colorEl.classList.add("selected");
+              const thumbUrl = getThumbnailForVariant(partKey, variantData?.name || variantName, c.name);
+              const cardThumb = card.querySelector("img.thumb");
+              if (cardThumb) {
+                cardThumb.src = thumbUrl || PLACEHOLDER_THUMB;
+              }
+              sceneChanged = true;   // dY"1 dodaj ovde
+              render();
+              showPartInfo(`${variant.name} (${c.name})`);
+              applySelectedFilter();
+            });
 
               colorsDiv.appendChild(colorEl);
             });
 
-            // 🔹 Nakon što su sve boje dodate, ponovo označi izabranu
+            // ðŸ”¹ Nakon Å¡to su sve boje dodate, ponovo oznaÄi izabranu
             const saved = currentParts[partKey];
             if (saved && saved.selectedColor) {
               const sel = Array.from(colorsDiv.children).find(
@@ -634,18 +643,18 @@ function buildVariantSidebar() {
               if (sel) sel.classList.add("selected");
             }
         } else {
-          // nema definisanih boja → obeleži da je default varijanta bez eksplicitnih boja
+          // nema definisanih boja â†’ obeleÅ¾i da je default varijanta bez eksplicitnih boja
           colorsDiv.classList.add("no-colors");
         }
 
-        // 1) naslov je već gore
+        // 1) naslov je veÄ‡ gore
         // 2) zatim cena
         const footer = document.createElement("div");
         footer.className = "variant-footer";
         const rawPrice = variant.price ?? 0;
         const priceText = rawPrice === 0
           ? "Included (incl. VAT)"
-          : `+${rawPrice} € (incl. VAT)`;
+          : `+${rawPrice} â‚¬ (incl. VAT)`;
         footer.innerHTML = `<span class="price">${priceText}</span>`;
         body.appendChild(footer);
 
@@ -653,11 +662,11 @@ function buildVariantSidebar() {
         body.appendChild(colorsDiv);
 
         itemEl.appendChild(body);
-      // ➕ Dodaj dugme i opis ako postoji opis u configu
+      // âž• Dodaj dugme i opis ako postoji opis u configu
       if (variant.description) {
         const descBtn = document.createElement("button");
         descBtn.className = "desc-toggle";
-        descBtn.textContent = "ℹ️";
+        descBtn.textContent = "â„¹ï¸";
         itemEl.appendChild(descBtn);
 
         const descEl = document.createElement("div");
@@ -667,14 +676,14 @@ function buildVariantSidebar() {
       }
 
       const handleItemClick = (e) => {
-        // ako klik potiče sa dugmeta za opis, ignoriši
+        // ako klik potiÄe sa dugmeta za opis, ignoriÅ¡i
         if (e.target.closest(".desc-toggle")) return;
         hideHotspot(partKey);
         const isEquipmentOnly = !variant.src && !data.mainMat;
         if (isEquipmentOnly) {
-          // 🚫 Ako je "Included" u additional grupi → ignoriši klik
+          // ðŸš« Ako je "Included" u additional grupi â†’ ignoriÅ¡i klik
           if ((variant.price ?? 0) === 0) {
-            return; // ne radi ništa
+            return; // ne radi niÅ¡ta
           }
 
           // toggle logika za additional kartice
@@ -706,16 +715,16 @@ function buildVariantSidebar() {
         if (!node) return;
 
         highlightTreeSelection(node.id);
-        // ⬇️ pre replaceSelectedWithURL
+        // â¬‡ï¸ pre replaceSelectedWithURL
         const prev = currentParts[partKey];
         if (prev && prev.selectedColor) {
-          // zapamti boju za varijantu koju napuštamo
+          // zapamti boju za varijantu koju napuÅ¡tamo
           if (!savedColorsByPart[partKey]) savedColorsByPart[partKey] = {};
           savedColorsByPart[partKey][prev.name] = prev.selectedColor;
         }
         replaceSelectedWithURL(variant.src, variant.name, partKey);
         
-        // ✅ Ako varijanta ima boje, automatski primeni prvu ako nije već izabrana
+        // âœ… Ako varijanta ima boje, automatski primeni prvu ako nije veÄ‡ izabrana
       const variantData = variant;
       if (variantData.colors && variantData.colors.length > 0) {
         const savedColor = savedColorsByPart[partKey]?.[variant.name];
@@ -728,7 +737,7 @@ function buildVariantSidebar() {
           const colorsDiv = itemEl.querySelector(".colors");
           const firstEl = colorsDiv?.querySelector(".color-swatch");
           if (firstEl) {
-            setTimeout(() => firstEl.click(), 50); // ⏳ da sačeka render modela
+            setTimeout(() => firstEl.click(), 50); // â³ da saÄeka render modela
           }
         }
       }
@@ -748,7 +757,7 @@ function buildVariantSidebar() {
   applySelectedFilter();
 };
 
-// Klik handler (radi isto na desktopu i touch uređajima)
+// Klik handler (radi isto na desktopu i touch ureÄ‘ajima)
 itemEl.addEventListener("click", handleItemClick);
 
     itemsDiv.appendChild(itemEl);
@@ -789,7 +798,7 @@ function buildPartsTable() {
       tr.innerHTML = `
         <td>${groupName}</td>
         <td>${chosenName}</td>
-        <td>${price === 0 ? "Included" : `+${price} €`}</td>
+        <td>${price === 0 ? "Included" : `+${price} â‚¬`}</td>
       `;
       tbody.appendChild(tr);
     }
@@ -803,7 +812,7 @@ function buildPartsTable() {
       tr.innerHTML = `
         <td>Additional</td>
         <td>${variant.name}</td>
-        <td>${variant.price === 0 ? "Included" : `+${variant.price} €`}</td>
+        <td>${variant.price === 0 ? "Included" : `+${variant.price} â‚¬`}</td>
       `;
       tbody.appendChild(tr);
     }
@@ -813,7 +822,7 @@ function updatePartsTable(partKey, newVariantName) {
   let variant = null;
   let groupName = null;
 
-  // pronađi varijantu i grupu
+  // pronaÄ‘i varijantu i grupu
   for (const [gName, parts] of Object.entries(VARIANT_GROUPS)) {
     for (const [key, data] of Object.entries(parts)) {
       const found = data.models.find((m) => m.name === newVariantName);
@@ -832,17 +841,17 @@ function updatePartsTable(partKey, newVariantName) {
   const tbody = document.querySelector("#partsTable tbody");
   const rowKey = partKey;
 
-  // proveri da li već postoji red za taj deo
+  // proveri da li veÄ‡ postoji red za taj deo
   let row = document.querySelector(`#partsTable tr[data-part="${rowKey}"]`);
 
-  // ako ne postoji — napravi novi
+  // ako ne postoji â€” napravi novi
   if (!row) {
     row = document.createElement("tr");
     row.dataset.part = partKey;
     tbody.appendChild(row);
   }
 
-  // ako je included i već postoji — samo ažuriraj, ne dodaj novi
+  // ako je included i veÄ‡ postoji â€” samo aÅ¾uriraj, ne dodaj novi
   if (price === 0 && row) {
     row.innerHTML = `
       <td>${groupName}</td>
@@ -850,11 +859,11 @@ function updatePartsTable(partKey, newVariantName) {
       <td>Included</td>
     `;
   } else {
-    // u svim ostalim slučajevima (plaćene varijante) — zameni sadržaj
+    // u svim ostalim sluÄajevima (plaÄ‡ene varijante) â€” zameni sadrÅ¾aj
     row.innerHTML = `
       <td>${groupName}</td>
       <td>${variant.name}</td>
-      <td>+${price} €</td>
+      <td>+${price} â‚¬</td>
     `;
   }
 
@@ -868,7 +877,7 @@ function updateTotalPrice() {
     if (variant && variant.price) total += variant.price;
   }
 
-  // ažuriraj total u tabeli i sidebaru
+  // aÅ¾uriraj total u tabeli i sidebaru
   let totalRow = document.querySelector("#partsTable tfoot tr");
   if (!totalRow) {
     const tfoot = document.createElement("tfoot");
@@ -880,13 +889,13 @@ function updateTotalPrice() {
   totalRow.innerHTML = `
     <td colspan="2" style="text-align:right; font-weight:700;">Total:</td>
 <td style="font-size:16px; font-weight:700; color:#3aa4ff;">
-  ${total.toLocaleString("de-DE")} € (incl. VAT)
+  ${total.toLocaleString("de-DE")} â‚¬ (incl. VAT)
 </td>
   `;
 
   const sidebarPrice = document.querySelector(".sidebar-total .price");
   if (sidebarPrice)
-    sidebarPrice.textContent = `${total.toLocaleString("de-DE")} € (incl. VAT)`;
+    sidebarPrice.textContent = `${total.toLocaleString("de-DE")} â‚¬ (incl. VAT)`;
 
 }
 function highlightTreeSelection(id) {
@@ -913,7 +922,7 @@ function initDropdown() {
       dropdown.classList.toggle("hidden");
     });
 
-    // Klik van menija → zatvori
+    // Klik van menija â†’ zatvori
     document.addEventListener("click", (e) => {
       if (!dropdown.contains(e.target) && !toggleBtn.contains(e.target)) {
         dropdown.classList.add("hidden");
@@ -921,7 +930,7 @@ function initDropdown() {
     });
   }
 
-  // Klik na "Pročitaj opis" otvara/zatvara karticu
+  // Klik na "ProÄitaj opis" otvara/zatvara karticu
   document.addEventListener("click", (e) => {
     const btn = e.target.closest(".desc-toggle");
     if (!btn) return;
@@ -988,7 +997,7 @@ function initSavedConfigs() {
   const saveBtn = document.getElementById("saveConfigBtn");
   const dropdown = document.querySelector(".dropdown-menu");
 
-  // --- helper za čitanje/validaciju localStorage ---
+  // --- helper za Äitanje/validaciju localStorage ---
   function loadAll() {
     try {
       const data = JSON.parse(localStorage.getItem("boatConfigs") || "[]");
@@ -1046,7 +1055,7 @@ container.querySelectorAll(".del-btn").forEach(btn => {
 
 
 
-// pomoćna funkcija za duboko kloniranje objekata koje čuvamo u localStorage-u
+// pomoÄ‡na funkcija za duboko kloniranje objekata koje Äuvamo u localStorage-u
 function deepClone(value) {
   if (value == null || typeof value !== "object") return value;
   if (typeof structuredClone === "function") {
@@ -1059,7 +1068,7 @@ function deepClone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-// sada bez prompt-a — koristi modal iz HTML-a
+// sada bez prompt-a â€” koristi modal iz HTML-a
 function saveToLocal(name) {
   const all = loadAll();
   const data = {
@@ -1107,7 +1116,7 @@ confirmBtn.addEventListener("click", () => {
   if (typeof window.setMobileTab === "function") window.setMobileTab("info");
 });
 
-// otkaži
+// otkaÅ¾i
 cancelBtn.addEventListener("click", () => {
   modal.classList.add("hidden");
   if (typeof window.setMobileTab === "function") window.setMobileTab("info");
@@ -1145,14 +1154,14 @@ async function loadSavedConfig(index) {
     el.style.boxShadow = "";
   });
   document.querySelectorAll(".color-swatch").forEach(el => el.classList.remove("selected"));
-  // 1️⃣ Učitaj standardne delove
+  // 1ï¸âƒ£ UÄitaj standardne delove
   for (const [part, variant] of Object.entries(currentPartsRef)) {
     const node = nodesMeta.find(n => n.name === part);
 if (variant.src) {
   await replaceSelectedWithURL(variant.src, variant.name, part);
 }
 
-// sada sigurni da je model već zamenjen → tek sad primeni boju
+// sada sigurni da je model veÄ‡ zamenjen â†’ tek sad primeni boju
 if (variant.selectedColor) {
   const group = Object.values(VARIANT_GROUPS).find(g => part in g);
   const mainMat = group?.[part]?.mainMat || "";
@@ -1263,18 +1272,18 @@ if (variant.selectedColor) {
     showPartInfo(`${variant.name}${variant.selectedColor ? ` (${variant.selectedColor})` : ""}`);
   }
 
-  // 2️⃣ Aktiviraj ADDITIONAL (nema src, samo cena)
+  // 2ï¸âƒ£ Aktiviraj ADDITIONAL (nema src, samo cena)
   for (const [part, variant] of Object.entries(currentPartsRef)) {
     if (!variant.src) {
-      // označi u UI
+      // oznaÄi u UI
       const addItem = document.querySelector(`.variant-item[data-variant="${variant.name}"]`);
       if (addItem) {
         addItem.classList.add("active");
         addItem.style.borderColor = "var(--primary)";
         addItem.style.boxShadow = "0 0 0 2px rgba(56, 189, 248, 0.7)";
-        // osveži cenu odmah ispod kartice (ako postoji)
+        // osveÅ¾i cenu odmah ispod kartice (ako postoji)
         const footer = addItem.querySelector(".price");
-        if (footer) footer.textContent = variant.price === 0 ? "Included" : `+${variant.price} €`;
+        if (footer) footer.textContent = variant.price === 0 ? "Included" : `+${variant.price} â‚¬`;
       }
 
       // ako je taj deo dodatne opreme u nekoj grupi, otvori tu grupu
@@ -1322,9 +1331,9 @@ document
     btn.addEventListener("click", () => {
       const viewName = btn.getAttribute("data-view");
 
-      // 👇 DODAJ - HOME button specijalan slučaj
+      // ðŸ‘‡ DODAJ - HOME button specijalan sluÄaj
       if (viewName === "iso" && window.initialCameraState) {
-        console.log("🏠 HOME clicked - restoring initial state");
+        console.log("ðŸ  HOME clicked - restoring initial state");
         camera.useOrtho = false;
         camera.pan = window.initialCameraState.pan.slice();
         camera.distTarget = window.initialCameraState.dist;
@@ -1337,7 +1346,7 @@ document
         ({ proj, view, camWorld } = camera.updateView());
         sceneChanged = true;
         render();
-        return; // 👈 ВАЖНО - izađi iz funkcije
+        return; // ðŸ‘ˆ Ð’ÐÐ–ÐÐž - izaÄ‘i iz funkcije
       }
 
 
@@ -1345,7 +1354,7 @@ document
       const orthoViews = new Set(["front", "left", "back", "right", "top", "side"]);
       camera.useOrtho = orthoViews.has(viewName);
 
-      // ✅ Postavi uglove za svaki view
+      // âœ… Postavi uglove za svaki view
       const center = window.sceneBoundingCenter || [0, 0, 0];
       camera.panTarget = center.slice();
 
@@ -1376,7 +1385,7 @@ document
           break;
 
         case "top":
-          camera.rxTarget = Math.PI / 2 - 0.05; // skoro 90°
+          camera.rxTarget = Math.PI / 2 - 0.05; // skoro 90Â°
           camera.ryTarget = 0;
           break;
       }
@@ -1408,13 +1417,14 @@ setupExclusiveButtons("#camera-controls button[data-view]");
 setupExclusiveButtons("#camera-controls button[data-weather]");
 
 function getVariantPreviewSrc(partKey, variant) {
-  const generatedThumb = thumbnails?.[partKey]?.[variant.name];
+  const savedColorName = savedColorsByPart?.[partKey]?.[variant.name];
+  const fallbackColorName = variant.colors?.[0]?.name || null;
+  const generatedThumb = getThumbnailForVariant(partKey, variant.name, savedColorName || fallbackColorName);
   if (generatedThumb) {
     const isPlaceholder = generatedThumb.includes("part_placeholder");
     return { src: generatedThumb, isPlaceholder };
   }
 
-  const savedColorName = savedColorsByPart?.[partKey]?.[variant.name];
   const colorData =
     variant.colors?.find((c) => c.name === savedColorName) ||
     variant.colors?.[0];
@@ -1423,13 +1433,13 @@ function getVariantPreviewSrc(partKey, variant) {
     return { src: colorData.texture, isPlaceholder: false };
   }
 
-  return { src: "assets/part_placeholder.png", isPlaceholder: true };
+  return { src: PLACEHOLDER_THUMB, isPlaceholder: true };
 }
   
   const input = document.getElementById("glbInput");
   const loadingScr = document.getElementById("loading-screen");
   const toggleDimsBtn = document.getElementById("toggleDims");
-  toggleDimsBtn.innerText = "Show Ruler"; // početni tekst
+  toggleDimsBtn.innerText = "Show Ruler"; // poÄetni tekst
   
   toggleDimsBtn.addEventListener("click", () => {
     showDimensions = !showDimensions;
@@ -1447,7 +1457,7 @@ function getVariantPreviewSrc(partKey, variant) {
     if (window.markDimLabelsDirty) window.markDimLabelsDirty();
   });
   const toggleWaterBtn = document.getElementById("toggleWater");
-  toggleWaterBtn.innerText = "Studio"; // odmah prikaži tekst jer je voda aktivna
+  toggleWaterBtn.innerText = "Studio"; // odmah prikaÅ¾i tekst jer je voda aktivna
   
   toggleWaterBtn.addEventListener("click", () => {
     showWater = !showWater;
@@ -1551,7 +1561,7 @@ input.addEventListener("change", async (e) => {
 
   const buf = await file.arrayBuffer();
 
- await loadGLB(buf);  // čeka i model i teksture
+ await loadGLB(buf);  // Äeka i model i teksture
 hideLoading();        // sad sigurno sve gotovo
 sceneChanged = true;
 render();             // sad tek nacrtaj prvi frame
@@ -1573,11 +1583,11 @@ export function initUI(ctx) {
   const { render, BOAT_INFO, VARIANT_GROUPS, BASE_PRICE, SIDEBAR_INFO } = ctx;
 
   if (!VARIANT_GROUPS || typeof VARIANT_GROUPS !== "object") {
-    console.error("❌ VARIANT_GROUPS nije prosleđen u initUI()");
+    console.error("âŒ VARIANT_GROUPS nije prosleÄ‘en u initUI()");
     return;
   }
 
-  // 🔹 sigurnosne provere i inicijalizacija
+  // ðŸ”¹ sigurnosne provere i inicijalizacija
   if (!window.thumbnails) window.thumbnails = {};
   const thumbnails = window.thumbnails;
 

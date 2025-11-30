@@ -1,10 +1,17 @@
-import { createShaderProgram } from "./shader.js";
+﻿import { createShaderProgram } from "./shader.js";
 import { initWater, drawWater } from "./water.js";
 import { resetBoundTextures } from "./water.js";
 import { initCamera } from "./camera.js";
 import { initSky, drawSky, bakeSkyToCubemap, bakeIrradianceFromSky, bakeStudioToCubemap, drawStudio, DEFAULT_STUDIO } from "./sky.js";
 import { DEFAULT_SKY } from "./sky.js";
-import {DEFAULT_MODEL,BASE_PRICE,VARIANT_GROUPS,BOAT_INFO,SIDEBAR_INFO } from "./config.js";
+import {
+  DEFAULT_MODEL,
+  BASE_PRICE,
+  VARIANT_GROUPS,
+  BOAT_INFO,
+  SIDEBAR_INFO,
+  THUMBNAIL_CAM_PRESETS,
+} from "./config.js";
 import {mat4mul,persp,ortho,look,composeTRS,computeBounds,mulMat4Vec4, v3,} from "./math.js";
 import { initUI, renderBoatInfo, showPartInfo, showLoading, hideLoading, showToast, updateLoadingProgress } from "./ui.js";
 import { TEXTURE_SLOTS, bindTextureToSlot } from "./texture-slots.js";
@@ -32,6 +39,7 @@ window.currentViewProjMatrix = currentViewProjMatrix;
 const textureCache = {}; // key = url, value = WebGLTexture
 const textureCachePromises = new Map();
 window.textureCache = textureCache;
+const lastAppliedCameraPreset = {}; // per-part key to avoid re-applying same camera
 
 let shadowFBO, shadowDepthTex;
 const SHADOW_RES = 2048;
@@ -3673,6 +3681,136 @@ if (prim.material !== undefined) {
   return out;
 }
 
+function applyViewCameraPreset(cameraInstance, variant) {
+  if (!cameraInstance) return false;
+
+  const isFiniteNumber = (v) => typeof v === "number" && Number.isFinite(v);
+  const directView = variant?.viewCamera || variant?.view || variant?.cameraView;
+  let applied = false;
+
+  if (directView && typeof directView === "object") {
+    if (
+      Array.isArray(directView.pan) &&
+      directView.pan.length === 3 &&
+      directView.pan.every(isFiniteNumber)
+    ) {
+      cameraInstance.pan = directView.pan.slice();
+      cameraInstance.panTarget = directView.pan.slice();
+      applied = true;
+    }
+    if (isFiniteNumber(directView.rx)) {
+      cameraInstance.rx = directView.rx;
+      cameraInstance.rxTarget = directView.rx;
+      applied = true;
+    }
+    if (isFiniteNumber(directView.ry)) {
+      cameraInstance.ry = directView.ry;
+      cameraInstance.ryTarget = directView.ry;
+      applied = true;
+    }
+    if (isFiniteNumber(directView.dist)) {
+      cameraInstance.dist = directView.dist;
+      cameraInstance.distTarget = directView.dist;
+      applied = true;
+    }
+    if (isFiniteNumber(directView.fov)) {
+      cameraInstance.fovOverride = directView.fov;
+      applied = true;
+    }
+    if (applied) {
+      cameraInstance.moved = true;
+      return true;
+    }
+  }
+
+  const parsePresetIndex = (value) => {
+    const n = parseInt(value, 10);
+    return Number.isFinite(n) && n > 0 ? n - 1 : null;
+  };
+
+  const variantPresetIdx = parsePresetIndex(
+    variant?.viewCam ?? variant?.camPreset ?? variant?.thumbCam
+  );
+  const urlPresetIdx = parsePresetIndex(new URLSearchParams(window.location.search).get("cam_pos"));
+  const presetIdx = variantPresetIdx !== null ? variantPresetIdx : urlPresetIdx;
+
+  if (presetIdx === null) return false;
+  if (!Array.isArray(THUMBNAIL_CAM_PRESETS)) return false;
+  const preset = THUMBNAIL_CAM_PRESETS[presetIdx];
+  if (!preset) return false;
+
+  const basePan = cameraInstance.panTarget
+    ? cameraInstance.panTarget.slice()
+    : cameraInstance.pan
+    ? cameraInstance.pan.slice()
+    : [0, 0, 0];
+  const baseRx = isFiniteNumber(cameraInstance.rxTarget)
+    ? cameraInstance.rxTarget
+    : cameraInstance.rx || 0;
+  const baseRy = isFiniteNumber(cameraInstance.ryTarget)
+    ? cameraInstance.ryTarget
+    : cameraInstance.ry || 0;
+  const baseDist = isFiniteNumber(cameraInstance.distTarget)
+    ? cameraInstance.distTarget
+    : cameraInstance.dist || 1;
+
+  if (preset.panOffset) {
+    cameraInstance.pan = [
+      basePan[0] + (preset.panOffset[0] || 0),
+      basePan[1] + (preset.panOffset[1] || 0),
+      basePan[2] + (preset.panOffset[2] || 0),
+    ];
+    cameraInstance.panTarget = cameraInstance.pan.slice();
+    applied = true;
+  }
+  if (isFiniteNumber(preset.rxOffset)) {
+    cameraInstance.rx = baseRx + preset.rxOffset;
+    cameraInstance.rxTarget = cameraInstance.rx;
+    applied = true;
+  }
+  if (isFiniteNumber(preset.ryOffset)) {
+    cameraInstance.ry = baseRy + preset.ryOffset;
+    cameraInstance.ryTarget = cameraInstance.ry;
+    applied = true;
+  }
+  if (isFiniteNumber(preset.distScale)) {
+    cameraInstance.dist = baseDist * preset.distScale;
+    cameraInstance.distTarget = cameraInstance.dist;
+    applied = true;
+  }
+
+  if (applied) {
+    cameraInstance.moved = true;
+    return true;
+  }
+
+  return false;
+}
+
+function getVariantViewKey(variant) {
+  if (!variant) return null;
+  const directView = variant.viewCamera || variant.view || variant.cameraView;
+  if (directView && typeof directView === "object") {
+    const pan = Array.isArray(directView.pan) ? directView.pan.join(",") : "nopan";
+    const rx = Number.isFinite(directView.rx) ? directView.rx : "norx";
+    const ry = Number.isFinite(directView.ry) ? directView.ry : "nory";
+    const dist = Number.isFinite(directView.dist) ? directView.dist : "nodist";
+    const fov = Number.isFinite(directView.fov) ? directView.fov : "nofov";
+    return `direct:${pan}:${rx}:${ry}:${dist}:${fov}`;
+  }
+  const parsePresetIndex = (value) => {
+    const n = parseInt(value, 10);
+    return Number.isFinite(n) && n > 0 ? n - 1 : null;
+  };
+  const variantPresetIdx = parsePresetIndex(
+    variant?.viewCam ?? variant?.camPreset ?? variant?.thumbCam
+  );
+  if (variantPresetIdx !== null) return `preset:${variantPresetIdx}`;
+  const urlPresetIdx = parsePresetIndex(new URLSearchParams(window.location.search).get("cam_pos"));
+  if (urlPresetIdx !== null) return `preset:${urlPresetIdx}`;
+  return null;
+}
+
 async function replaceSelectedWithURL(url, variantName, partName, { suppressLoading = false } = {}) {
 
     const alreadyCached = !url || preparedVariants[url];
@@ -3850,11 +3988,39 @@ if (activeColor) {
 }
 
 
+  const wasSameVariant = currentParts[partName]?.name === variantName;
   currentParts[partName] = { ...currentParts[partName], name: variantName };
 
   if (!window.__suppressFocusCamera) {
+    const cfgVariant =
+      variantData ||
+      (cfgGroup[partName]?.models || []).find((v) => v.name === variantName);
+    const viewKey = getVariantViewKey(cfgVariant);
+    const prevKey = lastAppliedCameraPreset[partName];
+    const shouldApplyCamera = viewKey !== null && viewKey !== prevKey;
+
+    if (!wasSameVariant && shouldApplyCamera) {
       focusCameraOnNode(node);
+      const viewApplied = applyViewCameraPreset(camera, cfgVariant);
+      if (viewApplied) {
+        camera.updateView();
+        sceneChanged = true;
+        lastAppliedCameraPreset[partName] = viewKey;
+      }
+    } else if (!wasSameVariant && !shouldApplyCamera) {
+      // ako je ista kamera, barem centriraj novi bounding box bez pomeranja kamere
+      delete node.cachedBounds;
+      ensureNodeBounds(node);
+    } else if (wasSameVariant && shouldApplyCamera) {
+      // ista varijanta ali drugačiji preset iz URL-a
+      const viewApplied = applyViewCameraPreset(camera, cfgVariant);
+      if (viewApplied) {
+        camera.updateView();
+        sceneChanged = true;
+        lastAppliedCameraPreset[partName] = viewKey;
+      }
     }
+  }
   if (shouldShowLoading) {
     hideLoading(); // 👈 zameni безусловни hideLoading() sa uslovnim
   }
