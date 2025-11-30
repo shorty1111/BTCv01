@@ -654,7 +654,7 @@ function buildVariantSidebar() {
         const rawPrice = variant.price ?? 0;
         const priceText = rawPrice === 0
           ? "Included (incl. VAT)"
-          : `+${rawPrice} â‚¬ (incl. VAT)`;
+          : `+${rawPrice} € (incl. VAT)`;
         footer.innerHTML = `<span class="price">${priceText}</span>`;
         body.appendChild(footer);
 
@@ -666,7 +666,7 @@ function buildVariantSidebar() {
       if (variant.description) {
         const descBtn = document.createElement("button");
         descBtn.className = "desc-toggle";
-        descBtn.textContent = "â„¹ï¸";
+        descBtn.textContent = "info";
         itemEl.appendChild(descBtn);
 
         const descEl = document.createElement("div");
@@ -798,7 +798,7 @@ function buildPartsTable() {
       tr.innerHTML = `
         <td>${groupName}</td>
         <td>${chosenName}</td>
-        <td>${price === 0 ? "Included" : `+${price} â‚¬`}</td>
+        <td>${price === 0 ? "Included" : `+${price} €`}</td>
       `;
       tbody.appendChild(tr);
     }
@@ -812,7 +812,7 @@ function buildPartsTable() {
       tr.innerHTML = `
         <td>Additional</td>
         <td>${variant.name}</td>
-        <td>${variant.price === 0 ? "Included" : `+${variant.price} â‚¬`}</td>
+        <td>${variant.price === 0 ? "Included" : `+${variant.price} €`}</td>
       `;
       tbody.appendChild(tr);
     }
@@ -863,7 +863,7 @@ function updatePartsTable(partKey, newVariantName) {
     row.innerHTML = `
       <td>${groupName}</td>
       <td>${variant.name}</td>
-      <td>+${price} â‚¬</td>
+      <td>+${price} €</td>
     `;
   }
 
@@ -889,13 +889,13 @@ function updateTotalPrice() {
   totalRow.innerHTML = `
     <td colspan="2" style="text-align:right; font-weight:700;">Total:</td>
 <td style="font-size:16px; font-weight:700; color:#3aa4ff;">
-  ${total.toLocaleString("de-DE")} â‚¬ (incl. VAT)
+  ${total.toLocaleString("de-DE")} € (incl. VAT)
 </td>
   `;
 
   const sidebarPrice = document.querySelector(".sidebar-total .price");
   if (sidebarPrice)
-    sidebarPrice.textContent = `${total.toLocaleString("de-DE")} â‚¬ (incl. VAT)`;
+    sidebarPrice.textContent = `${total.toLocaleString("de-DE")} € (incl. VAT)`;
 
 }
 function highlightTreeSelection(id) {
@@ -1283,7 +1283,7 @@ if (variant.selectedColor) {
         addItem.style.boxShadow = "0 0 0 2px rgba(56, 189, 248, 0.7)";
         // osveÅ¾i cenu odmah ispod kartice (ako postoji)
         const footer = addItem.querySelector(".price");
-        if (footer) footer.textContent = variant.price === 0 ? "Included" : `+${variant.price} â‚¬`;
+        if (footer) footer.textContent = variant.price === 0 ? "Included" : `+${variant.price} €`;
       }
 
       // ako je taj deo dodatne opreme u nekoj grupi, otvori tu grupu

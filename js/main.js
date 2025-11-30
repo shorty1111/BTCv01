@@ -577,6 +577,13 @@ function createFinalColorTarget(w, h) {
   gl.bindTexture(gl.TEXTURE_2D, null);
 }
 
+function applyBoatNameFromConfig() {
+  const nameEl = document.querySelector(".boat-name");
+  if (!nameEl) return;
+  const name = BOAT_INFO?.Model || "Boat";
+  nameEl.textContent = name;
+}
+
 function focusCameraOnNode(node) {
   if (!node) return;
   camera.useOrtho = false; // prebaci nazad u perspektivu
@@ -2089,6 +2096,7 @@ async function initializeApp() {
     // Pokreni prvi render
     render();
     renderBoatInfo(BOAT_INFO);
+    applyBoatNameFromConfig();
 
     // Pokreni UI tek sada
     initUI({ render, BOAT_INFO, VARIANT_GROUPS, BASE_PRICE, SIDEBAR_INFO });
