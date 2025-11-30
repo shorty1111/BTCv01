@@ -123,21 +123,9 @@ export const VARIANT_GROUPS = {
           description:
             "Streamlined sport hull with improved hydrodynamics for higher performance and better control at speed.",
           colors: [
-            {
-              name: "White",
-              type: "color",
-              color: [1, 1, 1],
-            },
-            {
-              name: "Gray",
-              type: "color",
-              color: [0.502, 0.502, 0.502],
-            },
-            {
-              name: "Black",
-              type: "color",
-              color: [0.051, 0.051, 0.051],
-            },
+            { name: "White", type: "color", color: [1, 1, 1] },
+            { name: "Gray", type: "color", color: [0.502, 0.502, 0.502] },
+            { name: "Black", type: "color", color: [0.051, 0.051, 0.051] },
           ],
         },
       ],
