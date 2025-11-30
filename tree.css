@@ -2190,6 +2190,20 @@ body.studio-mode .btn-weather {
   -webkit-backdrop-filter: var(--blur-medium);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
   white-space: nowrap;
+  overflow: visible;
+  animation: hotspot-glow 1.8s ease-in-out infinite;
+}
+
+.variant-hotspot::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 184, 86, 0.9);
+  opacity: 0.6;
+  animation: label-pulse 1.6s ease-in-out infinite;
+  pointer-events: none;
+  box-shadow: 0 0 12px rgba(255, 184, 86, 0.4);
 }
 
 .variant-hotspot:hover {
@@ -2204,4 +2218,57 @@ body.studio-mode .btn-weather {
 .variant-hotspot.offscreen {
   opacity: 0;
   pointer-events: none;
+}
+
+@keyframes hotspot-glow {
+  0% {
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25),
+      0 0 0 0 rgba(255, 184, 86, 0.22);
+  }
+  50% {
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25),
+      0 0 14px 10px rgba(255, 184, 86, 0.36);
+  }
+  100% {
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25),
+      0 0 0 0 rgba(255, 184, 86, 0.22);
+  }
+}
+.center-box {
+  position: fixed;
+  right: 24px;
+  bottom: 100px;
+  transform: none;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow-soft);
+  z-index: 999;
+}
+
+.center-box .control-title {
+  font-weight: 700;
+  color: var(--foreground);
+  margin: 0 0 4px 0;
+}
+
+.center-box ul {
+  margin: 0;
+  padding: 0 0 0 18px;
+  color: var(--foreground);
+  list-style: disc;
+}
+
+.center-box li {
+  margin: 2px 0;
+  font-size: 13px;
+}
+
+.center-box strong {
+  color: var(--primary);
 }
