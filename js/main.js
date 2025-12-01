@@ -15,7 +15,7 @@ import {
 import {mat4mul,persp,ortho,look,composeTRS,computeBounds,mulMat4Vec4, v3,} from "./math.js";
 import { initUI, renderBoatInfo, showPartInfo, showLoading, hideLoading, showToast, updateLoadingProgress } from "./ui.js";
 import { TEXTURE_SLOTS, bindTextureToSlot } from "./texture-slots.js";
-import { createThumbnailGenerator, thumbnails } from "./thumbnails.js";
+import { createThumbnailGenerator, thumbnails, clearThumbnailCache } from "./thumbnails.js";
 
 let sceneChanged = true;
 let pbrUniforms = {};
@@ -819,6 +819,8 @@ const {
   waitForThumbnailsToSettle,
   hideCanvasForThumbnails,
   restoreCanvasAfterThumbnails,
+  hydrateThumbnailsFromCache,
+  persistThumbnailCache,
 } = thumbnailGenerator;
 window.thumbnails = thumbnails;
 
@@ -2111,13 +2113,21 @@ async function initializeApp() {
       proj, view, camWorld, exportPDF, sceneChanged,
       originalParts,   // 👈 dodaj ovu liniju
       getPartWorldInfo,
-      getPartScreenPosition
+      getPartScreenPosition,
+      clearThumbnailCache
     });
 
     showLoading();
     await preloadAllVariants();
     await waitForPendingTextures(12000);
-    await generateAllThumbnails();
+    const thumbsFromCache = await hydrateThumbnailsFromCache();
+    if (!thumbsFromCache) {
+      updateLoadingProgress("Generating thumbnails", window.pendingTextures || 0, 0);
+      await generateAllThumbnails();
+      await persistThumbnailCache();
+    } else {
+      updateLoadingProgress("Loading thumbnails (cache)", 0, 0);
+    }
     refreshThumbnailsInUI();
     await waitForThumbnailsToSettle();
 
@@ -4061,7 +4071,7 @@ if (activeColor) {
     const viewKey = getVariantViewKey(cfgVariant);
     const hasViewPreset = viewKey !== null;
 
-    if (hasViewPreset) {
+    if (hasViewPreset && !wasSameVariant) {
       focusCameraOnNode(node);
       const basePose = {
         pan: camera.panTarget?.slice() || camera.pan?.slice() || [0, 0, 0],

@@ -3,6 +3,109 @@ import { THUMBNAIL_CAM_PRESETS } from "./config.js";
 export const PLACEHOLDER_THUMB = "assets/part_placeholder.png";
 export const thumbnails = {};
 const THUMB_DEFAULT_COLOR_KEY = "__default__";
+const THUMB_CACHE_VERSION = "v1";
+const THUMB_CACHE_PREFIX = "thumbCache:";
+const THUMB_DB_NAME = "thumbCacheDB";
+const THUMB_DB_STORE = "thumbs";
+
+function hashString(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i += 1) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0; // 32bit
+  }
+  // ensure positive
+  return (hash >>> 0).toString(16);
+}
+
+function getLocalStorageSafe() {
+  try {
+    const testKey = "__thumb_cache_test__";
+    localStorage.setItem(testKey, "1");
+    localStorage.removeItem(testKey);
+    return localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function openThumbDB() {
+  if (!("indexedDB" in window)) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const req = indexedDB.open(THUMB_DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(THUMB_DB_STORE)) {
+        db.createObjectStore(THUMB_DB_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve(null);
+  });
+}
+
+async function idbGetThumbCache(signature) {
+  const db = await openThumbDB();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    const tx = db.transaction(THUMB_DB_STORE, "readonly");
+    const store = tx.objectStore(THUMB_DB_STORE);
+    const req = store.get(signature);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => resolve(null);
+  });
+}
+
+async function idbSetThumbCache(signature, payload) {
+  const db = await openThumbDB();
+  if (!db) return false;
+  return new Promise((resolve) => {
+    const tx = db.transaction(THUMB_DB_STORE, "readwrite");
+    const store = tx.objectStore(THUMB_DB_STORE);
+    const req = store.put(payload, signature);
+    req.onsuccess = () => resolve(true);
+    req.onerror = () => resolve(false);
+  });
+}
+
+async function idbPruneOld(signatureToKeep) {
+  const db = await openThumbDB();
+  if (!db) return;
+  const tx = db.transaction(THUMB_DB_STORE, "readwrite");
+  const store = tx.objectStore(THUMB_DB_STORE);
+  const req = store.getAllKeys();
+  req.onsuccess = () => {
+    const keys = req.result || [];
+    keys.forEach((k) => {
+      if (k !== signatureToKeep) store.delete(k);
+    });
+  };
+}
+
+export async function clearThumbnailCache() {
+  // wipe localStorage entries
+  const storage = getLocalStorageSafe();
+  if (storage) {
+    Object.keys(storage).forEach((k) => {
+      if (k.startsWith(THUMB_CACHE_PREFIX)) storage.removeItem(k);
+    });
+  }
+
+  // wipe IndexedDB store
+  try {
+    const db = await openThumbDB();
+    if (db) {
+      await new Promise((resolve) => {
+        const tx = db.transaction(THUMB_DB_STORE, "readwrite");
+        tx.objectStore(THUMB_DB_STORE).clear();
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      });
+    }
+  } catch (err) {
+    console.warn("[thumb-cache] Failed to clear IndexedDB cache", err);
+  }
+}
 
 const THUMB_CAM_PARAM = new URLSearchParams(window.location.search).get("cam_pos");
 const THUMBNAIL_CAM_INDEX_PARAM =
@@ -41,6 +144,18 @@ export function createThumbnailGenerator({
 }) {
   let __canvasHiddenForThumbs = false;
   let thumbnailCaptureCanvas = null;
+  const variantSignature = (() => {
+    try {
+      const payload = JSON.stringify({
+        v: THUMB_CACHE_VERSION,
+        cam: THUMBNAIL_CAM_PRESETS,
+        groups: variantGroups,
+      });
+      return `${THUMB_CACHE_VERSION}:${hashString(payload)}`;
+    } catch {
+      return null;
+    }
+  })();
 
   const colorsForVariant = (variant) => {
     if (Array.isArray(variant?.colors) && variant.colors.length) {
@@ -451,6 +566,78 @@ export function createThumbnailGenerator({
     }
   }
 
+  async function hydrateThumbnailsFromCache() {
+    if (!variantSignature) return false;
+    // prefer indexedDB (bigger quota), then localStorage
+    try {
+      const idbPayload = await idbGetThumbCache(variantSignature);
+      if (idbPayload?.signature === variantSignature && idbPayload?.data) {
+        restoreObject(thumbnails, idbPayload.data);
+        return true;
+      }
+    } catch {
+      /* ignore and fallback */
+    }
+
+    const storage = getLocalStorageSafe();
+    if (!storage) return false;
+    const key = `${THUMB_CACHE_PREFIX}${variantSignature}`;
+    const raw = storage.getItem(key);
+    if (!raw) return false;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed?.signature !== variantSignature || !parsed?.data) return false;
+      restoreObject(thumbnails, parsed.data);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function persistThumbnailCache() {
+    if (!variantSignature) return false;
+    const payload = {
+      signature: variantSignature,
+      data: thumbnails,
+      ts: Date.now(),
+    };
+
+    let stored = false;
+    try {
+      stored = await idbSetThumbCache(variantSignature, payload);
+      if (stored) {
+        idbPruneOld(variantSignature);
+      }
+    } catch (err) {
+      console.warn("[thumb-cache] Failed to persist thumbnails to IDB", err);
+    }
+
+    // best-effort localStorage fallback if payload is small enough
+    const storage = getLocalStorageSafe();
+    if (storage) {
+      const key = `${THUMB_CACHE_PREFIX}${variantSignature}`;
+      try {
+        const raw = JSON.stringify(payload);
+        if (raw.length < 4_000_000) {
+          storage.setItem(key, raw);
+          Object.keys(storage).forEach((k) => {
+            if (k.startsWith(THUMB_CACHE_PREFIX) && k !== key) {
+              storage.removeItem(k);
+            }
+          });
+          stored = true;
+        }
+      } catch (err) {
+        // QuotaExceeded or stringify issues
+        if (!(err?.name === "QuotaExceededError")) {
+          console.warn("[thumb-cache] Failed to persist thumbnails to localStorage", err);
+        }
+      }
+    }
+
+    return stored;
+  }
+
   function refreshThumbnailsInUI() {
     if (window.__suppressThumbnailUI) return;
     document.querySelectorAll(".variant-item").forEach((itemEl) => {
@@ -489,6 +676,8 @@ export function createThumbnailGenerator({
     hideCanvasForThumbnails,
     restoreCanvasAfterThumbnails,
     captureCanvasThumbnail,
+    hydrateThumbnailsFromCache,
+    persistThumbnailCache,
   };
 }
 
