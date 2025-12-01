@@ -13,7 +13,7 @@ let skyUniforms = {}; // ⚙️ NOVO
 export const DEFAULT_SKY = {
   zenith: [0.12, 0.25, 0.6],
   horizon: [0.8, 0.9, 1.0],
-  ground: [0.02, 0.02, 0.02],
+  ground: [0.01, 0.02, 0.04],
   sunsetHorizon: [1.0, 0.35, 0.1],
   sunsetZenith: [0.18, 0.23, 0.55],
   worldLocked: 1,

@@ -403,7 +403,10 @@ function decrementPendingTextures() {
   window.pendingTextures = Math.max(0, window.pendingTextures - 1);
   updateLoadingProgress("Loading textures", window.pendingTextures, window.pendingMeshes ? 1 : 0);
 }
-let savedColorsByPart = {};
+// Delimo isti objekat sa ui.js (koji ga već stavlja na window) da bi se boje sa UI
+// klikova i rekalkulacije varijanti čitale iz istog izvora.
+let savedColorsByPart = window.savedColorsByPart || {};
+window.savedColorsByPart = savedColorsByPart;
 let reflectionFBO = null;
 let reflectionTex = null;
 let reflectionColorProgram = null;

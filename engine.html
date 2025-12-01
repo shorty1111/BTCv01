@@ -168,5 +168,14 @@
         <li><strong>Scroll:</strong> Zoom</li>
       </ul>
     </div>
+    <script>
+      // Block context menu and dragging to discourage saving images/screenshots
+      window.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+      });
+      window.addEventListener("dragstart", (event) => {
+        event.preventDefault();
+      });
+    </script>
   </body>
 </html>
