@@ -616,6 +616,9 @@ function buildVariantSidebar() {
               if (!savedColorsByPart[partKey]) savedColorsByPart[partKey] = {};
               savedColorsByPart[partKey][variant.name] = c.name;
               updatePartsTable(partKey, `${variant.name} (${c.name})`);
+              if (typeof window.reapplyVariantCameraPreset === "function") {
+                window.reapplyVariantCameraPreset(partKey, variantName);
+              }
 
               // a�_uriraj selekciju u UI
               colorsDiv.querySelectorAll(".color-swatch").forEach(el => el.classList.remove("selected"));

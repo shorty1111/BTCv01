@@ -2107,7 +2107,7 @@ async function initializeApp() {
       gl, camera, nodesMeta, modelBaseColors, modelBaseTextures,
       savedColorsByPart, showDimensions, showWater, SIDEBAR_INFO,
       VARIANT_GROUPS, BASE_PRICE, BOAT_INFO, thumbnails, currentParts,
-      render, replaceSelectedWithURL, focusCameraOnNode, setWeather,
+      render, replaceSelectedWithURL, reapplyVariantCameraPreset, focusCameraOnNode, setWeather,
       proj, view, camWorld, exportPDF, sceneChanged,
       originalParts,   // 👈 dodaj ovu liniju
       getPartWorldInfo,
@@ -4061,7 +4061,7 @@ if (activeColor) {
     const viewKey = getVariantViewKey(cfgVariant);
     const hasViewPreset = viewKey !== null;
 
-    if (!wasSameVariant && hasViewPreset) {
+    if (hasViewPreset) {
       focusCameraOnNode(node);
       const basePose = {
         pan: camera.panTarget?.slice() || camera.pan?.slice() || [0, 0, 0],
@@ -4097,6 +4097,36 @@ render();
 if (!window.__suppressThumbnailUI) {
   showPartInfo(variantName);
 }
+}
+
+function reapplyVariantCameraPreset(partName, variantName = null) {
+  if (window.__suppressFocusCamera) return;
+  const node = nodesMeta.find((n) => n.name === partName);
+  if (!node) return;
+
+  const cfgGroup = Object.values(VARIANT_GROUPS).find((g) => partName in g) || {};
+  const models = cfgGroup[partName]?.models || [];
+  const cfgVariant =
+    models.find((v) => v.name === (variantName || currentParts[partName]?.name)) || null;
+  if (!cfgVariant) return;
+
+  const viewKey = getVariantViewKey(cfgVariant);
+  if (viewKey === null) return;
+
+  focusCameraOnNode(node);
+  const basePose = {
+    pan: camera.panTarget?.slice() || camera.pan?.slice() || [0, 0, 0],
+    rx: camera.rxTarget ?? camera.rx,
+    ry: camera.ryTarget ?? camera.ry,
+    dist: camera.distTarget ?? camera.dist,
+  };
+  const applied = applyViewCameraPreset(camera, cfgVariant, basePose);
+  if (applied) {
+    camera.updateView();
+    sceneChanged = true;
+    lastAppliedCameraPreset[partName] = viewKey;
+    render();
+  }
 }
 
 function getBoundsCorners(bounds) {
