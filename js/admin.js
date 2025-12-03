@@ -438,7 +438,7 @@ function createVariantItem(itemData = {}) {
             <label class="upload-label">Upload<input type="file" class="variant-item-upload" accept=".glb"></label>
           </div>
         </label>
-        <label>Price (EUR)<input type="number" class="variant-item-price" value="${itemData.price ?? 0}" min="0"></label>
+        <label>Price (€)<input type="number" class="variant-item-price" value="${itemData.price ?? 0}" min="0"></label>
       </div>
     </div>
     <label>Description<textarea class="variant-item-description" rows="3" placeholder="Describe this option">${itemData.description ?? ""}</textarea></label>

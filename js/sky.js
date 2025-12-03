@@ -470,7 +470,10 @@ sunLight += uSunColor *
     float skyMask    = smoothstep(-0.04, 0.02, dir.y);
     float groundMask = 1.0 - skyMask;
 
-    vec3 groundBase = uGround * groundMask;  
+    // Ground potamni kada je sunce nisko / noc
+    float sunLift = clamp(sunV.y * 0.5 + 0.5, 0.0, 1.0);
+    float groundDim = mix(0.12, 1.0, sunLift) * (1.0 - nightAmt * 0.5);
+    vec3 groundBase = uGround * groundMask * groundDim;  
     float below       = smoothstep(0.0, 0.25, max(0.0, -dir.y));
 
     // === 5. Finalna kompozicija ===
@@ -479,7 +482,7 @@ sunLight += uSunColor *
                 (sunLight * skyMask * 1.0) +   // 15x jače sunce
                 groundBase;
 
-    // Fade celo nebo kad je noć (noć je nightAmt)
+    // Fade celo nebo + ground kad je noć
     color = mix(color, nightZenith * 0.5, nightAmt*0.85);
 
     // linear HDR output (ACES tonemap ide kasnije u glavnom passu)
