@@ -21,11 +21,11 @@ void main() {
     col = ACESFilm(col);
 
     // --- EVE-like filmic tweaks ---
-    col = pow(col, vec3(1.1));                 // zgnječi midtone, oštriji kontrast
+    // col = pow(col, vec3(1.1));                 // zgnječi midtone, oštriji kontrast
     col *= vec3(1.25, 1.2, 1.15);               // lagano topli bias (kao EVE)
     float lift = 0.05;                          // minimalni “fog” u crnim
     col = mix(vec3(lift), col, 0.950);            
-    col = mix(col, ACESFilm(col * 1.0), 0.75);  // punch saturacija + rolloff
+    col = mix(col, ACESFilm(col * 1.0), 0.4);  // punch saturacija + rolloff
     col = pow(col, vec3(1.0 / 2.2));            // gamma
 
     fragColor = vec4(col, 1.0);

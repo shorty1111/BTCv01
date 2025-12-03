@@ -20,6 +20,7 @@ import { createThumbnailGenerator, thumbnails, clearThumbnailCache } from "./thu
 let sceneChanged = true;
 let pbrUniforms = {};
 let reflectionUniforms = {};
+let acesUniforms = {};
 let acesProgram = null;
 let finalFBO = null;
 let finalColorTex = null;
@@ -331,15 +332,35 @@ function rebuildEnvironmentTextures() {
   }
 }
 
+function syncWeatherButtonsState(isStudioMode) {
+  const buttons = document.querySelectorAll("#camera-controls button[data-weather]");
+  const currentWeather = SUN.dir[1] > 0.5 ? "day" : "sunset";
+
+  buttons.forEach((btn) => {
+    btn.disabled = isStudioMode;
+    if (isStudioMode) {
+      btn.classList.remove("active");
+      return;
+    }
+    btn.classList.toggle("active", btn.dataset.weather === currentWeather);
+  });
+
+  document.body.classList.toggle("studio-mode", isStudioMode);
+}
+
 function setEnvMode(mode) {
   const next = mode === ENV_MODE.STUDIO ? ENV_MODE.STUDIO : ENV_MODE.SKY;
   if (envMode === next) return;
   envMode = next;
-  if (envMode === ENV_MODE.STUDIO) {
+  const isStudio = envMode === ENV_MODE.STUDIO;
+  if (isStudio) {
     SUN.intensity = Math.max(SUN.intensity, 0.6);
+    document.body.classList.add("env-studio");
   } else {
     updateSun();
+    document.body.classList.remove("env-studio");
   }
+  syncWeatherButtonsState(isStudio);
   shadowDirty = true;
   rebuildEnvironmentTextures();
   sceneChanged = true;
@@ -1737,6 +1758,7 @@ async function initShaders() {
 
     const acesFragSrc = await loadShader("shaders/aces.frag");
     acesProgram = createShaderProgram(gl, quadVertSrc, acesFragSrc);
+    acesUniforms.uInput = gl.getUniformLocation(acesProgram, "uInput");
 
     const fxaaVS = await loadShader("shaders/fxaa.vert");
     const fxaaFS = await loadShader("shaders/fxaa.frag");
@@ -1822,7 +1844,7 @@ async function initShaders() {
     // === 3. Init PBR konstantnih uniforma ===
     gl.useProgram(program);
     gl.uniform1f(pbrUniforms.uLightSize, 0.00025);
-    window.globalExposure = 1.0; // globalni exposure za sve svetlo
+    window.globalExposure = window.globalExposure ?? 1.0;
     gl.uniform1f(pbrUniforms.uGlobalExposure, window.globalExposure);
     gl.uniform2f(pbrUniforms.uShadowMapSize, SHADOW_RES, SHADOW_RES);
     gl.uniform1f(pbrUniforms.uNormalBias, 0.005);
@@ -2724,7 +2746,7 @@ gl.viewport(0, 0, canvas.width, canvas.height);
 gl.useProgram(acesProgram);
 gl.activeTexture(gl.TEXTURE0);
 gl.bindTexture(gl.TEXTURE_2D, finalColorTex);
-gl.uniform1i(gl.getUniformLocation(acesProgram, "uInput"), 0);
+gl.uniform1i(acesUniforms.uInput, 0);
 
 gl.bindVertexArray(quadVAO);
 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
