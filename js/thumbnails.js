@@ -644,6 +644,7 @@ export function createThumbnailGenerator({
       const part = itemEl.dataset.part;
       const variant = itemEl.dataset.variant;
       const img = itemEl.querySelector("img.thumb");
+       if (!img) return;
       const savedColorName = savedColorsByPart?.[part]?.[variant] || null;
       const { variant: variantData } = findVariantData(part, variant);
       const defaultColor = variantData?.colors?.[0]?.name || null;

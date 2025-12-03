@@ -3,50 +3,41 @@
   --background-secondary: hsl(220, 15%, 12%);
   --background-tertiary: hsl(220, 12%, 16%);
   --foreground: hsl(210, 40%, 98%);
-  --sidebar-w: 384px;
-
+  --sidebar-w: 450px;
   /* Glass Effects */
   --card: hsl(220, 15%, 12%, 0.8);
   --card-foreground: hsl(210, 40%, 95%);
   --card-border: hsl(220, 20%, 25%, 0.4);
-
   --popover: hsl(220, 15%, 10%, 0.95);
   --popover-foreground: hsl(210, 40%, 95%);
-
   /* Primary Colors */
   --primary: hsl(210, 85%, 55%);
   --primary-glow: hsl(210, 90%, 65%);
   --primary-dark: hsl(210, 80%, 45%);
   --primary-foreground: hsl(210, 40%, 98%);
-
   /* Secondary Colors */
   --secondary: hsl(220, 15%, 20%);
   --secondary-foreground: hsl(210, 40%, 95%);
   --secondary-hover: hsl(220, 15%, 25%);
-
   --accent: hsl(280, 70%, 55%);
   --accent-glow: hsl(280, 80%, 65%);
   --accent-foreground: hsl(210, 40%, 98%);
-
   /* Neutral Colors */
   --muted: hsl(220, 15%, 18%);
   --muted-foreground: hsl(220, 10%, 65%);
   --muted-hover: hsl(220, 15%, 22%);
-
   /* Borders */
   --border: hsl(220, 20%, 25%, 0.6);
   --border-hover: hsl(220, 25%, 35%, 0.8);
   --input: hsl(220, 15%, 16%);
   --input-border: hsl(220, 20%, 30%);
   --ring: hsl(210, 85%, 55%, 0.3);
-
   /* Glass & Blur */
   --glass-bg: hsl(220, 15%, 10%, 0.7);
   --glass-border: hsl(220, 30%, 40%, 0.3);
   --blur-strong: blur(20px) saturate(150%);
   --blur-medium: blur(12px) saturate(120%);
   --blur-light: blur(8px) saturate(110%);
-
   /* Gradients */
   --gradient-primary: linear-gradient(
     135deg,
@@ -72,25 +63,21 @@
   --mobile-panel-height: 45vh;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-
   /* Shadows */
   --shadow-soft: 0 4px 16px hsl(220, 15%, 5%, 0.3);
   --shadow-medium: 0 8px 32px hsl(220, 15%, 5%, 0.4);
   --shadow-strong: 0 8px 32px hsl(220, 15%, 5%, 0.5);
   --shadow-glow: 0 0 20px hsl(210, 85%, 55%, 0.3);
   --shadow-accent-glow: 0 0 15px hsl(280, 70%, 55%, 0.4);
-
   /* Transitions */
   --transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-slow: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   --spring: cubic-bezier(0.68, -0.55, 0.265, 1.55);
-
   /* Layout */
   --action-bar-h: 64px;
   --header-h: 64px;
 }
-
 /* =========================
    BASE RESET
 ========================= */
@@ -102,7 +89,6 @@ body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  
   background: var(--gradient-background);
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     sans-serif;
@@ -110,11 +96,9 @@ body {
   font-size: 14px;
   line-height: 1.5;
 }
-
 * {
   box-sizing: border-box;
 }
-
 /* Custom Scrollbars */
 ::-webkit-scrollbar {
   width: 4px;
@@ -129,7 +113,6 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-hover);
 }
-
 /* =========================
    GLOBAL HEADER - 0 STYLE
 ========================= */
@@ -147,7 +130,6 @@ body {
   border-bottom: 1px solid var(--border);
   z-index: 1000;
 }
-
 .header-left,
 .header-center,
 .header-right {
@@ -155,11 +137,9 @@ body {
   display: flex;
   align-items: center;
 }
-
 .header-left {
   justify-content: flex-start;
 }
-
 .tooltip {
   position: absolute;
   top: 100%;
@@ -175,12 +155,10 @@ body {
   pointer-events: none;
   transition: opacity 0.3s ease;
 }
-
 /* kad se doda show-tooltip klasa */
 .header-left.show-tooltip .tooltip {
   opacity: 1;
 }
-
 /* kad klikneš na strelicu (dodaš .clicked) tooltip nestaje */
 .header-left.clicked .tooltip {
   opacity: 0;
@@ -188,18 +166,15 @@ body {
 .header-center {
   justify-content: center;
 }
-
 .header-right {
   justify-content: flex-end;
 }
-
 /* Logo */
 .logo {
   height: 40px;
   width: auto;
   object-fit: contain;
 }
-
 /* Export dugme */
 .export-btn {
   background: var(--primary);
@@ -216,8 +191,6 @@ body {
   background: var(--primary-glow);
   transform: translateY(-2px);
 }
-
-
 .global-header .boat-name {
   display: flex;
   align-items: center;
@@ -237,7 +210,6 @@ body {
   padding: 6px 12px;
   cursor: pointer;
 }
-
 .dropdown-toggle {
   background: none;
   border: none;
@@ -249,7 +221,6 @@ body {
 .dropdown-toggle:hover {
   transform: rotate(180deg);
 }
-
 .dropdown-menu {
   position: absolute;
   top: 100%;
@@ -287,7 +258,6 @@ body {
   max-height: 220px;
   overflow-y: auto;
 }
-
 .saved-item {
   display: flex;
   align-items: center;
@@ -301,14 +271,12 @@ body {
   cursor: pointer;
   transition: background 0.2s ease;
 }
-
 .saved-item .cfg-name {
   flex-grow: 1;                   /* zauzmi sav prostor levo */
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-
 .saved-item .del-btn {
   flex-shrink:1;                 /* X ostaje na kraju */
   background: none;
@@ -316,11 +284,9 @@ body {
   color: var(--foreground);
   cursor: pointer;
 }
-
 .saved-item:hover {
   background: var(--background-secondary);
 }
-
 .saved-item-btn {
   width: 100%;
   display: flex;
@@ -336,12 +302,10 @@ body {
   font-weight: 600;
   transition: var(--transition-fast);
 }
-
 .saved-item-btn:hover {
   border-color: var(--primary);
   background: rgba(85, 214, 255, 0.08);
 }
-
 .saved-item-btn .del-btn {
   background: var(--muted);
   color: var(--foreground);
@@ -352,13 +316,11 @@ body {
   font-weight: 700;
   text-transform: uppercase;
 }
-
 .saved-item-btn .del-btn:hover {
   background: var(--primary);
   border-color: var(--primary);
   color: var(--primary-foreground);
 }
-
 .modal {
   position: fixed;
   inset: 0;
@@ -370,12 +332,10 @@ body {
   z-index: 9999;
   transition: opacity 0.25s ease;
 }
-
 .modal.hidden {
   opacity: 0;
   pointer-events: none;
 }
-
 .modal-content {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
@@ -386,14 +346,12 @@ body {
   backdrop-filter: var(--blur-medium);
   -webkit-backdrop-filter: var(--blur-medium);
 }
-
 .modal-content h3 {
   margin: 0 0 12px 0;
   color: var(--foreground);
   font-size: 16px;
   font-weight: 600;
 }
-
 .modal-content input {
   width: 100%;
   padding: 8px 10px;
@@ -405,17 +363,14 @@ body {
   margin-bottom: 14px;
   outline: none;
 }
-
 .modal-content input:focus {
   border-color: var(--primary);
 }
-
 .modal-buttons {
   display: flex;
   justify-content: space-between;
   gap: 10px;
 }
-
 .modal-buttons button {
   flex: 1;
   padding: 8px 10px;
@@ -426,21 +381,17 @@ body {
   font-size: 13px;
   transition: var(--transition-fast);
 }
-
 #cancelSave {
   background: var(--muted);
   color: var(--muted-foreground);
 }
-
 #confirmSave {
   background: var(--primary);
   color: var(--foreground);
 }
-
 #confirmSave:hover {
   background: var(--primary-glow);
 }
-
 /* =========================
    CANVAS - 0 STYLE
 ========================= */
@@ -457,14 +408,13 @@ canvas,
   width: calc(100% - var(--sidebar-w));
   height: calc(100% - var(--header-h) - var(--action-bar-h));
 }
-
 /* =========================
    CAMERA CONTROLS - 0 STYLE
 ========================= */
 #camera-controls {
   position: fixed;
   top: 10rem;
-  left: 30rem;
+  left: 40rem;
   z-index: 50;
   max-width: 240px;
   background: var(--background-secondary);
@@ -488,13 +438,10 @@ canvas,
   cursor: pointer;
   transition: background-color 0.2s;
 }
-
-
 #camera-controls.expanded .controls-content {
   max-height: 600px;
   opacity: 1;
 }
-
 /* ---------- INNER CONTENT ---------- */
 .controls-inner {
   padding: 1rem;
@@ -502,14 +449,12 @@ canvas,
   flex-direction: column;
   gap: 0.75rem;
 }
-
 /* ---------- BUTTON GRID ---------- */
 .button-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 0.5rem;
 }
-
 /* ---------- CONTENT WRAPPER ---------- */
 .controls-content {
   max-height: 0;
@@ -522,7 +467,6 @@ canvas,
   height: 1px;
   background: rgba(0, 0, 0, 0.5);
   margin: 5px 0;
-
 }
 /* ---------- BUTTONS ---------- */
 #camera-controls button {
@@ -545,8 +489,6 @@ canvas,
 #camera-controls button.full-width {
   width: 100%;
 }
-
-
 #camera-controls button:hover {
   background: var(--primary);
   color: var(--primary-foreground);
@@ -563,8 +505,6 @@ canvas,
     transform: none;
   }
 }
-  
-
 #camera-controls .btn-weather img {
   width: 50px;
   height: 50px;
@@ -580,11 +520,9 @@ canvas,
   align-items: center;
   justify-content: center;
 }
-
 #toggleDims {
   grid-area: right;
 }
-
 /* =========================
    DIMENSION LABELS
 ========================= */
@@ -607,14 +545,12 @@ canvas,
   white-space: nowrap;
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
 }
-
 #lengthLabel.visible,
 #labels .label.visible {
   opacity: 1;
   transform: translate(-50%, -110%) scale(1);
   display: block;
 }
-
 .ruler-anchor {
   position: absolute;
   width: 10px;
@@ -628,12 +564,10 @@ canvas,
   transition: opacity 0.18s ease, transform 0.18s ease;
   pointer-events: none;
 }
-
 .ruler-anchor.visible {
   opacity: 1;
   transform: translate(-50%, -50%) scale(1);
 }
-
 /* =========================
    LOADING SCREEN - 0 STYLE
 ========================= */
@@ -649,17 +583,14 @@ canvas,
   z-index: 9999;
   transition: var(--transition-slow);
 }
-
 #loading-screen.hidden {
   opacity: 0;
   pointer-events: none;
 }
-
 .hidden {
   display: none;
   pointer-events: none;
 }
-
 #loading-screen .sheet {
   background: var(--card);
   backdrop-filter: var(--blur-strong);
@@ -672,7 +603,6 @@ canvas,
   animation: scale-in 0.5s var(--spring);
   box-shadow: var(--shadow-strong);
 }
-
 @keyframes scale-in {
   0% {
     transform: scale(0.95);
@@ -683,20 +613,17 @@ canvas,
     opacity: 1;
   }
 }
-
 #loading-screen .sheet > div:first-child {
   font-size: 22px;
   font-weight: 700;
   margin-bottom: 10px;
   color: var(--foreground);
 }
-
 @keyframes spin {
   to {
     transform: rotate(360deg);
   }
 }
-
 .progress {
   position: relative;
   width: 100%;
@@ -706,7 +633,6 @@ canvas,
   overflow: hidden;
   margin: 0 auto 20px;
 }
-
 .progress::before {
   content: "";
   position: absolute;
@@ -730,7 +656,6 @@ canvas,
     left: 100%;
   }
 }
-
 #loading-screen .sheet > div:last-child {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.7);
@@ -739,7 +664,6 @@ canvas,
   width: 100%;
   min-height: 16px;
 }
-
 #loading-screen .progress {
   width: 100%;
   height: 10px;
@@ -763,7 +687,6 @@ canvas,
   transition: width 0.25s ease;
   animation: none;
 }
-
 .progress-label {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.7);
@@ -771,7 +694,6 @@ canvas,
   text-align: right;
   min-height: 16px;
 }
-
 /* =========================
    SIDEBAR - 0 STYLE
 ========================= */
@@ -790,35 +712,17 @@ canvas,
    VARIANT GROUPS - 0 STYLE
 ========================= */
 .variant-group {
-  margin: 0;
-  border: none;
-  background: var(--glass-bg);
-  /* backdrop-filter: var(--blur-medium);
-  -webkit-backdrop-filter: var(--blur-medium); */
-  border: 1px solid var(--card-border);
-  border-radius: 12px;
-  margin-bottom: 4px;
   overflow: hidden;
 }
 .variant-sidebar {
   flex: 1;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   min-height: 0;               /* bitno za iOS */
   background: var(--background-secondary);
   padding-bottom: var(--safe-bottom);
 }
-
-.variant-group:first-child {
-  margin-top: 12px;
-  margin-left: 12px;
-  margin-right: 12px;
-}
-
-.variant-group:not(:first-child) {
-  margin-left: 12px;
-  margin-right: 12px;
-}
-
 .variant-group h3 {
   cursor: pointer;
   user-select: none;
@@ -835,7 +739,6 @@ canvas,
   position: relative;
   overflow: hidden;
 }
-
 .variant-group h3::before {
   content: "";
   position: absolute;
@@ -844,15 +747,12 @@ canvas,
   opacity: 0;
   transition: var(--transition-smooth);
 }
-
 .variant-group h3:hover {
   color: var(--foreground);
 }
-
 .variant-group h3:hover::before {
   opacity: 0.1;
 }
-
 .variant-group h3::after {
   content: "›";
   font-size: 20px;
@@ -860,7 +760,6 @@ canvas,
   z-index: 1;
   position: relative;
 }
-
 .variant-group.open h3::after {
   transform: rotate(90deg);
 }
@@ -952,12 +851,13 @@ canvas,
   font-size: 13px;
   line-height: 1.4;
 }
-
+/* =========================
+   VARIANT CARD - HORIZONTAL + INLINE DESCRIPTION
+========================= */
 .variant-items {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  background: transparent;
   opacity: 0;
   transform: translateY(-8px);
   max-height: 0;
@@ -968,22 +868,25 @@ canvas,
     max-height 0.3s ease,
     padding 0.3s ease;
 }
-
 .variant-group.open .variant-items {
   opacity: 1;
   transform: translateY(0);
   max-height: 2000px;
   padding: 12px;
 }
-
-
-/* =========================
-   VARIANT CARD - HORIZONTAL + INLINE DESCRIPTION
-========================= */
+.variant-part {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.variant-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
 .variant-item {
   display: flex;
   flex-direction: column;
-  justify-content: flex-start; /* thumbnail uvek ostaje gore, sadržaj raste ispod */
   align-items: stretch;
   background: var(--background-tertiary);
   border: 1px solid var(--border);
@@ -992,20 +895,16 @@ canvas,
   transition: var(--transition-smooth);
   overflow: hidden;
   position: relative;
-  max-width: 384px;
-  box-shadow: 0 20px 45px hsl(220, 25%, 2%, 0.35);
+  max-width: 100%;
   isolation: isolate;
 }
 .variant-item.compact {
   min-height: 120px;
   box-shadow: 0 10px 24px hsl(220, 25%, 2%, 0.28);
 }
-
 .variant-item::after {
   display: none;
 }
-
-/* hover / active */
 .variant-item:hover {
   transform: translateY(-3px);
   border-color: var(--primary);
@@ -1013,13 +912,39 @@ canvas,
 .variant-item.active {
   border-color: var(--primary);
 }
-
-/* slika levo */
+.variant-item::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.25);
+  transition: var(--transition-fast);
+  z-index: 3;
+  pointer-events: none;
+}
+.variant-item.active::before {
+  background: var(--primary);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.2), 0 0 10px var(--primary-glow);
+}
 .variant-item .thumb-wrapper {
   position: relative;
   width: 100%;
+  height: 100%;
   overflow: hidden;
   border: none;
+}
+.variant-item .thumb-wrapper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.3) 65%, rgba(0,0,0,0.6) 100%);
+  pointer-events: none;
 }
 .variant-item:not(.compact).open .thumb-wrapper {
   height: auto;
@@ -1036,17 +961,15 @@ canvas,
 }
 .thumb-wrapper img.thumb {
   width: 100%;
-  height: auto;       /* koristi prirodan aspect ratio rendera */
-  object-fit: contain;
+  height: 100%;
+  object-fit: cover;
   display: block;
   transition: var(--transition-smooth);
   transform: scale(1.02);
 }
 .variant-item:hover .thumb-wrapper img.thumb {
-  transform: scale(1.08);
+  transform: scale(1.03);
 }
-
-/* 🟢 Na touch uređajima thumbnail koristi isti prirodan odnos bez hover efekta */
 @media (hover: none) and (pointer: coarse) {
   .variant-item:hover {
     transform: none;
@@ -1056,8 +979,24 @@ canvas,
     transform: scale(1.02);
   }
 }
-
-/* naslov */
+.variant-body {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px;
+  background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.75) 60%, rgba(0,0,0,0.9) 100%);
+  color: var(--foreground);
+}
+.variant-item.compact .variant-body {
+  position: relative;
+  padding: 10px 14px 12px;
+  gap: 6px;
+  background: var(--background-tertiary);
+}
 .variant-body .title {
   font-size: 18px;
   font-weight: 700;
@@ -1068,49 +1007,65 @@ canvas,
 .variant-item.compact .variant-body .title {
   font-size: 15px;
 }
-
-/* desna strana */
-.variant-body {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  gap: 10px;
-  padding: 14px 16px 14px;
-  background: var(--background-tertiary);
-  border-top: 1px solid var(--border);
-}
-.variant-item.compact .variant-body {
-  position: relative;
-  padding: 10px 14px 12px;
-  gap: 6px;
-}
-
-/* boje */
 .variant-item .colors {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
 }
 .color-swatch {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.35);
   cursor: pointer;
   background-size: cover;
   background-position: center;
   transition: transform 0.2s ease, filter 0.2s ease;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  position: relative;
+  overflow: hidden;
 }
 .color-swatch:hover { filter: brightness(1.15); }
 .color-swatch.selected {
-  border-color: var(--primary-glow);
-  transform: scale(1.15);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary);
 }
-
-/* cena */
+.color-swatch::after {
+  content: "";
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+  transition: var(--transition-fast);
+}
+.color-swatch.selected::after {
+  background: var(--primary);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.2), 0 0 10px var(--primary-glow);
+}
+.color-swatch.texture {
+  background-size: 1000% 1000%;
+  background-position: center;
+}
+.color-swatch .swatch-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  text-align: center;
+  color: var(--primary-foreground);
+  text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+  pointer-events: none;
+}
 .variant-footer {
   position: relative;
   font-weight: 700;
@@ -1118,25 +1073,75 @@ canvas,
   color: var(--primary);
   text-shadow: 0 10px 24px rgba(0, 0, 0, 0.55);
 }
-
-/* ----------- OPIS ---------- */
-.variant-description {
-  flex-basis: 100%; /* 👈 širi se celom širinom kartice */
-  display: none;
-  padding: 0 16px;
-  margin-top: 8px;
+.variant-description.inline {
+  display: block;
+  margin-top: 4px;
   color: var(--muted-foreground);
-  line-height: 1.5;
-  background: var(--background-tertiary);
-  border-top: 1px solid var(--border);
+  font-size: 13px;
+  line-height: 1.4;
 }
+.color-panel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--background-tertiary);
+}
+.color-panel.hidden { display: none; }
+.color-panel.visible { display: block; }
+.color-panel-header {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, 150px);
+  justify-content: center;
+  gap: 12px;
+}
+.color-grid .color-swatch {
+  width: 150px;
+  height: 150px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  background-size: cover;
+  background-position: center;
+  transition: transform 0.2s ease, filter 0.2s ease;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  position: relative;
+  overflow: hidden;
+}
+.details-panel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background-tertiary);
+  display: none;
+}
+.details-panel.visible { display: block; }
+.details-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.details-body {
+  display: none;
+  padding: 8px 12px 12px;
+  min-height: 8px;
+}
+.details-panel.open .details-body {
+  display: block;
+}
+/* ----------- OPIS ---------- */
 
 /* kada je kartica "open" */
 .variant-item.open .variant-description {
   display: block;
   padding: 8px 16px 12px;
 }
-
 /* dugme */
 .desc-toggle {
   position: absolute;
@@ -1159,7 +1164,6 @@ canvas,
   color: var(--primary-foreground);
   border-color: var(--primary);
 }
-
 /* Hide everything while app is still loading to avoid flicker */
 body.app-loading #glCanvas,
 body.app-loading #labels,
@@ -1171,8 +1175,6 @@ body.app-loading #variantSidebar,
 body.app-loading #camera-controls {
   visibility: hidden !important;
 }
-
-
 /* =========================
    SIDEBAR TOTAL - 0 STYLE
 ========================= */
@@ -1190,14 +1192,12 @@ body.app-loading #camera-controls {
   color: var(--foreground);
   height: var(--action-bar-h);
 }
-
 .sidebar-total .price {
   font-weight: bold;
   font-size: 20px;
   color: var(--primary);
   text-shadow: var(--shadow-glow);
 }
-
 /* =========================
    INFO PANEL - 0 STYLE
 ========================= */
@@ -1220,7 +1220,6 @@ body.app-loading #camera-controls {
   table-layout: fixed;
   width: 100%;
 }
-
 #info-panel th,
 #info-panel td {
   width: 33.33%; /* prilagodi po broju kolona */
@@ -1246,7 +1245,6 @@ body.app-loading #camera-controls {
   box-shadow: 0 -4px 18px hsl(220, 15%, 5%, 0.3);
   z-index: 140;
 }
-
 .info-actions {
   display: flex;
   flex-wrap: nowrap;
@@ -1255,7 +1253,6 @@ body.app-loading #camera-controls {
   justify-content: flex-start;
   width: 100%;
 }
-
 .action-button {
   background: var(--secondary);
   color: var(--foreground);
@@ -1277,39 +1274,33 @@ body.app-loading #camera-controls {
   font-size: 12px;
   height: 30px;
 }
-
 .action-button.load-toggle {
   /* neutral by default */
   box-shadow: none;
 }
-
 .action-button.load-toggle.active {
   background: var(--primary);
   color: var(--primary-foreground);
   border-color: var(--primary);
   box-shadow: 0 10px 24px rgba(10, 170, 255, 0.18);
 }
-
 .action-button.active {
   background: var(--primary);
   color: var(--primary-foreground);
   border-color: var(--primary);
   box-shadow: 0 10px 24px rgba(10, 170, 255, 0.18);
 }
-
 .action-button:hover {
   background: var(--primary);
   color: var(--primary-foreground);
   border-color: var(--primary);
   transform: translateY(-1px);
 }
-
 .action-button.has-chevron {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
-
 .action-button .chevron {
   width: 10px;
   height: 10px;
@@ -1317,22 +1308,22 @@ body.app-loading #camera-controls {
   transform: rotate(0deg);
   transition: transform 0.3s var(--spring);
 }
-
 .action-button .chevron::before {
-  content: "▾";
+  content: "";
   display: block;
-  line-height: 1;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 7px solid currentColor;
 }
-
 .action-button.text-label .chevron,
 .info-toggle.text-label .chevron {
   display: none;
 }
-
 .action-button.active .chevron {
   transform: rotate(180deg);
 }
-
 .saved-configs-card {
   background: var(--background-secondary);
   border: 1px solid var(--glass-border);
@@ -1342,7 +1333,6 @@ body.app-loading #camera-controls {
   flex-direction: column;
   gap: 8px;
 }
-
 .saved-configs-card .saved-title {
   font-size: 12px;
   font-weight: 700;
@@ -1350,7 +1340,6 @@ body.app-loading #camera-controls {
   text-transform: uppercase;
   color: var(--muted-foreground);
 }
-
 .saved-configs {
   display: flex;
   flex-direction: column;
@@ -1362,7 +1351,6 @@ body.app-loading #camera-controls {
   overflow-y: auto;
   gap: 6px;
 }
-
 .info-body {
   max-height: 0;
   overflow: hidden;
@@ -1373,14 +1361,12 @@ body.app-loading #camera-controls {
   padding: 12px 16px 16px;
   opacity: 0;
 }
-
 #info-panel.info-open .info-body {
   max-height: 60vh;
   overflow-y: auto;
   border: 1px solid var(--glass-border);
   opacity: 1;
 }
-
 .load-body {
   max-height: 0;
   overflow: hidden;
@@ -1396,14 +1382,12 @@ body.app-loading #camera-controls {
   align-self: flex-start;
   box-shadow: var(--shadow-soft);
 }
-
 #info-panel.load-open .load-body {
   max-height: 40vh;
   overflow-y: auto;
   border: 1px solid var(--glass-border);
   opacity: 1;
 }
-
 #info-panel.mobile-local {
   position: relative;
   left: 0;
@@ -1411,7 +1395,6 @@ body.app-loading #camera-controls {
   width: 100%;
   bottom: auto;
 }
-
 /* Desktop enforce alignment with canvas */
 @media (min-width: 1201px) {
   #info-panel {
@@ -1421,24 +1404,20 @@ body.app-loading #camera-controls {
     width: calc(100% - var(--sidebar-w));
   }
 }
-
 #info-content {
   padding: 8px 4px 16px 4px;
   z-index: 1;
   position: relative;
 }
-
 #info-content h3 {
   font-size: 18px;
   font-weight: bold;
   color: var(--foreground);
   margin-bottom: 12px;
 }
-
 #boat-info {
   padding: 0 4px 16px 4px;
 }
-
 /* =========================
    TABLES - 0 STYLE
 ========================= */
@@ -1452,7 +1431,6 @@ body.app-loading #camera-controls {
   border-radius: 8px;
   overflow: hidden;
 }
-
 #partsTable th,
 #partsTable td,
 #boat-info table th,
@@ -1461,7 +1439,6 @@ body.app-loading #camera-controls {
   text-align: left;
   border-bottom: 1px solid var(--border);
 }
-
 #partsTable th,
 #boat-info table th {
   background: var(--gradient-glass);
@@ -1469,24 +1446,20 @@ body.app-loading #camera-controls {
   font-weight: 600;
   font-size: 13px;
 }
-
 #partsTable td,
 #boat-info table td {
   color: var(--muted-foreground);
   transition: var(--transition-fast);
 }
-
 #partsTable tr:hover td,
 #boat-info table tr:hover td {
   background: var(--muted-hover);
   color: var(--foreground);
 }
-
 #partsTable tr:last-child td,
 #boat-info table tr:last-child td {
   border-bottom: none;
 }
-
 /* =========================
    FPS METER - 0 STYLE
 ========================= */
@@ -1542,7 +1515,6 @@ body.app-loading #camera-controls {
   z-index: 9999;
   pointer-events: none;
 }
-
 /* =========================
    RESPONSIVE DESIGN
 ========================= */
@@ -1555,7 +1527,6 @@ body.app-loading #camera-controls {
   .tree {
     width: var(--sidebar-w);
   }
-
   canvas,
   #glCanvas {
     left: var(--sidebar-w);
@@ -1565,7 +1536,6 @@ body.app-loading #camera-controls {
     bottom: var(--action-bar-h);
     height: calc(100% - var(--header-h) - var(--action-bar-h));
   }
-
   #camera-controls {
     left: 350px;
   }
@@ -1574,7 +1544,6 @@ body.app-loading #camera-controls {
     left: var(--sidebar-w);
   }
 }
-
 @media (max-width: 768px) {
   :root {
     --action-bar-h: 0px;
@@ -1589,14 +1558,12 @@ body.app-loading #camera-controls {
     bottom: auto;
     z-index: 5;
   }
-
   .canvas-wrapper {
     margin-top: calc(64px + var(--safe-top));
     width: 100%;
     height: calc(100dvh - 64px - var(--safe-top) - var(--mobile-panel-height) - var(--safe-bottom));
     position: relative;
   }
-
   .tree {
     position: fixed;
     bottom: 0;
@@ -1608,15 +1575,12 @@ body.app-loading #camera-controls {
     display: flex;
     flex-direction: column;
   }
-
   body.mobile-tab-info .tree {
     display: none;
   }
-
   #info-panel {
     display: none;
   }
-
   body.mobile-tab-info #info-panel {
     display: flex;
     position: fixed;
@@ -1627,11 +1591,9 @@ body.app-loading #camera-controls {
     height: var(--mobile-panel-height);
     z-index: 1700;
   }
-
   body.mobile-tab-info .variant-sidebar {
     display: none;
   }
-
   canvas,
   #glCanvas {
     left: 0;
@@ -1641,19 +1603,16 @@ body.app-loading #camera-controls {
     bottom: var(--action-bar-h);
     height: calc(100% - var(--header-h) - var(--action-bar-h));
   }
-
   .variant-hotspot-layer {
     left: 0;
     right: 0;
     top: 0;
     bottom: 0;
   }
-
   #camera-controls {
     left: 20px;
     top: 100px;
   }
-
   .canvas-actions {
     position: relative;
     left: 0;
@@ -1667,7 +1626,6 @@ body.app-loading #camera-controls {
     flex-wrap: wrap;
   }
 }
-
 .mobile-tabs {
   display: none;
   position: relative;
@@ -1691,10 +1649,8 @@ body.app-loading #camera-controls {
   background: var(--gradient-primary);
   color: var(--primary-foreground);
 }
-
 /* Tablet/mobile tab bar and text label on info toggle */
 @media (max-width: 768px) {
-
   #info-panel {
     display: none;
     position: relative;
@@ -1725,17 +1681,14 @@ body.app-loading #camera-controls {
     content: "";
   }
 }
-
 /* Tablet portrait: header on top, canvas full-width, variants docked at bottom */
 @media (min-width: 769px) and (max-width: 1200px) and (orientation: portrait) {
   :root {
     --tablet-panel-height: 42vh;
   }
-
   body {
     overflow: hidden;
   }
-
   .global-header {
     left: 0;
     width: 100%;
@@ -1743,14 +1696,12 @@ body.app-loading #camera-controls {
     top: 0;
     z-index: 1500;
   }
-
   .canvas-wrapper {
     position: relative;
     margin-top: calc(64px + var(--safe-top));
     width: 100%;
     height: calc(100dvh - 64px - var(--safe-top) - var(--tablet-panel-height) - var(--safe-bottom));
   }
-
   canvas,
   #glCanvas {
     position: absolute;
@@ -1760,7 +1711,6 @@ body.app-loading #camera-controls {
     width: 100%;
     height: calc(100% - var(--action-bar-h));
   }
-
   .variant-hotspot-layer {
     left: 0;
     right: 0;
@@ -1780,17 +1730,14 @@ body.app-loading #camera-controls {
     transform: none;
     background: var(--background-secondary);
   }
-
   .variant-sidebar {
     padding: 12px;
   }
-
   .variant-group:first-child,
   .variant-group:not(:first-child) {
     margin-left: 0;
     margin-right: 0;
   }
-
   .variant-items {
     display: flex;
     flex-direction: row;
@@ -1798,22 +1745,18 @@ body.app-loading #camera-controls {
     justify-content: flex-start;
     gap: 12px;
   }
-
   .variant-group.open .variant-items {
     max-height: none;
   }
-
   .variant-item {
     flex: 0 1 calc(33.333% - 16px);
     max-width: 360px;
     min-width: 240px;
   }
-  
   #camera-controls {
     left: 16px;
     top: 84px;
   }
-
   #info-panel {
     display: none;
     position: relative;
@@ -1833,7 +1776,6 @@ body.app-loading #camera-controls {
     height: auto;
     z-index: 1700;
   }
-
   .mobile-tabs {
     display: flex;
     position: relative;
@@ -1852,7 +1794,6 @@ body.app-loading #camera-controls {
     content: "";
   }
 }
-
 /* Unified info-panel layout */
 #info-panel {
   position: fixed;
@@ -1861,7 +1802,6 @@ body.app-loading #camera-controls {
   width: calc(100% - var(--sidebar-w));
   bottom: var(--action-bar-h);
 }
-
 @media (max-width: 768px) {
   #info-panel {
     position: relative;
@@ -1873,7 +1813,6 @@ body.app-loading #camera-controls {
   body.mobile-tab-info .sidebar-total {
     display: none;
   }
-
   /* Scrollable info panel in Configuration Info tabu */
   body.mobile-tab-info #info-panel {
     position: fixed;
@@ -1886,13 +1825,11 @@ body.app-loading #camera-controls {
     overflow-y: auto;
     padding-top: 12px;
   }
-
   .canvas-actions {
     left: 0;
     right: 0;
   }
 }
-
 @media (min-width: 769px) and (max-width: 1200px) and (orientation: portrait) {
   #info-panel {
     position: relative;
@@ -1906,7 +1843,6 @@ body.app-loading #camera-controls {
   body.mobile-tab-info .sidebar-total {
     display: none;
   }
-
   /* Scrollable info panel u tablet portret modu */
   body.mobile-tab-info #info-panel {
     position: fixed;
@@ -1919,7 +1855,6 @@ body.app-loading #camera-controls {
     overflow-y: auto;
     padding-top: 12px;
   }
-
   .canvas-actions {
     position: relative;
     left: 0;
@@ -1934,21 +1869,17 @@ body.app-loading #camera-controls {
     flex-wrap: wrap;
     margin-top: 8px;
   }
-
   .load-body {
     max-width: 420px;
     min-width: 280px;
   }
 }
-
 /* =========================
    ANIMATIONS
 ========================= */
-
 .animate-glow-pulse {
   animation: glow-pulse 2s ease-in-out infinite;
 }
-
 /* Focus states for accessibility */
 button:focus-visible,
 .color-swatch:focus-visible,
@@ -1956,7 +1887,6 @@ button:focus-visible,
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
-
 /* Reduced motion support */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -1967,7 +1897,6 @@ button:focus-visible,
     transition-duration: 0.01ms !important;
   }
 }
-
 .hamburger-btn {
   background: none;
   border: none;
@@ -1978,7 +1907,6 @@ button:focus-visible,
   transition: opacity 0.2s ease;
 }
 .hamburger-btn:hover { opacity: 0.7; }
-
 /* Sidebar panel */
 .sidebar-menu {
   overflow-y: auto;             /* omogućava skrol */
@@ -1999,7 +1927,6 @@ button:focus-visible,
 .sidebar-menu.open {
   transform: translateX(0);
 }
-
 .sidebar-header {
   position: sticky;
   top: 0;
@@ -2025,7 +1952,6 @@ button:focus-visible,
   font-size: 24px;
   cursor: pointer;
 }
-
 .sidebar-menu ul {
   list-style: none;
   margin: 0;
@@ -2043,7 +1969,6 @@ button:focus-visible,
   margin-bottom: 4px;
   overflow: hidden;
 }
-
 .sidebar-menu a {
   color: var(--foreground);
   text-decoration: none;
@@ -2058,11 +1983,9 @@ button:focus-visible,
   cursor: pointer;
   transition: background 0.3s ease;
 }
-
 #sidebarList li:hover {
   background: var(--background-tertiary);
 }
-
 .item-desc {
   margin-top: 6px;
   border-top: 1px solid var(--border);
@@ -2071,7 +1994,6 @@ button:focus-visible,
   line-height: 1.4;
   animation: slideDown 0.3s ease;
 }
-
 @keyframes slideDown {
   from { opacity: 0; transform: translateY(-5px); }
   to { opacity: 1; transform: translateY(0); }
@@ -2082,13 +2004,11 @@ button:focus-visible,
   gap: 10px;
   padding: 10px 14px;
 }
-
 .contact-form label {
   font-weight: 600;
   color: var(--foreground);
   font-size: 13px;
 }
-
 .contact-form input,
 .contact-form textarea {
   background: var(--background-tertiary);
@@ -2100,13 +2020,11 @@ button:focus-visible,
   font-family: inherit;
   resize: none;
 }
-
 .contact-form input:focus,
 .contact-form textarea:focus {
   outline: 1px solid var(--primary);
   border-color: var(--primary);
 }
-
 .contact-form button {
   margin-top: 8px;
   background: var(--primary);
@@ -2119,11 +2037,9 @@ button:focus-visible,
   cursor: pointer;
   transition: var(--transition-smooth);
 }
-
 .contact-form button:hover {
   background: var(--primary-glow);
 }
-
 html, body {
   height: 100%;
   min-height: 100%;
@@ -2136,7 +2052,6 @@ html, body {
   overscroll-behavior: none;
   overflow-x: hidden;
 }
-
 #glCanvas {
   position: fixed;
   top: var(--header-h);
@@ -2160,7 +2075,6 @@ body.studio-mode .btn-weather {
     opacity: 0.3;
     pointer-events: none;
 }
-
 .variant-hotspot-layer {
   position: fixed;
   top: 0;
@@ -2170,7 +2084,6 @@ body.studio-mode .btn-weather {
   pointer-events: none;
   z-index: 20;
 }
-
 .variant-hotspot {
   position: absolute;
   transform: translate(-50%, -100%);
@@ -2193,7 +2106,6 @@ body.studio-mode .btn-weather {
   overflow: visible;
   animation: hotspot-glow 1.8s ease-in-out infinite;
 }
-
 .variant-hotspot::after {
   content: "";
   position: absolute;
@@ -2205,21 +2117,17 @@ body.studio-mode .btn-weather {
   pointer-events: none;
   box-shadow: 0 0 12px rgba(255, 184, 86, 0.4);
 }
-
 .variant-hotspot:hover {
   transform: translate(-50%, -120%) scale(1.05);
 }
-
 .variant-hotspot.hidden {
   opacity: 0;
   pointer-events: none;
 }
-
 .variant-hotspot.offscreen {
   opacity: 0;
   pointer-events: none;
 }
-
 @keyframes hotspot-glow {
   0% {
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25),
@@ -2250,25 +2158,96 @@ body.studio-mode .btn-weather {
   box-shadow: var(--shadow-soft);
   z-index: 999;
 }
-
 .center-box .control-title {
   font-weight: 700;
   color: var(--foreground);
   margin: 0 0 4px 0;
 }
-
 .center-box ul {
   margin: 0;
   padding: 0 0 0 18px;
   color: var(--foreground);
   list-style: disc;
 }
-
 .center-box li {
   margin: 2px 0;
   font-size: 13px;
 }
-
 .center-box strong {
   color: var(--primary);
 }
+/* Variant tabs (no collapsible groups) */
+.variant-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0;
+}
+.variant-tabs-buttons {
+  margin: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+.variant-tab {
+  padding: 18px 14px;
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--background-tertiary);
+  color: var(--foreground);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+.variant-tab:hover {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+}
+.variant-tab.active {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+  box-shadow: var(--shadow-glow);
+}
+.variant-tabs-content .variant-group {
+  display: none;
+}
+.variant-tabs-content .variant-group.active {
+  display: block;
+}
+.variant-tabs-wrapper {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 0;
+}
+.variant-scroll-area {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  padding-right: 4px;
+}
+.variant-placeholder {
+  margin: 12px 0;
+  text-align: center;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.variant-placeholder.hidden {
+  display: none;
+}
+.variant-active-title {
+  margin: 12px;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--primary-foreground);
+}
+.variant-active-title.hidden {
+  display: none;
+}
+

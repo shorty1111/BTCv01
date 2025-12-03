@@ -108,6 +108,8 @@ export function showToast(message, type = "info", timeout = 4000) {
 }
 const hotspotButtons = new Map();
 const partFirstItems = new Map();
+const colorPanels = new Map();
+const detailsPanels = new Map();
 let hotspotLayer = null;
 let hotspotLoopActive = false;
 let showSelectedOnly = false;
@@ -232,6 +234,230 @@ function openAllGroups() {
   });
 }
 
+function createDetailsPanel(partKey) {
+  const panel = document.createElement("div");
+  panel.className = "details-panel hidden";
+  panel.dataset.part = partKey;
+
+  const header = document.createElement("div");
+  header.className = "details-header";
+  header.innerHTML = `<span>Details</span><span class="chevron" aria-hidden="true"></span>`;
+  const body = document.createElement("div");
+  body.className = "details-body"; // prazno za sada
+
+  header.addEventListener("click", () => {
+    panel.classList.toggle("open");
+  });
+
+  panel.appendChild(header);
+  panel.appendChild(body);
+  return panel;
+}
+
+function toggleDetailsPanelVisibility(partKey, shouldShow) {
+  const panel = detailsPanels.get(partKey);
+  if (!panel) return;
+  if (shouldShow) {
+    panel.classList.remove("hidden");
+    panel.classList.add("visible");
+    panel.classList.add("open");
+  } else {
+    panel.classList.add("hidden");
+    panel.classList.remove("visible");
+    panel.classList.remove("open");
+  }
+}
+
+function createColorPanel(partKey) {
+  const panel = document.createElement("div");
+  panel.className = "color-panel hidden";
+  panel.dataset.part = partKey;
+  const header = document.createElement("div");
+  header.className = "color-panel-header";
+  header.textContent = "Choose color";
+  const grid = document.createElement("div");
+  grid.className = "color-grid";
+  panel.appendChild(header);
+  panel.appendChild(grid);
+  return panel;
+}
+
+function refreshColorSelectionUI(panel, selectedName) {
+  if (!panel) return;
+  panel.querySelectorAll(".color-swatch").forEach((el) => {
+    el.classList.toggle("selected", el.dataset.colorName === selectedName);
+  });
+}
+
+async function applyColorSelection(
+  partKey,
+  variant,
+  color,
+  panel,
+  { force = false, fromUser = true } = {}
+) {
+  if (!variant || !color) return;
+  const current = currentParts[partKey];
+  if (!force && current?.name === variant.name && current?.selectedColor === color.name) {
+    refreshColorSelectionUI(panel, color.name);
+    toggleDetailsPanelVisibility(partKey, fromUser);
+    return;
+  }
+
+  const node = nodesMeta.find((n) => n.name === partKey);
+  if (!node) return;
+  const cfgGroup = Object.values(VARIANT_GROUPS).find((g) => partKey in g) || {};
+  const mainMat = cfgGroup[partKey]?.mainMat || "";
+  const variantData = cfgGroup[partKey]?.models?.find((v) => v.name === variant.name) || variant;
+
+  if (color.type === "texture" && color.texture) {
+    const textureLoader = window.loadTextureWithCache;
+    const loadMaybe = (src) =>
+      !src
+        ? Promise.resolve(null)
+        : typeof textureLoader === "function"
+        ? textureLoader(src)
+        : new Promise((resolve) => {
+            const img = new Image();
+            img.src = src;
+            img.onload = () => {
+              const tex = gl.createTexture();
+              gl.bindTexture(gl.TEXTURE_2D, tex);
+              gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+              gl.generateMipmap(gl.TEXTURE_2D);
+              gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+              gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+              gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+              gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+              resolve(tex);
+            };
+          });
+
+    const [texBase, texNormal, texRough] = await Promise.all([
+      loadMaybe(color.texture),
+      loadMaybe(color.normal),
+      loadMaybe(color.rough),
+    ]);
+
+    for (const r of node.renderIdxs) {
+      const shouldApply = mainMat ? r.matName === mainMat : r === node.renderIdxs[0];
+      if (!shouldApply) continue;
+      modelBaseTextures[r.idx] = texBase;
+      if (originalParts[r.idx]) {
+        originalParts[r.idx].baseColorTex = texBase;
+        if (texNormal) originalParts[r.idx].normalTex = texNormal;
+        if (texRough) originalParts[r.idx].roughnessTex = texRough;
+      }
+    }
+  } else if (color.type === "color" && color.color) {
+    for (const r of node.renderIdxs) {
+      const isTargetMat = mainMat ? r.matName === mainMat : r === node.renderIdxs[0];
+      if (!isTargetMat) continue;
+      modelBaseColors[r.idx] = new Float32Array(color.color);
+      modelBaseTextures[r.idx] = null;
+      if (originalParts[r.idx]) {
+        originalParts[r.idx].normalTex = null;
+        originalParts[r.idx].roughnessTex = null;
+      }
+    }
+  }
+
+  currentParts[partKey] = { ...variantData, selectedColor: color.name };
+  if (!savedColorsByPart[partKey]) savedColorsByPart[partKey] = {};
+  savedColorsByPart[partKey][variantData.name] = color.name;
+  updatePartsTable(partKey, variantData.name);
+  const row = document.querySelector(`#partsTable tr[data-part="${partKey}"] td:nth-child(2)`);
+  if (row) row.textContent = `${variantData.name} (${color.name})`;
+  if (typeof window.reapplyVariantCameraPreset === "function") {
+    window.reapplyVariantCameraPreset(partKey, variantData.name);
+  }
+  refreshColorSelectionUI(panel, color.name);
+  const thumbUrl = getThumbnailForVariant(partKey, variantData.name, color.name);
+  const cardThumb = document.querySelector(
+    `.variant-item[data-part="${partKey}"][data-variant="${variantData.name}"] img.thumb`
+  );
+  if (cardThumb) {
+    cardThumb.src = thumbUrl || PLACEHOLDER_THUMB;
+  }
+  sceneChanged = true;
+  render();
+  showPartInfo(`${variantData.name} (${color.name})`);
+  if (fromUser) {
+    toggleDetailsPanelVisibility(partKey, true);
+    const detailPanel = detailsPanels.get(partKey);
+    if (detailPanel && typeof detailPanel.scrollIntoView === "function") {
+      detailPanel.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
+    }
+  } else {
+    toggleDetailsPanelVisibility(partKey, false);
+  }
+  applySelectedFilter();
+}
+
+function renderColorPanel(partKey, variant, { autoScroll = false } = {}) {
+  const panel = colorPanels.get(partKey);
+  if (!panel) return;
+  const grid = panel.querySelector(".color-grid");
+  grid.innerHTML = "";
+
+  const colors = variant?.colors || [];
+  if (!colors.length) {
+    panel.classList.add("hidden");
+    toggleDetailsPanelVisibility(partKey, false);
+    return;
+  }
+
+  panel.classList.remove("hidden");
+  panel.classList.add("visible");
+  const savedColorName =
+    currentParts[partKey]?.selectedColor ||
+    savedColorsByPart[partKey]?.[variant.name] ||
+    null;
+  const initialColorName = savedColorName || colors[0]?.name || null;
+
+  colors.forEach((c) => {
+    const swatch = document.createElement("button");
+    swatch.type = "button";
+    swatch.className = "color-swatch";
+    swatch.dataset.colorName = c.name;
+    if (c.type === "texture" && c.texture) {
+      swatch.classList.add("texture");
+      swatch.style.backgroundImage = `url(${c.texture})`;
+      swatch.style.backgroundSize = "1000% 1000%";
+      swatch.style.backgroundPosition = "center";
+    } else if (c.type === "color" && c.color) {
+      swatch.style.backgroundColor = `rgb(${c.color.map((v) => v * 255).join(",")})`;
+    }
+    swatch.title = c.name;
+    const label = document.createElement("span");
+    label.className = "swatch-label";
+    label.textContent = c.name || "";
+    swatch.appendChild(label);
+    swatch.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void applyColorSelection(partKey, variant, c, panel, { force: false, fromUser: true });
+    });
+    grid.appendChild(swatch);
+  });
+
+  refreshColorSelectionUI(panel, initialColorName);
+  if (autoScroll) {
+    panel.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
+  }
+  if (initialColorName) {
+    const initialColor =
+      colors.find((c) => c.name === initialColorName) || colors[0];
+    if (initialColor) {
+      void applyColorSelection(partKey, variant, initialColor, panel, {
+        force: false,
+        fromUser: false,
+      });
+    }
+  } else {
+    toggleDetailsPanelVisibility(partKey, false);
+  }
+}
+
 function resetGroupToDefaults(parts) {
   if (!parts) return;
   for (const [partKey, data] of Object.entries(parts)) {
@@ -351,6 +577,8 @@ function buildVariantSidebar() {
   sidebar.innerHTML = "";
   partFirstItems.clear();
   hotspotButtons.clear();
+  colorPanels.clear();
+  detailsPanels.clear();
   const layer = ensureHotspotLayer();
   if (layer) layer.innerHTML = "";
 
@@ -360,82 +588,71 @@ function buildVariantSidebar() {
     <h2>Customize Your Boat</h2>
     <p>Select materials, colors, and parts to create a configuration that matches your vision.</p>
   `;
-  const filterBar = document.createElement("div");
-  filterBar.className = "variant-filter-bar";
-  const filterButtons = document.createElement("div");
-  filterButtons.className = "variant-filter-buttons";
 
-  filterButtonSelected = document.createElement("button");
-  filterButtonSelected.type = "button";
-  filterButtonSelected.className = "filter-btn";
-  filterButtonSelected.textContent = "Show selected";
-  filterButtonSelected.addEventListener("click", (e) => {
-    e.stopPropagation();
-    setFilterMode("toggle-selected");
-  });
-  filterButtonCollapseToggle = document.createElement("button");
-  filterButtonCollapseToggle.type = "button";
-  filterButtonCollapseToggle.className = "filter-btn collapsed";
-  filterButtonCollapseToggle.textContent = "Show all";
-  filterButtonCollapseToggle.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const isCollapsed = filterButtonCollapseToggle.classList.toggle("collapsed");
-    if (isCollapsed) {
-      filterButtonCollapseToggle.textContent = "Show all";
-      collapseAllGroups();
-    } else {
-      filterButtonCollapseToggle.textContent = "Collapse all";
-      openAllGroups();
+  const tabsBar = document.createElement("div");
+  tabsBar.className = "variant-tabs";
+
+  const tabsButtons = document.createElement("div");
+  tabsButtons.className = "variant-tabs-buttons";
+  tabsBar.appendChild(tabsButtons);
+
+  const tabsContent = document.createElement("div");
+  tabsContent.className = "variant-tabs-content";
+
+  const groupNodes = new Map();
+  let activeGroup = null;
+
+  const placeholderMsg = document.createElement("div");
+  placeholderMsg.className = "variant-placeholder";
+  placeholderMsg.textContent =
+    "Tap a category to pick an option and start configuring your boat.";
+  const activeTitle = document.createElement("h3");
+  activeTitle.className = "variant-active-title hidden";
+
+  const setActiveGroup = (name) => {
+    activeGroup = name;
+    tabsButtons.querySelectorAll(".variant-tab").forEach((btn) => {
+      const isActive = btn.dataset.group === name;
+      btn.classList.toggle("active", isActive);
+    });
+    tabsContent.querySelectorAll(".variant-group").forEach((grp) => {
+      const isActive = grp.dataset.group === name;
+      grp.classList.toggle("active", isActive);
+      grp.classList.toggle("open", isActive);
+      grp.style.display = isActive ? "block" : "none";
+    });
+    if (name) {
+      activeTitle.textContent = name;
+      activeTitle.classList.remove("hidden");
+      placeholderMsg.classList.add("hidden");
     }
-  });
+    applySelectedFilter();
+  };
 
-  filterButtons.appendChild(filterButtonSelected);
-  filterButtons.appendChild(filterButtonCollapseToggle);
-  filterBar.appendChild(filterButtons);
-  sidebar.insertBefore(filterBar, sidebar.firstChild);
-  sidebar.insertBefore(intro, sidebar.firstChild);
+  sidebar.appendChild(intro);
+  const tabsWrapper = document.createElement("div");
+  tabsWrapper.className = "variant-tabs-wrapper";
+  tabsWrapper.appendChild(tabsBar);
+  sidebar.appendChild(tabsWrapper);
+  const scrollArea = document.createElement("div");
+  scrollArea.className = "variant-scroll-area";
+  scrollArea.appendChild(placeholderMsg);
+  scrollArea.appendChild(activeTitle);
+  scrollArea.appendChild(tabsContent);
+  sidebar.appendChild(scrollArea);
 
   for (const [groupName, parts] of Object.entries(VARIANT_GROUPS)) {
+    const tabBtn = document.createElement("button");
+    tabBtn.type = "button";
+    tabBtn.className = "variant-tab";
+    tabBtn.textContent = groupName;
+    tabBtn.dataset.group = groupName;
+    tabBtn.addEventListener("click", () => setActiveGroup(groupName));
+    tabsButtons.appendChild(tabBtn);
+
     const groupDiv = document.createElement("div");
     groupDiv.className = "variant-group";
-
-    const header = document.createElement("h3");
-    header.textContent = groupName;
-    header.addEventListener("click", () => {
-      const wasOpen = groupDiv.classList.contains("open");
-
-      // zatvori sve ostale
-      document.querySelectorAll(".variant-group").forEach((g) => {
-        if (g !== groupDiv) {
-          if (g.classList.contains("open")) revealGroupHotspots(g);
-          g.classList.remove("open");
-        }
-      });
-
-      if (wasOpen) {
-        // ako je veÄ‡ bila otvorena â†’ zatvori je
-        groupDiv.classList.remove("open");
-        revealGroupHotspots(groupDiv);
-      } else {
-        // ako je bila zatvorena â†’ otvori
-        groupDiv.classList.add("open");
-      }
-    });
-
-    groupDiv.appendChild(header);
-    const groupControls = document.createElement("div");
-    groupControls.className = "variant-group-controls";
-    const resetBtn = document.createElement("button");
-    resetBtn.type = "button";
-    resetBtn.className = "reset-group-btn disabled";
-    resetBtn.textContent = "Reset";
-    resetBtn.disabled = true;
-    resetBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      resetGroupToDefaults(parts);
-    });
-    groupControls.appendChild(resetBtn);
-    groupDiv.appendChild(groupControls);
+    groupDiv.dataset.group = groupName;
     const itemsDiv = document.createElement("div");
     itemsDiv.className = "variant-items";
     const groupPartKeys = [];
@@ -444,8 +661,15 @@ function buildVariantSidebar() {
       groupPartKeys.push(partKey);
       registerPartHotspot(partKey, data, groupName, groupDiv);
       const variants = data.models;
-
       const isCompactCard = data.generateThumbs === false;
+
+      const partSection = document.createElement("div");
+      partSection.className = "variant-part";
+      partSection.dataset.part = partKey;
+
+      const cardsContainer = document.createElement("div");
+      cardsContainer.className = "variant-card-list";
+      partSection.appendChild(cardsContainer);
 
       variants.forEach((variant) => {
         const itemEl = document.createElement("div");
@@ -454,23 +678,21 @@ function buildVariantSidebar() {
         itemEl.dataset.part = partKey;
         itemEl.dataset.variant = variant.name;
 
-        const thumbWrapper = document.createElement("div");
-        thumbWrapper.className = "thumb-wrapper";
+        let thumbWrapper = null;
+        if (!isCompactCard) {
+          thumbWrapper = document.createElement("div");
+          thumbWrapper.className = "thumb-wrapper";
 
-        const preview = document.createElement("img");
-        const previewInfo = getVariantPreviewSrc(partKey, variant);
-        preview.src = previewInfo.src;
-        if (previewInfo.isPlaceholder) {
-          preview.dataset.thumbKind = "placeholder";
-        } else {
-          delete preview.dataset.thumbKind;
-        }
-        preview.className = "thumb";
-        thumbWrapper.appendChild(preview);
-
-        itemEl.appendChild(thumbWrapper);
-        if (!partFirstItems.has(partKey)) {
-          partFirstItems.set(partKey, itemEl);
+          const preview = document.createElement("img");
+          const previewInfo = getVariantPreviewSrc(partKey, variant);
+          preview.src = previewInfo.src;
+          if (previewInfo.isPlaceholder) {
+            preview.dataset.thumbKind = "placeholder";
+          } else {
+            delete preview.dataset.thumbKind;
+          }
+          preview.className = "thumb";
+          thumbWrapper.appendChild(preview);
         }
 
         const body = document.createElement("div");
@@ -480,288 +702,86 @@ function buildVariantSidebar() {
         label.textContent = variant.name;
         body.appendChild(label);
 
-        // uvek pripremi kontejner za boje
-        const colorsDiv = document.createElement("div");
-        colorsDiv.className = "colors";
-
-        if (variant.colors && variant.colors.length > 0) {
-          variant.colors.forEach((c) => {
-            const colorEl = document.createElement("div");
-            colorEl.className = "color-swatch";
-
-            if (c.type === "texture" && c.texture) {
-              colorEl.style.backgroundImage = `url(${c.texture})`;
-              colorEl.style.backgroundSize = "cover";
-            } else if (c.type === "color" && c.color) {
-              colorEl.style.backgroundColor = `rgb(${c.color.map(v => v * 255).join(",")})`;
-            }
-            colorEl.title = c.name;
-            colorEl.addEventListener("click", async (e) => {
-              e.stopPropagation();
-              const card = colorEl.closest(".variant-item");
-              const partKey = card.dataset.part;
-              const variantName = card.dataset.variant;
-              const node = nodesMeta.find((n) => n.name === partKey);
-              if (!node) return;
-
-              // primeni boju
-              const cfgGroup = Object.values(VARIANT_GROUPS).find((g) => partKey in g) || {};
-              const mainMat = cfgGroup[partKey]?.mainMat || "";
-              const partData = cfgGroup[partKey] || {};
-              const variantData = partData.models?.find((v) => v.name === variantName);
-
-              // ako kartica nije aktivna, prvo je zaista ucitaj varijantu (bez oslanjanja na .click)
-               if (!card.classList.contains("active") && variantData) {
-                 const itemsDiv = card.parentElement;
-                 if (itemsDiv) {
-                   itemsDiv.querySelectorAll(".variant-item").forEach((el) => {
-                     el.classList.remove("active");
-                     el.style.borderColor = "";
-                     el.style.boxShadow = "";
-                   });
-                   card.classList.add("active");
-                   card.style.borderColor = "var(--primary)";
-                   card.style.boxShadow = "0 0 0 2px rgba(56, 189, 248, 0.7)";
-                 }
-                // sacuvaj boju stare varijante pre prelaska
-                const prev = currentParts[partKey];
-                if (prev && prev.selectedColor) {
-                  if (!savedColorsByPart[partKey]) savedColorsByPart[partKey] = {};
-                  savedColorsByPart[partKey][prev.name] = prev.selectedColor;
-                }
-                updatePartsTable(partKey, variantData.name);
-                currentParts[partKey] = variantData;
-                await replaceSelectedWithURL(variantData.src, variantData.name, partKey);
-              }
-
-              if (c.type === "texture" && c.texture) {
-                const textureLoader = window.loadTextureWithCache;
-
-                if (typeof textureLoader === "function") {
-                  const loadMaybe = (src) => (src ? textureLoader(src) : Promise.resolve(null));
-                  const [texBase, texNormal, texRough] = await Promise.all([
-                    loadMaybe(c.texture),
-                    loadMaybe(c.normal),
-                    loadMaybe(c.rough)
-                  ]);
-
-                  for (const r of node.renderIdxs) {
-                    const shouldApply = mainMat ? r.matName === mainMat : r === node.renderIdxs[0];
-                    if (shouldApply) {
-                      modelBaseTextures[r.idx] = texBase;
-                      if (originalParts[r.idx]) {
-                        originalParts[r.idx].baseColorTex = texBase;
-                        if (texNormal) originalParts[r.idx].normalTex = texNormal;
-                        if (texRough) originalParts[r.idx].roughnessTex = texRough;
-                      }
-                    }
-                  }
-
-                } else {
-                  const loadImageTexture = (src) =>
-                    !src
-                      ? Promise.resolve(null)
-                      : new Promise((resolve) => {
-                          const img = new Image();
-                          img.src = src;
-                          img.onload = () => {
-                            const tex = gl.createTexture();
-                            gl.bindTexture(gl.TEXTURE_2D, tex);
-                            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-                            gl.generateMipmap(gl.TEXTURE_2D);
-                            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-                            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-                            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-                            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-                            resolve(tex);
-                          };
-                        });
-
-                  const [texBase, texNormal, texRough] = await Promise.all([
-                    loadImageTexture(c.texture),
-                    loadImageTexture(c.normal),
-                    loadImageTexture(c.rough)
-                  ]);
-
-                  for (const r of node.renderIdxs) {
-                    const shouldApply = mainMat ? r.matName === mainMat : r === node.renderIdxs[0];
-                    if (shouldApply) {
-                      modelBaseTextures[r.idx] = texBase;
-                      if (originalParts[r.idx]) {
-                        originalParts[r.idx].baseColorTex = texBase;
-                        if (texNormal) originalParts[r.idx].normalTex = texNormal;
-                        if (texRough) originalParts[r.idx].roughnessTex = texRough;
-                      }
-                    }
-                  }
-                }
-              }
-              else if (c.type === "color" && c.color) {
-                  for (const r of node.renderIdxs) {
-                    const isTargetMat = mainMat ? r.matName === mainMat : r === node.renderIdxs[0];
-                    if (!isTargetMat) continue;
-
-                    modelBaseColors[r.idx] = new Float32Array(c.color);
-                    modelBaseTextures[r.idx] = null;
-
-                    // Ako prelazimo sa teksture na flat boju, oÄisti normal/rough tex da se ne zadrÅ¾e stari slotovi
-                    if (originalParts[r.idx]) {
-                      originalParts[r.idx].normalTex = null;
-                      originalParts[r.idx].roughnessTex = null;
-                    }
-                  }
-              }
-
-              currentParts[partKey] = { ...variant, selectedColor: c.name };
-              if (!savedColorsByPart[partKey]) savedColorsByPart[partKey] = {};
-              savedColorsByPart[partKey][variant.name] = c.name;
-              updatePartsTable(partKey, `${variant.name} (${c.name})`);
-              if (typeof window.reapplyVariantCameraPreset === "function") {
-                window.reapplyVariantCameraPreset(partKey, variantName);
-              }
-
-              // a�_uriraj selekciju u UI
-              colorsDiv.querySelectorAll(".color-swatch").forEach(el => el.classList.remove("selected"));
-              colorEl.classList.add("selected");
-              const thumbUrl = getThumbnailForVariant(partKey, variantData?.name || variantName, c.name);
-              const cardThumb = card.querySelector("img.thumb");
-              if (cardThumb) {
-                cardThumb.src = thumbUrl || PLACEHOLDER_THUMB;
-              }
-              sceneChanged = true;   // dY"1 dodaj ovde
-              render();
-              showPartInfo(`${variant.name} (${c.name})`);
-              applySelectedFilter();
-            });
-
-              colorsDiv.appendChild(colorEl);
-            });
-
-            // ðŸ”¹ Nakon Å¡to su sve boje dodate, ponovo oznaÄi izabranu
-            const saved = currentParts[partKey];
-            if (saved && saved.selectedColor) {
-              const sel = Array.from(colorsDiv.children).find(
-                (el) => el.title === saved.selectedColor
-              );
-              if (sel) sel.classList.add("selected");
-            }
-        } else {
-          // nema definisanih boja â†’ obeleÅ¾i da je default varijanta bez eksplicitnih boja
-          colorsDiv.classList.add("no-colors");
+        if (variant.description) {
+          const desc = document.createElement("div");
+          desc.className = "variant-description inline";
+          desc.textContent = variant.description;
+          body.appendChild(desc);
         }
 
-        // 1) naslov je veÄ‡ gore
-        // 2) zatim cena
         const footer = document.createElement("div");
         footer.className = "variant-footer";
         const rawPrice = variant.price ?? 0;
-        const priceText = rawPrice === 0
-          ? "Included (incl. VAT)"
-          : `+${rawPrice} € (incl. VAT)`;
+        const priceText =
+          rawPrice === 0 ? "Included (incl. VAT)" : `+${rawPrice} EUR (incl. VAT)`;
         footer.innerHTML = `<span class="price">${priceText}</span>`;
         body.appendChild(footer);
 
-        // 3) boje (ako ih ima)
-        body.appendChild(colorsDiv);
-
+        if (thumbWrapper) itemEl.appendChild(thumbWrapper);
         itemEl.appendChild(body);
-      // âž• Dodaj dugme i opis ako postoji opis u configu
-      if (variant.description) {
-        const descBtn = document.createElement("button");
-        descBtn.className = "desc-toggle";
-        descBtn.textContent = "info";
-        itemEl.appendChild(descBtn);
+        if (!partFirstItems.has(partKey)) {
+          partFirstItems.set(partKey, itemEl);
+        }
 
-        const descEl = document.createElement("div");
-        descEl.className = "variant-description";
-        descEl.textContent = variant.description;
-        itemEl.appendChild(descEl);
-      }
+        const handleItemClick = () => {
+          hideHotspot(partKey);
+          const isEquipmentOnly = !variant.src && !data.mainMat;
+          if (isEquipmentOnly) {
+            if ((variant.price ?? 0) === 0) {
+              return;
+            }
 
-      const handleItemClick = (e) => {
-        // ako klik potiÄe sa dugmeta za opis, ignoriÅ¡i
-        if (e.target.closest(".desc-toggle")) return;
-        hideHotspot(partKey);
-        const isEquipmentOnly = !variant.src && !data.mainMat;
-        if (isEquipmentOnly) {
-          // ðŸš« Ako je "Included" u additional grupi â†’ ignoriÅ¡i klik
-          if ((variant.price ?? 0) === 0) {
-            return; // ne radi niÅ¡ta
+            const alreadyActive = itemEl.classList.contains("active");
+
+            if (alreadyActive) {
+              itemEl.classList.remove("active");
+              delete currentParts[partKey];
+              const row = document.querySelector(`#partsTable tr[data-part="${partKey}"]`);
+              if (row) row.remove();
+              itemEl.style.borderColor = "";
+              itemEl.style.boxShadow = "";
+            } else {
+              itemEl.classList.add("active");
+              currentParts[partKey] = variant;
+              updatePartsTable(partKey, variant.name);
+              itemEl.style.borderColor = "var(--primary)";
+              itemEl.style.boxShadow = "0 0 0 2px rgba(56, 189, 248, 0.7)";
+            }
+
+            updateTotalPrice();
+            applySelectedFilter();
+            return;
           }
 
-          // toggle logika za additional kartice
-          const alreadyActive = itemEl.classList.contains("active");
+          const node = nodesMeta.find((n) => n.name === partKey);
+          if (!node) return;
 
-          if (alreadyActive) {
-            itemEl.classList.remove("active");
-            delete currentParts[partKey];
-            const row = document.querySelector(`#partsTable tr[data-part="${partKey}"]`);
-            if (row) row.remove();
-            // vizuelno resetuj border i shadow
-            itemEl.style.borderColor = "";
-            itemEl.style.boxShadow = "";
-          } else {
-            itemEl.classList.add("active");
-            currentParts[partKey] = variant;
-            updatePartsTable(partKey, variant.name);
-            // vizuelno istakni karticu odmah (inline stil pobedi sve CSS konflikte)
-            itemEl.style.borderColor = "var(--primary)";
-            itemEl.style.boxShadow = "0 0 0 2px rgba(56, 189, 248, 0.7)";
+          highlightTreeSelection(node.id);
+          const prev = currentParts[partKey];
+          if (prev && prev.selectedColor) {
+            if (!savedColorsByPart[partKey]) savedColorsByPart[partKey] = {};
+            savedColorsByPart[partKey][prev.name] = prev.selectedColor;
           }
+          replaceSelectedWithURL(variant.src, variant.name, partKey);
 
-          updateTotalPrice();
+          updatePartsTable(partKey, variant.name);
+          currentParts[partKey] = variant;
+          itemsDiv.querySelectorAll(`.variant-item[data-part="${partKey}"]`).forEach((el) => {
+            el.classList.remove("active");
+            el.style.borderColor = "";
+            el.style.boxShadow = "";
+          });
+          itemEl.classList.add("active");
+          itemEl.style.borderColor = "var(--primary)";
+          itemEl.style.boxShadow = "0 0 0 2px rgba(56, 189, 248, 0.7)";
+          showPartInfo(variant.name);
+          renderColorPanel(partKey, variant, { autoScroll: true });
           applySelectedFilter();
-          return;
-        }
+        };
 
-        const node = nodesMeta.find((n) => n.name === partKey);
-        if (!node) return;
+        itemEl.addEventListener("click", handleItemClick);
 
-        highlightTreeSelection(node.id);
-        // â¬‡ï¸ pre replaceSelectedWithURL
-        const prev = currentParts[partKey];
-        if (prev && prev.selectedColor) {
-          // zapamti boju za varijantu koju napuÅ¡tamo
-          if (!savedColorsByPart[partKey]) savedColorsByPart[partKey] = {};
-          savedColorsByPart[partKey][prev.name] = prev.selectedColor;
-        }
-        replaceSelectedWithURL(variant.src, variant.name, partKey);
-        
-        // âœ… Ako varijanta ima boje, automatski primeni prvu ako nije veÄ‡ izabrana
-      const variantData = variant;
-      if (variantData.colors && variantData.colors.length > 0) {
-        const savedColor = savedColorsByPart[partKey]?.[variant.name];
-        if (!savedColor) {
-          const first = variantData.colors[0];
-          savedColorsByPart[partKey] = savedColorsByPart[partKey] || {};
-          savedColorsByPart[partKey][variant.name] = first.name;
-
-          // primeni kroz isti mehanizam kao kad korisnik klikne boju
-          const colorsDiv = itemEl.querySelector(".colors");
-          const firstEl = colorsDiv?.querySelector(".color-swatch");
-          if (firstEl) {
-            setTimeout(() => firstEl.click(), 50); // â³ da saÄeka render modela
-          }
-        }
-      }
-  updatePartsTable(partKey, variant.name);
-  currentParts[partKey] = variant;
-  itemsDiv.querySelectorAll(".variant-item").forEach((el) => {
-    el.classList.remove("active");
-    el.style.borderColor = "";
-    el.style.boxShadow = "";
-  });
-  itemEl.classList.add("active");
-  itemEl.style.borderColor = "var(--primary)";
-  itemEl.style.boxShadow = "0 0 0 2px rgba(56, 189, 248, 0.7)";
-  showPartInfo(variant.name);
-  applySelectedFilter();
-};
-
-// Klik handler (radi isto na desktopu i touch ureÄ‘ajima)
-itemEl.addEventListener("click", handleItemClick);
-
-    itemsDiv.appendChild(itemEl);
+        cardsContainer.appendChild(itemEl);
 
         const selectedName = currentParts[partKey]?.name || variants[0]?.name;
         if (variant.name === selectedName) {
@@ -770,12 +790,34 @@ itemEl.addEventListener("click", handleItemClick);
           itemEl.style.boxShadow = "0 0 0 2px rgba(56, 189, 248, 0.7)";
         }
       });
+
+      const colorPanel = createColorPanel(partKey);
+      colorPanels.set(partKey, colorPanel);
+      partSection.appendChild(colorPanel);
+
+      const detailPanel = createDetailsPanel(partKey);
+      detailsPanels.set(partKey, detailPanel);
+      partSection.appendChild(detailPanel);
+
+      itemsDiv.appendChild(partSection);
+
+      const currentVariant = currentParts[partKey] || variants[0];
+      if (currentVariant) {
+        renderColorPanel(partKey, currentVariant);
+        if (currentVariant.selectedColor) {
+          toggleDetailsPanelVisibility(partKey, true);
+        }
+      }
     }
 
     groupDiv.appendChild(itemsDiv);
     groupDiv.dataset.parts = groupPartKeys.join(",");
-    sidebar.appendChild(groupDiv);
+    tabsContent.appendChild(groupDiv);
+    groupNodes.set(groupName, groupDiv);
   }
+
+  const first = Object.keys(VARIANT_GROUPS)[0];
+  // ne selektuj automatski nijednu grupu; cekaj klik
   startHotspotLoop();
   applySelectedFilter();
 }
@@ -1620,3 +1662,5 @@ document.querySelectorAll("#camera-controls button").forEach((btn) => {
 }
 
 export { updateTotalPrice, showPartInfo };
+
+

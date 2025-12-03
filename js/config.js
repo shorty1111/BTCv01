@@ -51,14 +51,14 @@ export const VARIANT_GROUPS = {
               rough: "leather_default_R_C.jpg",
             },
             {
-              name: "Leather Black",
+              name: "Black",
               type: "texture",
               texture: "leather_black_B_C.jpg",
               normal: "leather_black_N_C.jpg",
               rough: "leather_black_R_C.jpg",
             },
             {
-              name: "Leather Brown",
+              name: "Leather",
               type: "texture",
               texture: "leather_brown_B_C.jpg",
               normal: "leather_brown_N_C.jpg",
@@ -82,7 +82,7 @@ export const VARIANT_GROUPS = {
               rough: "leather_default_R_C.jpg",
             },
             {
-              name: "Leather Black",
+              name: "Leather matte",
               type: "texture",
               texture: "leather_black_B_C.jpg",
               normal: "leather_black_N_C.jpg",
