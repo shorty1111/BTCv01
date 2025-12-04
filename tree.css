@@ -427,8 +427,8 @@ canvas,
 ========================= */
 #camera-controls {
   position: fixed;
-  top: 10rem;
-  left: 40rem;
+  top: 6rem;
+  left: 30rem;
   z-index: 50;
   max-width: 240px;
   background: var(--background-secondary);

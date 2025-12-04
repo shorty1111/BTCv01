@@ -6,7 +6,7 @@ uniform sampler2D uInput;
 out vec4 fragColor;
 
 vec3 ACESFilm(vec3 x) {
-    float a = 2.65;
+    float a = 3.15; // 2.65
     float b = 0.1;
     float c = 2.43;
     float d = 0.39;

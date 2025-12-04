@@ -12,9 +12,10 @@ uniform mat4 uProjection;
 uniform vec2 uResolution;
 
 const float BASE_STEP = 0.08;
-const float THICKNESS = 0.6;
-const int MAX_STEPS = 40;
-const float MAX_DIST = 50.0;
+const float THICKNESS = 1.6;
+// Smanjeno radi performansi – možeš dalje da šteluješ ovde
+const int MAX_STEPS = 28;
+const float MAX_DIST = 30.0;
 
 vec3 getPos(vec2 uv) { return texture(gPosition, uv).rgb; }
 vec3 getNormal(vec2 uv) { return normalize(texture(gNormal, uv).rgb); }
@@ -56,25 +57,29 @@ void main() {
         return;
     }
 
-    float spread = roughness * roughness * 0.8;
+    // Jitter konus za roughness – mekše refleksije za grube materijale
+    float spread = roughness * roughness * 1.2;
     vec2 hash = getStableHash(vUV);
     float angle = hash.x * 6.2831853;
-    float amp = (hash.y - 0.5) * 2.0 * spread * 0.5;
+    float amp = (hash.y - 0.5) * 2.0 * spread;
 
     vec3 up = abs(R.z) < 0.999 ? vec3(0.0,0.0,1.0) : vec3(1.0,0.0,0.0);
     vec3 T = normalize(cross(up, R));
     vec3 B = cross(R, T);
     R = normalize(R + amp * (T * cos(angle) + B * sin(angle)));
 
-    float thickness = mix(THICKNESS * 0.35, THICKNESS, saturate(1.0 - roughness * 0.8));
+    // Deblji ray hit za dalja / grublja područja -> više SSR hitova
+    float distFactor = saturate(length(posV) / MAX_DIST);
+    float roughFactor = smoothstep(0.2, 1.0, roughness);
+    float thickness = THICKNESS * mix(0.6, 1.4, max(distFactor, roughFactor));
     float jitter = (hash.x - 0.5) * BASE_STEP;
     float adaptStep = mix(0.05, BASE_STEP, saturate(abs(R.z)));
     vec3 ray = posV + N * mix(0.02, 0.1, 1.0 - NdotV) + R * jitter;
     vec3 stepV = R * adaptStep;
 
+    // Broj koraka sada direktno zavisi od distance (min 6, max MAX_STEPS)
     float zoomFactor = clamp(abs(posV.z) / 30.0, 0.3, 1.0);
-    float roughnessFactor = mix(1.0, 0.4, roughness);
-    int steps = int(mix(5.0, float(MAX_STEPS), zoomFactor * roughnessFactor));
+    int steps = int(mix(6.0, float(MAX_STEPS), zoomFactor));
 
     vec3 hitColor = vec3(0.0);
     vec2 hitUV = vec2(0.0);
@@ -121,6 +126,10 @@ void main() {
         }
     }
 
+    // View-space distance za jeftin fade SSR doprinosa
+    float viewDist = length(posV);
+
+    // Blur blok – vraćen na “originalniji” stil (linearni radius, jači falloff)
     if (hit > 0.5 && roughness > 0.05) {
         vec2 texel = 1.0 / uResolution;
         float radius = mix(0.0, 4.0, roughness);
@@ -146,12 +155,17 @@ void main() {
     float F0 = mix(0.04, 1.0, metallic);
     float F = F0 + (1.0 - F0) * fresnel;
 
+    // Fade prema centru ekrana
     vec2 screenCenter = hitUV * 2.0 - 1.0;
     float screenFade = 1.0 - pow(max(abs(screenCenter.x), abs(screenCenter.y)), 1.0);
-    float metallicBoost = mix(1.0, 1.5, metallic);
 
     float conf = 1.0 - float(i) / float(max(steps, 1));
-    float blend = hit * F * gloss * screenFade * metallicBoost * conf;
+
+    // Priguši SSR na veoma grubim i dalekim površinama – osloni se više na env mapu/PBR
+    float roughSSR = 1.0 - smoothstep(0.5, 0.9, roughness);
+    float distSSR = 1.0 - smoothstep(25.0, 60.0, viewDist);
+
+    float blend = hit * F * gloss * screenFade * conf * roughSSR * distSSR;
     float edgeFade = smoothstep(0.0, 0.1, min(min(vUV.x, vUV.y), min(1.0 - vUV.x, 1.0 - vUV.y)));
     blend *= edgeFade;
     vec3 reflected = mix(base, hitColor, blend);
