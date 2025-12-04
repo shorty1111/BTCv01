@@ -51,7 +51,7 @@ let envSize = 512; // kontrola kvaliteta/performansi
 let cubeMaxMip = Math.floor(Math.log2(envSize));
 const KERNEL_SIZE = 32;
 const SSAO_NOISE_SIZE = 3;
-const SSAO_DOWNSCALE = 0.80; // render SSAO u nizoj rezoluciji (minimum 0.85 da ne muti)
+const SSAO_DOWNSCALE = 0.9; // render SSAO u nizoj rezoluciji (minimum 0.85 da ne muti)
 let ssaa = 1.35; // supersampling faktor
 const CAMERA_FRAME_PADDING = 0.0; // dodatni margin oko okvira (0 = koristi samo fill)
 const CAMERA_FRAME_FILL = 0.8; // model zauzima ~80% ekrana bez obzira na velicinu
@@ -360,6 +360,13 @@ function setEnvMode(mode) {
   envMode = next;
   const isStudio = envMode === ENV_MODE.STUDIO;
   if (isStudio) {
+    // Ako je bilo podešeno "sunset", pri prelasku u studio forsiraj "day"
+    const wasSunset = SUN.dir[1] <= 0.5;
+    if (wasSunset) {
+      const presetDay = { y: 1.0 };
+      SUN.dir = v3.norm([-0.90, presetDay.y, 0.3]);
+      updateSun();
+    }
     SUN.intensity = Math.max(SUN.intensity, 0.6);
     document.body.classList.add("env-studio");
   } else {
@@ -497,8 +504,6 @@ const DIM_TICK_COLOR = [0.65, 0.9, 1.0];
 window.__suppressThumbnailUI = window.__suppressThumbnailUI || false;
 const cachedVariants = {}; // url -> ArrayBuffer
 const preparedVariants = {}; // url -> [ { vao, count, type, baseColor, metallic, roughness, trisWorld }... ]
-let firstFramePromise = null;
-let resolveFirstFrame = null;
 const lineVertSrc = `#version 300 es
 layout(location=0) in vec3 aPos;
 uniform mat4 uProjection, uView, uModel;
@@ -2095,7 +2100,6 @@ async function initializeApp() {
   document.body.classList.add("app-loading");
   showLoading();
   window.__firstFrameDone = false;
-  firstFramePromise = Promise.resolve();
   const glOk = await initGL();
   if (!glOk) return;
 
