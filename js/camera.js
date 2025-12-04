@@ -21,8 +21,9 @@ export function initCamera(canvas) {
   const MIN_FAR = 500.0;
   let fovDegrees = 60;
   let fovOverride = null;
-  const FIT_PADDING = 0.05; // ~5% padding po širini
-  const FIT_FILL = 0.95; // model zauzima ~95% ekrana
+
+  const FIT_FILL = 0.8; // keep model around 80% of the canvas
+  const PINCH_PAN_THRESHOLD = 2.5; // px: iznad ovoga tretiramo kao zoom, ispod kao pan
 
   function computeFarPlane(currentDist) {
     const sceneRadius = window.sceneBoundingRadius || 50.0;
@@ -38,7 +39,7 @@ export function initCamera(canvas) {
   // === ✅ POČETNI UGAO I VISINA — KAO U STAROM main.js ===
   rx = rxTarget = Math.PI / 7;    // ~26° nagib iznad horizonta (više podignuta kamera)
   ry = ryTarget = Math.PI / 20;   // blagi yaw
-  dist = distTarget = 5;          // inicijalna udaljenost
+  dist = distTarget = 7;          // inicijalna udaljenost
   const initialState = {
     pan: pan.slice(),
     dist,
@@ -96,12 +97,24 @@ export function initCamera(canvas) {
 
   // === VIEW MATRICA ===
   function updateView() {
-    const aspect = canvas.width / canvas.height;
-    const perspNear = BASE_NEAR;
-    const perspFar = computeFarPlane(dist);
-    const targetFov =
-      typeof fovOverride === "number" ? fovOverride : fovDegrees;
-    let proj = persp(targetFov, aspect, perspNear, perspFar);
+const aspect = canvas.width / canvas.height;
+
+const perspNear = BASE_NEAR;
+const perspFar = computeFarPlane(dist);
+
+// === AUTO FOV NORMALIZACIJA PO ASPECTU ===
+// cilj: da “vizuelni zoom” bude isti na PC, tablet i telefon
+let baseFov = typeof fovOverride === "number" ? fovOverride : fovDegrees;
+
+// Normalizacija: širi ekran → manji FOV (bliže), uži ekran → veći FOV (iste distance)
+let fovNormalized = baseFov * (aspect < 1 ? 1.0 : 1 / Math.sqrt(aspect));
+
+// Hard clamp da se ne raspadne
+fovNormalized = Math.max(35, Math.min(90, fovNormalized));
+
+const targetFov = fovNormalized;
+let proj = persp(targetFov, aspect, perspNear, perspFar);
+
     let near = perspNear;
     let far = perspFar;
     window.currentNear = near;
@@ -209,42 +222,53 @@ export function initCamera(canvas) {
     });
   }
     // === AUTO-FIT KAMERE NA SCENU ===
-    function fitToBoundingBox(bmin, bmax) {
-      // centar i veličina
-      const center = [
-        (bmin[0] + bmax[0]) * 0.5,
-        (bmin[1] + bmax[1]) * 0.5,
-        (bmin[2] + bmax[2]) * 0.5,
-      ];
-      const size = [
-        bmax[0] - bmin[0],
-        bmax[1] - bmin[1],
-        bmax[2] - bmin[2],
-      ];
-      window.sceneBoundingCenter = center;
-      window.sceneBoundingRadius = Math.max(size[0], size[1], size[2]) * 0.5;
+function fitToBoundingBox(bmin, bmax) {
+  const center = [
+    (bmin[0] + bmax[0]) * 0.5,
+    (bmin[1] + bmax[1]) * 0.5,
+    (bmin[2] + bmax[2]) * 0.5,
+  ];
 
-      // projekcija koja garantuje isti “zoom” za sve veličine
-      const aspect = canvas.width / canvas.height;
-      const fovDegCurrent = typeof fovOverride === "number" ? fovOverride : fovDegrees;
-      const fovY = (fovDegCurrent * Math.PI) / 180;
-      const fovX = 2 * Math.atan(Math.tan(fovY * 0.5) * aspect);
-      const paddedHalfW = Math.max(size[0] * 0.5 * (1 + FIT_PADDING * 2), 0.001);
-      const paddedHalfH = Math.max(size[1] * 0.5 * (1 + FIT_PADDING * 2), 0.001);
-      const distX = paddedHalfW / Math.tan(fovX * 0.5);
-      const distY = paddedHalfH / Math.tan(fovY * 0.5);
-      const distFit = Math.max(distX, distY) / Math.max(FIT_FILL, 0.01);
-      pan = center.slice();
-      panTarget = center.slice();
-      dist = distTarget = distFit;
-      window.sceneFitDistance = distFit; // zapamti distancu
-    }
+  const size = [
+    bmax[0] - bmin[0],
+    bmax[1] - bmin[1],
+    bmax[2] - bmin[2],
+  ];
+
+  window.sceneBoundingCenter = center;
+  window.sceneBoundingRadius = Math.max(size[0], size[1], size[2]) * 0.5;
+
+  // KORISTI REALNU VIDLJIVU VELIČINU CANVASA — NE framebuffer width
+  const rect = canvas.getBoundingClientRect();
+  const aspect = rect.width / rect.height;
+
+// === KORISTI ISTI NORMALIZOVANI FOV KAO updateView() ===
+const baseFov = typeof fovOverride === "number" ? fovOverride : fovDegrees;
+
+// normalizacija po aspectu — identična onoj u updateView
+let fovNormalized = baseFov * (aspect < 1 ? 1.0 : 1 / Math.sqrt(aspect));
+fovNormalized = Math.max(35, Math.min(90, fovNormalized));
+
+const fovY = (fovNormalized * Math.PI) / 180;
+const fovX = 2 * Math.atan(Math.tan(fovY * 0.5) * aspect);
+
+
+  const paddedHalfW = Math.max(size[0] * 0.5, 0.001);
+
+  const distX = paddedHalfW / Math.tan(fovX * 0.5);
+  const distFit = distX / Math.max(FIT_FILL, 0.01);
+
+  pan = center.slice();
+  panTarget = center.slice();
+  dist = distTarget = distFit;
+  window.sceneFitDistance = distFit;
+}
 
   // === MOUSE & TOUCH ===
   canvas.addEventListener("mousemove", (e) => {
     if (e.buttons === 1) {
       ryTarget -= e.movementX * 0.0025; // brža rotacija yaw
-      rxTarget += e.movementY * 0.006;  // i pitch malo brže
+      rxTarget += e.movementY * 0.01;  // i pitch malo brže
     } else if (e.buttons === 4) {
       // ubrzaj pan pomeranjem po ekranu (viša vrednost = brži pan)
       const panSpeed = (dist / Math.max(canvas.width, canvas.height)) * 2.0;
@@ -307,37 +331,40 @@ canvas.addEventListener("touchmove", (e) => {
   }
 
   if (e.touches.length === 2) {
-    // --- ZOOM ---
     const dx = e.touches[0].clientX - e.touches[1].clientX;
     const dy = e.touches[0].clientY - e.touches[1].clientY;
     const distNow = Math.sqrt(dx * dx + dy * dy);
-    if (pinchLastDist !== null) {
-      const delta = pinchLastDist - distNow;
-      distTarget += delta * 0.01;
-    }
-    pinchLastDist = distNow;
+    touchDragging = false;
 
-    // --- PAN (dodaj ovo) ---
     const midX = (e.touches[0].clientX + e.touches[1].clientX) * 0.5;
     const midY = (e.touches[0].clientY + e.touches[1].clientY) * 0.5;
-    if (touchPanLastMid) {
-      const dmx = midX - touchPanLastMid.x;
-      const dmy = midY - touchPanLastMid.y;
-      const panSpeed = (dist / Math.max(canvas.width, canvas.height)) * 3.0;
-      const eye = [
-        dist * Math.cos(rx) * Math.sin(ry) + pan[0],
-        dist * Math.sin(rx) + pan[1],
-        dist * Math.cos(rx) * Math.cos(ry) + pan[2],
-      ];
-      const viewDir = v3.norm(v3.sub(pan, eye));
-      const right = v3.norm(v3.cross([0, 1, 0], viewDir));
-      const up = v3.cross(viewDir, right);
+
+    if (pinchLastDist !== null) {
+      const deltaDist = distNow - pinchLastDist;
+      const isZoom = Math.abs(deltaDist) > PINCH_PAN_THRESHOLD;
+      if (isZoom) {
+        distTarget -= deltaDist * 0.01; // pozitivan razmak -> uvećaj dist (udalji)
+      } else if (touchPanLastMid) {
+        // Lagani pomeraj dva prsta → tretiraj kao pan
+        const dmx = midX - touchPanLastMid.x;
+        const dmy = midY - touchPanLastMid.y;
+        const panSpeed = (dist / Math.max(canvas.width, canvas.height)) * 3.0;
+        const eye = [
+          dist * Math.cos(rx) * Math.sin(ry) + pan[0],
+          dist * Math.sin(rx) + pan[1],
+          dist * Math.cos(rx) * Math.cos(ry) + pan[2],
+        ];
+        const viewDir = v3.norm(v3.sub(pan, eye));
+        const right = v3.norm(v3.cross([0, 1, 0], viewDir));
+        const up = v3.cross(viewDir, right);
         pan[0] += (dmx * right[0] + dmy * up[0]) * panSpeed;
         pan[1] += (dmx * right[1] + dmy * up[1]) * panSpeed;
         pan[2] += (dmx * right[2] + dmy * up[2]) * panSpeed;
         panTarget = pan.slice();
-
+      }
     }
+
+    pinchLastDist = distNow;
     touchPanLastMid = { x: midX, y: midY };
   }
 

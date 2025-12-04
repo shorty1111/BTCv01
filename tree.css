@@ -91,8 +91,6 @@ body {
   min-height: 100dvh;
   margin: 0;
   padding: 0;
-  padding-top: var(--safe-top);
-  padding-bottom: var(--safe-bottom);
   overflow: hidden;
   overflow-x: hidden;
   overscroll-behavior: none;
@@ -129,11 +127,12 @@ body {
   top: 0;
   left: var(--sidebar-w); /* pomeri ga desno koliko je sidebar */
   width: calc(100% - var(--sidebar-w)); /* skrati ga za sidebar širinu */
-  height: calc(64px + var(--safe-top));
+
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: calc(8px + var(--safe-top)) 16px 8px 16px;
+height: calc(64px + env(safe-area-inset-top));
+padding-top: calc(8px + env(safe-area-inset-top));
   background: var(--background-secondary);
   border-bottom: 1px solid var(--border);
   z-index: 1000;
@@ -412,9 +411,9 @@ canvas,
   right: 0;
   background: var(--gradient-canvas);
   transition: var(--transition-smooth);
-  bottom: var(--action-bar-h);
+  bottom: calc(var(--action-bar-h) + env(safe-area-inset-bottom));
   width: calc(100% - var(--sidebar-w));
-  height: calc(100% - var(--header-h) - var(--action-bar-h));
+  height: calc(100% - var(--header-h) - var(--action-bar-h) - env(safe-area-inset-bottom));
 }
 #glCanvas {
   position: fixed;
@@ -776,11 +775,16 @@ canvas,
   display: flex;
   flex-direction: column;
   width: var(--sidebar-w);
-  height: 100dvh;              /* umesto 100vh */
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  height: auto;
+  padding-top: 0;
+  padding-bottom: 0;
   background: var(--card);
   border-right: 1px solid var(--card-border);
   overflow: hidden;            /* sprečava da total iseče ivicu */
-  position: relative;
   z-index: 500;
 }
 /* =========================
@@ -1273,15 +1277,15 @@ body.app-loading #camera-controls {
   flex-shrink: 0;
   background: var(--background-secondary);
   border-top: 1px solid var(--card-border);
-  padding: 20px 24px;
-  padding-bottom: calc(20px + var(--safe-bottom));
+  padding:14px;
+
   display: flex;
   justify-content: space-between;
   align-items: center;
   font-size: 16px;
   font-weight: 600;
   color: var(--foreground);
-  height: var(--action-bar-h);
+  min-height: var(--action-bar-h);
 }
 .sidebar-total .price {
   font-weight: bold;
@@ -1297,7 +1301,7 @@ body.app-loading #camera-controls {
   left: var(--sidebar-w);
   right: 0;
   width: calc(100% - var(--sidebar-w));
-  bottom: var(--action-bar-h);
+  bottom: calc(var(--action-bar-h) + env(safe-area-inset-bottom));
   background: transparent;
   border: none;
   z-index: 100;
@@ -1323,16 +1327,18 @@ body.app-loading #camera-controls {
   left: var(--sidebar-w);
   right: 0;
   bottom: 0;
-  height: var(--action-bar-h);
+  height: auto;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  min-height: var(--action-bar-h);
   background: var(--background-secondary);
   border-top: 1px solid var(--card-border);
   border-left: 1px solid var(--card-border);
   border-radius: 0;
   padding: 8px 16px;
+
   box-shadow: 0 -4px 18px hsl(220, 15%, 5%, 0.3);
   z-index: 140;
 }

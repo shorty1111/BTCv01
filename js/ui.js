@@ -35,6 +35,9 @@ export function hideLoading() {
 // Global cache boja/tekstura po varijantama (delimo sa main.js)
 let savedColorsByPart = window.savedColorsByPart || {};
 window.savedColorsByPart = savedColorsByPart;
+// Dodatne (equipment-only) selekcije po delu – multi-select
+let additionalSelections = window.additionalSelections || {};
+window.additionalSelections = additionalSelections;
 
 export function updateLoadingProgress(
   stage = "",
@@ -121,6 +124,12 @@ function getPartConfig(partKey) {
     if (parts[partKey]) return parts[partKey];
   }
   return null;
+}
+
+function findVariantByName(partKey, variantName) {
+  const cfg = getPartConfig(partKey);
+  if (!cfg?.models) return null;
+  return cfg.models.find((m) => m.name === variantName) || null;
 }
 
 function isPartModified(partKey) {
@@ -760,27 +769,28 @@ function buildVariantSidebar() {
           hideHotspot(partKey);
           const isEquipmentOnly = !variant.src && !data.mainMat;
           if (isEquipmentOnly) {
-            if ((variant.price ?? 0) === 0) {
+            const rawPrice = variant.price ?? 0;
+            // "Included" paket je već pokriven u glavnoj tabeli – ne dupliraj ga kao additional
+            if (rawPrice === 0) {
               return;
             }
-
-            const alreadyActive = itemEl.classList.contains("active");
-
-            if (alreadyActive) {
+            // Multi-select dodatne stavke: toggluj varijantu u listi za ovaj deo
+            const list = additionalSelections[partKey] || [];
+            const idx = list.indexOf(variant.name);
+            const isActive = idx !== -1;
+            if (isActive) {
+              list.splice(idx, 1);
               itemEl.classList.remove("active");
-              delete currentParts[partKey];
-              const row = document.querySelector(`#partsTable tr[data-part="${partKey}"]`);
-              if (row) row.remove();
               itemEl.style.borderColor = "";
               itemEl.style.boxShadow = "";
             } else {
+              list.push(variant.name);
               itemEl.classList.add("active");
-              currentParts[partKey] = variant;
-              updatePartsTable(partKey, variant.name);
               itemEl.style.borderColor = "var(--primary)";
               itemEl.style.boxShadow = "0 0 0 2px rgba(56, 189, 248, 0.7)";
             }
-
+            additionalSelections[partKey] = list;
+            buildPartsTable();
             updateTotalPrice();
             applySelectedFilter();
             return;
@@ -817,7 +827,8 @@ function buildVariantSidebar() {
         cardsContainer.appendChild(itemEl);
 
         const selectedName = currentParts[partKey]?.name || variants[0]?.name;
-        if (variant.name === selectedName) {
+        const selectedExtras = additionalSelections[partKey] || [];
+        if (variant.name === selectedName || selectedExtras.includes(variant.name)) {
           itemEl.classList.add("active");
           itemEl.style.borderColor = "var(--primary)";
           itemEl.style.boxShadow = "0 0 0 2px rgba(56, 189, 248, 0.7)";
@@ -879,20 +890,24 @@ function buildPartsTable() {
       tbody.appendChild(tr);
     }
   }
-  for (const [key, variant] of Object.entries(currentParts)) {
-    const isAdditional = !Object.values(VARIANT_GROUPS)
-      .some(g => Object.keys(g).includes(key));
-    if (isAdditional) {
+    // dodatne multi-select stavke
+  for (const [partKey, selectedNames] of Object.entries(additionalSelections)) {
+    if (!Array.isArray(selectedNames)) continue;
+    selectedNames.forEach((name) => {
+      const variant = findVariantByName(partKey, name);
+      if (!variant) return;
       const tr = document.createElement("tr");
-      tr.dataset.part = variant.name;
+      tr.dataset.part = `${partKey}:${name}`;
+      const price = variant.price ?? 0;
       tr.innerHTML = `
         <td>Additional</td>
         <td>${variant.name}</td>
-        <td>${variant.price === 0 ? "Included" : `+${variant.price} €`}</td>
+        <td>${price === 0 ? "Included" : `+${price} €`}</td>
       `;
       tbody.appendChild(tr);
-    }
+    });
   }
+
 }
 function updatePartsTable(partKey, newVariantName) {
   let variant = null;
@@ -951,6 +966,14 @@ function updateTotalPrice() {
 
   for (const variant of Object.values(currentParts)) {
     if (variant && variant.price) total += variant.price;
+  }
+  // dodatne multi-select stavke
+  for (const [partKey, selectedNames] of Object.entries(additionalSelections)) {
+    if (!Array.isArray(selectedNames)) continue;
+    selectedNames.forEach((name) => {
+      const variant = findVariantByName(partKey, name);
+      if (variant && variant.price) total += variant.price;
+    });
   }
 
   // ažuriraj total u tabeli i sidebaru
