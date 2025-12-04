@@ -131,6 +131,6 @@ void main() {
     vec3 color = mix(refracted, planarReflection, fresnel * mix(1.0, 0.5, lowAngleMix));
 
     color += sunSpecular+glintColor; //+glintColor
- 
+ color *= uGlobalExposure;
     fragColor = vec4(vec3(color), 1.0);
 }

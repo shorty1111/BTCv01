@@ -333,18 +333,12 @@ function rebuildEnvironmentTextures() {
 }
 
 function syncWeatherButtonsState(isStudioMode) {
-  const buttons = document.querySelectorAll("#camera-controls button[data-weather]");
+  const weatherSwitch = document.getElementById("weatherSwitch");
   const currentWeather = SUN.dir[1] > 0.5 ? "day" : "sunset";
-
-  buttons.forEach((btn) => {
-    btn.disabled = isStudioMode;
-    if (isStudioMode) {
-      btn.classList.remove("active");
-      return;
-    }
-    btn.classList.toggle("active", btn.dataset.weather === currentWeather);
-  });
-
+  if (weatherSwitch) {
+    weatherSwitch.dataset.weather = currentWeather;
+    weatherSwitch.classList.toggle("disabled", isStudioMode);
+  }
   document.body.classList.toggle("studio-mode", isStudioMode);
 }
 
@@ -617,18 +611,16 @@ function focusCameraOnNode(node) {
   if (!bounds || !bounds.center) return;
 
   camera.panTarget = bounds.center.slice();
-  let targetDist = bounds.dist;
-  if (!targetDist) {
-    const size = bounds.size || (bounds.radius ? bounds.radius * 2 : 1);
-    const fovY = Math.PI / 4;
-    const newDist = size / (2 * Math.tan(fovY / 2));
-    window.currentBoundingRadius = bounds.radius || size * 0.5;
-    targetDist = newDist * 0.7;
-    const minDist = newDist * 0.2;
-    const maxDist = newDist * 3.0;
-    targetDist = Math.min(Math.max(targetDist, minDist), maxDist);
-    bounds.dist = targetDist;
-  }
+  const aspect =
+    canvas && canvas.width && canvas.height ? canvas.width / canvas.height : 1;
+  const fovDeg = camera.fovOverride ?? camera.fovDegrees ?? camera.fov ?? 60;
+  const targetDist =
+    getFitDistance(bounds, fovDeg, aspect, CAMERA_FRAME_FILL, CAMERA_FRAME_PADDING) ||
+    bounds.dist ||
+    bounds.radius ||
+    1;
+  bounds.dist = targetDist;
+  window.currentBoundingRadius = bounds.radius || window.currentBoundingRadius;
   camera.distTarget = targetDist;
   camera.rxTarget = Math.PI / 5;       // koristi target
   camera.ryTarget = 0;
@@ -904,7 +896,8 @@ function createDepthTexture(w, h) {
 
 function resizeCanvas() {
   const sidebarEl = document.getElementById("sidebar");
-  const isTabletPortrait = window.matchMedia("(min-width: 769px) and (max-width: 1200px) and (orientation: portrait)").matches;
+  // Treat tablet portrait the same as landscape/desktop so layout stays consistent.
+  const isTabletPortrait = false;
   let sidebarW = sidebarEl ? sidebarEl.offsetWidth : 0;
   const headerEl = document.querySelector(".global-header");
   const headerH = headerEl ? headerEl.offsetHeight : 0;
@@ -914,8 +907,7 @@ function resizeCanvas() {
     return val;
   })();
 
-  const footerH = isTabletPortrait ? (sidebarEl ? sidebarEl.offsetHeight : 0) : actionBarH;
-  if (isTabletPortrait) sidebarW = 0;
+  const footerH = actionBarH;
 
   const cssW = Math.max(1, window.innerWidth - sidebarW);
   const cssH = Math.max(1, window.innerHeight - headerH - footerH);
@@ -938,7 +930,7 @@ function resizeCanvas() {
   canvas.height = realH;
   canvas.style.width = cssW + "px";
   canvas.style.height = cssH + "px";
-  canvas.style.left = (isTabletPortrait ? 0 : sidebarW) + "px";
+  canvas.style.left = sidebarW + "px";
   canvas.style.top = headerH + "px"; 
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -2876,11 +2868,11 @@ window.setMobileTab = setMobileTab;
 
 function updateToggleLabelForDevice() {
   const isPhone = window.matchMedia("(max-width: 768px)").matches;
-  const isTabletPortrait = window.matchMedia("(min-width: 769px) and (max-width: 1200px) and (orientation: portrait)").matches;
-  const useTextLabel = isPhone || isTabletPortrait;
+  // Keep tablets in portrait on the desktop-like layout; only phones use text-label/mobile tabs.
+  const useTextLabel = isPhone;
   const labelText = useTextLabel ? "Configuration Info" : "Config Info";
   if (toggleLabel) toggleLabel.textContent = labelText;
-  if (loadLabel) loadLabel.textContent = "Load Configuration";
+  if (loadLabel) loadLabel.textContent = "Load Config";
   if (useTextLabel) {
     toggleBtn.classList.add("text-label");
     mobileTabs?.classList.remove("hidden");
@@ -3724,13 +3716,132 @@ if (prim.material !== undefined) {
   return out;
 }
 
+const CAMERA_FRAME_PADDING = 0.05; // ~5% padding sa svake strane
+const CAMERA_FRAME_FILL = 0.95; // model zauzima ~95% ekrana
+
+// Ensure camera preset still fits current viewport aspect (prevents tablet portrait crop)
+function ensureViewFitsViewport(cameraInstance, bounds = null) {
+  if (!canvas || !cameraInstance) return;
+  const fovDeg =
+    cameraInstance.fovOverride ??
+    cameraInstance.fovDegrees ??
+    cameraInstance.fov ??
+    60;
+  const aspect = canvas.width && canvas.height ? canvas.width / canvas.height : 1;
+  const neededDist = getFitDistance(
+    bounds,
+    fovDeg,
+    aspect,
+    CAMERA_FRAME_FILL,
+    CAMERA_FRAME_PADDING
+  );
+  if (!Number.isFinite(neededDist)) return;
+  if (cameraInstance.distTarget < neededDist) cameraInstance.distTarget = neededDist;
+  if (cameraInstance.dist < neededDist) cameraInstance.dist = neededDist;
+}
+
+function getFitDistance(bounds, fovDeg, aspect, fill = CAMERA_FRAME_FILL, padding = CAMERA_FRAME_PADDING) {
+  // koristimo sferu (radius) tako da model UVEK stane u kadar bez obzira na orijentaciju
+  const r = Math.max(bounds?.radius || 0, 0.001);
+  const padScale = 1 + Math.max(0, padding) * 2.0; // npr 20% margine levo/desno -> 1 + 0.4
+  const effR = r * padScale;
+  const fovY = (fovDeg * Math.PI) / 180;
+  const fovX = 2 * Math.atan(Math.tan(fovY / 2) * aspect);
+  const distY = effR / Math.tan(fovY / 2);
+  const distX = effR / Math.tan(fovX / 2);
+  const safeFill = Math.max(fill, 0.01);
+  const dist = Math.max(distX, distY) / safeFill;
+  return dist;
+}
+
 function applyViewCameraPreset(cameraInstance, variant, basePose = null) {
   if (!cameraInstance) return false;
+
+  const parsePresetIndex = (value) => {
+    const n = parseInt(value, 10);
+    return Number.isFinite(n) && n > 0 ? n - 1 : null;
+  };
 
   const isFiniteNumber = (v) => typeof v === "number" && Number.isFinite(v);
   const directView =
     variant?.viewCamera || variant?.view || variant?.cameraView || variant?.viewCam;
-  let applied = false;
+  const bounds = variant?.__bounds || null;
+
+  const applyPresetByIndex = (presetIdx) => {
+    if (presetIdx === null) return false;
+    if (!Array.isArray(THUMBNAIL_CAM_PRESETS)) return false;
+    const preset = THUMBNAIL_CAM_PRESETS[presetIdx];
+    if (!preset) return false;
+
+    let applied = false;
+    const basePan = cameraInstance.panTarget
+      ? cameraInstance.panTarget.slice()
+      : cameraInstance.pan
+      ? cameraInstance.pan.slice()
+      : [0, 0, 0];
+    const baseRx = isFiniteNumber(cameraInstance.rxTarget)
+      ? cameraInstance.rxTarget
+      : cameraInstance.rx || 0;
+    const baseRy = isFiniteNumber(cameraInstance.ryTarget)
+      ? cameraInstance.ryTarget
+      : cameraInstance.ry || 0;
+    const baseDist = isFiniteNumber(cameraInstance.distTarget)
+      ? cameraInstance.distTarget
+      : cameraInstance.dist || 1;
+
+    if (preset.panOffset) {
+      cameraInstance.panTarget = [
+        basePan[0] + (preset.panOffset[0] || 0),
+        basePan[1] + (preset.panOffset[1] || 0),
+        basePan[2] + (preset.panOffset[2] || 0),
+      ];
+      applied = true;
+    }
+    if (isFiniteNumber(preset.rxOffset)) {
+      cameraInstance.rxTarget = baseRx + preset.rxOffset;
+      applied = true;
+    }
+    if (isFiniteNumber(preset.ryOffset)) {
+      cameraInstance.ryTarget = baseRy + preset.ryOffset;
+      applied = true;
+    }
+    if (isFiniteNumber(preset.distScale)) {
+      cameraInstance.distTarget = baseDist * preset.distScale;
+      applied = true;
+    }
+
+    if (applied) {
+      cameraInstance.moved = true;
+      ensureViewFitsViewport(cameraInstance, bounds);
+      if (bounds) {
+        const aspect =
+          canvas && canvas.width && canvas.height ? canvas.width / canvas.height : 1;
+        const fovDeg =
+          cameraInstance.fovOverride ?? cameraInstance.fovDegrees ?? cameraInstance.fov ?? 60;
+        const fitDist = getFitDistance(
+          bounds,
+          fovDeg,
+          aspect,
+          CAMERA_FRAME_FILL,
+          CAMERA_FRAME_PADDING
+        );
+        if (Number.isFinite(fitDist)) {
+          cameraInstance.distTarget = fitDist;
+          cameraInstance.dist = fitDist;
+        }
+        recenterCameraToBounds(bounds, { snap: false });
+      }
+      return true;
+    }
+    return false;
+  };
+
+  // 1) If thumbCam exists, force that preset first (ignore viewCam).
+  const thumbPresetIdx = parsePresetIndex(variant?.thumbCam);
+  if (thumbPresetIdx !== null) {
+    const ok = applyPresetByIndex(thumbPresetIdx);
+    if (ok) return true;
+  }
 
   if (directView && typeof directView === "object") {
     const basePan =
@@ -3813,68 +3924,55 @@ function applyViewCameraPreset(cameraInstance, variant, basePose = null) {
 
     if (applied) {
       cameraInstance.moved = true;
+      ensureViewFitsViewport(cameraInstance, bounds);
+      if (bounds) {
+        const aspect =
+          canvas && canvas.width && canvas.height ? canvas.width / canvas.height : 1;
+        const fovDeg =
+          cameraInstance.fovOverride ?? cameraInstance.fovDegrees ?? cameraInstance.fov ?? 60;
+        const fitDist = getFitDistance(
+          bounds,
+          fovDeg,
+          aspect,
+          CAMERA_FRAME_FILL,
+          CAMERA_FRAME_PADDING
+        );
+        if (Number.isFinite(fitDist)) {
+          cameraInstance.distTarget = fitDist;
+          cameraInstance.dist = fitDist;
+        }
+        recenterCameraToBounds(bounds, { snap: false });
+      }
       return true;
     }
   }
 
-  const parsePresetIndex = (value) => {
-    const n = parseInt(value, 10);
-    return Number.isFinite(n) && n > 0 ? n - 1 : null;
-  };
-
-  const variantPresetIdx = parsePresetIndex(
-    variant?.viewCam ?? variant?.camPreset ?? variant?.thumbCam
-  );
+  // 2) Otherwise fall back to viewCam/camPreset or URL override
+  const variantPresetIdx = parsePresetIndex(variant?.viewCam ?? variant?.camPreset);
   const urlPresetIdx = parsePresetIndex(new URLSearchParams(window.location.search).get("cam_pos"));
   const presetIdx = variantPresetIdx !== null ? variantPresetIdx : urlPresetIdx;
 
-  if (presetIdx === null) return false;
-  if (!Array.isArray(THUMBNAIL_CAM_PRESETS)) return false;
-  const preset = THUMBNAIL_CAM_PRESETS[presetIdx];
-  if (!preset) return false;
-
-  const basePan = cameraInstance.panTarget
-    ? cameraInstance.panTarget.slice()
-    : cameraInstance.pan
-    ? cameraInstance.pan.slice()
-    : [0, 0, 0];
-  const baseRx = isFiniteNumber(cameraInstance.rxTarget)
-    ? cameraInstance.rxTarget
-    : cameraInstance.rx || 0;
-  const baseRy = isFiniteNumber(cameraInstance.ryTarget)
-    ? cameraInstance.ryTarget
-    : cameraInstance.ry || 0;
-  const baseDist = isFiniteNumber(cameraInstance.distTarget)
-    ? cameraInstance.distTarget
-    : cameraInstance.dist || 1;
-
-  if (preset.panOffset) {
-    cameraInstance.panTarget = [
-      basePan[0] + (preset.panOffset[0] || 0),
-      basePan[1] + (preset.panOffset[1] || 0),
-      basePan[2] + (preset.panOffset[2] || 0),
-    ];
-    applied = true;
+  // Apply preset and then enforce fit distance
+  const applied = applyPresetByIndex(presetIdx);
+  if (bounds) {
+    const aspect =
+      canvas && canvas.width && canvas.height ? canvas.width / canvas.height : 1;
+    const fovDeg =
+      cameraInstance.fovOverride ?? cameraInstance.fovDegrees ?? cameraInstance.fov ?? 60;
+    const fitDist = getFitDistance(
+      bounds,
+      fovDeg,
+      aspect,
+      CAMERA_FRAME_FILL,
+      CAMERA_FRAME_PADDING
+    );
+    if (Number.isFinite(fitDist)) {
+      cameraInstance.distTarget = fitDist;
+      cameraInstance.dist = fitDist;
+    }
+    recenterCameraToBounds(bounds, { snap: false });
   }
-  if (isFiniteNumber(preset.rxOffset)) {
-    cameraInstance.rxTarget = baseRx + preset.rxOffset;
-    applied = true;
-  }
-  if (isFiniteNumber(preset.ryOffset)) {
-    cameraInstance.ryTarget = baseRy + preset.ryOffset;
-    applied = true;
-  }
-  if (isFiniteNumber(preset.distScale)) {
-    cameraInstance.distTarget = baseDist * preset.distScale;
-    applied = true;
-  }
-
-  if (applied) {
-    cameraInstance.moved = true;
-    return true;
-  }
-
-  return false;
+  return applied;
 }
 
 function getVariantViewKey(variant) {
@@ -4093,7 +4191,7 @@ if (activeColor) {
     const viewKey = getVariantViewKey(cfgVariant);
     const hasViewPreset = viewKey !== null;
 
-    if (hasViewPreset && !wasSameVariant) {
+    if (hasViewPreset) {
       focusCameraOnNode(node);
       const basePose = {
         pan: camera.panTarget?.slice() || camera.pan?.slice() || [0, 0, 0],

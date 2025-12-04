@@ -253,6 +253,8 @@ precision highp float;
 in  vec3 vDir;
 out vec4 fragColor;
 
+const float PI = 3.14159265359;
+
 
 // === Sunce & atmosfera ===
 uniform float uTime;
@@ -352,11 +354,17 @@ float nightAmt  = smoothstep(-0.1, -0.3, sunAlt);
     // === 2. Procedural clouds, halo, sunset boost ===
     // (ostaje kao ranije – možeš da ga pojačaš po želji)
 
-    float tTop    = (uCloudHeight + uCloudThickness - uCameraHeight) / dir.y;
-    float tBottom = (uCloudHeight - uCloudThickness - uCameraHeight) / dir.y;
-    float tEnter  = max(min(tTop, tBottom), 0.0);
-    float tExit   = max(max(tTop, tBottom), 0.0);
-    float segLen  = max(tExit - tEnter, 0.0);
+    float segLen = 0.0;
+    float tEnter = 0.0;
+    float tExit  = 0.0;
+    // čuvaj se deljenja kada gledaš tačno u horizont
+    if (abs(dir.y) > 1e-3) {
+        float tTop    = (uCloudHeight + uCloudThickness - uCameraHeight) / dir.y;
+        float tBottom = (uCloudHeight - uCloudThickness - uCameraHeight) / dir.y;
+        tEnter  = max(min(tTop, tBottom), 0.0);
+        tExit   = max(max(tTop, tBottom), 0.0);
+        segLen  = max(tExit - tEnter, 0.0);
+    }
     float cloudAlpha = 0.0;
     
 // === volumetric-like clouds with layered depth ===
@@ -427,15 +435,29 @@ if (segLen > 0.0) {
     float warmBand = exp(-pow(abs(dir.y)/max(uWarmBandWidth,0.001), 2.0));
     base += uWarmBandStrength * warmBand * vec3(1.0, 0.58, 0.15);
 
+    // fizikalno naglašena Rayleigh/Mie komponenta (skalirana sliderima)
+    float viewToSun = clamp(dot(dir, sunV), -1.0, 1.0);
+    float rayleighPhase = 3.0 / (16.0 * PI) * (1.0 + viewToSun * viewToSun);
+    float gMie = 0.76;
+    float miePhase = (1.0 - gMie * gMie) / (4.0 * PI * pow(1.0 + gMie * gMie - 2.0 * gMie * viewToSun, 1.5));
+    float airMass = mix(1.0, 3.0, clamp(1.0 - dir.y, 0.0, 1.0));
+    float sunVis = clamp(sunAlt * 0.6 + 0.5, 0.05, 1.2);
+    vec3 scatter = (rayleighColor * rayleighPhase * uRayleighStrength + vec3(miePhase) * uMieStrength)
+                   * uSunColor * uSunIntensity * airMass * sunVis;
+    base += scatter * 0.35;
+
     base  = applySaturation(base, uSaturation);
     base  = mix(base, applySaturation(base, 0.9), uZenithDesat);
+    float horizBlend = smoothstep(0.25, 1.0, hS);
+    base  = mix(base, applySaturation(base, 1.0 - uHorizonDesat), horizBlend * uHorizonDesat);
 
     base = mix(base, vec3(0.035, 0.03, 0.03), clamp(uTurbidity*(1.0-hS), 0.0, 1.0));
+    base += uGround * (1.0 - dir.y) * 0.08 * uGroundScatter;
 
 
 
     // === 3. Sun disk & Mie halo ===
-    float cosToSun = dot(dir, sunV);
+    float cosToSun = clamp(dot(dir, sunV), -1.0, 1.0);
     float sunSize  = radians(uSunSizeDeg);
     float ang      = acos(cosToSun);
 
@@ -487,6 +509,9 @@ sunLight += uSunColor *
 
     // linear HDR output (ACES tonemap ide kasnije u glavnom passu)
     vec3 hdrColor = color * uGlobalExposure;
+    if (bool(uUseTonemap)) {
+      hdrColor = ACESFilm(hdrColor);
+    }
     fragColor = vec4(hdrColor, 1.0);
 }
 

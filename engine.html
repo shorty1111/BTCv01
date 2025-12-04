@@ -4,7 +4,7 @@
   <head>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-    <link rel="stylesheet" href="tree.css?v=sdbvsSSSSfc1" />
+    <link rel="stylesheet" href="tree.css?v=sdbvsSSS1Sfc1" />
 
     <meta
       name="viewport"
@@ -90,13 +90,15 @@
             <button class="btn-toggle full-width" id="toggleWater">Studio</button>
             
           <div class="section-label">Weather</div>
-              <div class="button-grid">
-                <button class="btn-weather day" data-weather="day">
-                  <img src="assets/sun_up.png" alt="Day">
-                </button>
-                <button class="btn-weather sunset" data-weather="sunset">
-                  <img src="assets/sun_down.png" alt="Sunset">
-                </button>
+              <div class="weather-switch" id="weatherSwitch" data-weather="day">
+                <div class="switch-track">
+                  <img src="assets/sun_up.png" alt="Day" class="track-icon icon-day" />
+                  <img src="assets/sun_down.png" alt="Sunset" class="track-icon icon-sunset" />
+                  <div class="switch-thumb">
+                    <img src="assets/sun_up.png" alt="Day" class="thumb-icon thumb-day" />
+                    <img src="assets/sun_down.png" alt="Sunset" class="thumb-icon thumb-sunset" />
+                  </div>
+                </div>
               </div>
           <button id="closeOptions" class="full-width"> Close</button></div>
       </div>
@@ -125,9 +127,9 @@
           <button id="exportPDF" class="action-button">Export PDF</button>
           <button id="shareConfig" class="action-button">Share Config</button>
           <button id="copyConfig" class="action-button">Copy Link</button>
-          <button id="saveConfigBtn" class="action-button">Save Configuration</button>
+          <button id="saveConfigBtn" class="action-button">Save Config</button>
           <button id="loadConfigToggle" class="action-button has-chevron load-toggle">
-            <span class="label">Load Configuration</span>
+            <span class="label">Load Config</span>
             <span class="chevron" aria-hidden="true"></span>
           </button>
           <button id="toggle-info" class="action-button has-chevron">

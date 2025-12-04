@@ -641,28 +641,13 @@ function buildVariantSidebar() {
     });
     const activeGroupEl = tabsContent.querySelector(`.variant-group[data-group="${name}"]`);
     if (activeGroupEl) {
-      const currentActive = activeGroupEl.querySelector(".variant-item.active");
       const firstCard = activeGroupEl.querySelector(".variant-item");
-      const targetCard = currentActive || firstCard;
+      const targetCard = firstCard;
 
-      const focusCardNode = (cardEl) => {
-        if (!cardEl) return;
-        const partKey = cardEl.dataset.part;
-        hideHotspot(partKey);
-        const node = nodesMeta.find((n) => n.name === partKey);
-        if (node && typeof focusCameraOnNode === "function") {
-          focusCameraOnNode(node);
-          render();
-        }
-      };
-
-      if (!currentActive && firstCard) {
+      if (targetCard) {
         setTimeout(() => {
-          firstCard.click();
-          focusCardNode(firstCard);
+          targetCard.click();
         }, 0);
-      } else if (targetCard) {
-        setTimeout(() => focusCardNode(targetCard), 0);
       }
     }
     // vrati hotspot/label za sve grupe koje nisu aktivne
@@ -1392,13 +1377,23 @@ if (variant.selectedColor) {
   renderSavedConfigs();
 }
 function initWeatherButtons() {
-  const buttons = document.querySelectorAll("#camera-controls button[data-weather]");
-  buttons.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const weather = btn.dataset.weather;
-      setWeather(weather);
-    });
-  });
+  const switchEl = document.getElementById("weatherSwitch");
+  const track = switchEl?.querySelector(".switch-track");
+  if (!switchEl || !track) return;
+
+  const applyWeather = (weather) => {
+    switchEl.dataset.weather = weather;
+    setWeather(weather);
+  };
+
+  const handleClick = (evt) => {
+    const rect = track.getBoundingClientRect();
+    const x = evt.clientX - rect.left;
+    const weather = x > rect.width * 0.5 ? "sunset" : "day";
+    applyWeather(weather);
+  };
+
+  switchEl.addEventListener("click", handleClick);
 }
 
 const cameraControls = document.getElementById("camera-controls");
@@ -1505,7 +1500,6 @@ function setupExclusiveButtons(selector) {
 }
 
 setupExclusiveButtons("#camera-controls button[data-view]");
-setupExclusiveButtons("#camera-controls button[data-weather]");
 
 function getVariantPreviewSrc(partKey, variant) {
   const savedColorName = savedColorsByPart?.[partKey]?.[variant.name];

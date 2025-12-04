@@ -156,7 +156,8 @@ void main(){
     vec3 envDiff = texture(uEnvDiffuse, upN).rgb;
 
     float mipSpec = roughPerceptual  * uCubeMaxMip;
-    vec3 envSpec = textureLod(uEnvMap, Rw, mipSpec).rgb * ao;
+    // prefiltered env specular without double AO (specOcclusion already covers it)
+    vec3 envSpec = textureLod(uEnvMap, Rw, mipSpec).rgb;
         
     
     vec3 sunRadiance = uSunColor * uSunIntensity;
@@ -164,12 +165,10 @@ void main(){
     vec3 ambient = envDiff *  ao;
 
     vec2 brdf = texture(uBRDFLUT, vec2(NdotV, roughPerceptual)).rg; 
-    vec3 F_ibl = fresnelSchlickRoughness(NdotV, F0, roughPerceptual);
-
-    vec3 kd_ibl = (1.0 - F_ibl) * (1.0 - metal);
+    vec3 kd_ibl = (1.0 - F0) * (1.0 - metal);
     vec3 diffIBL = ambient * baseColor * kd_ibl;
     float specOcclusion = clamp(ao + (1.0 - ao) * pow(NdotV, 4.0), 0.0, 1.0);
-    vec3 specIBL = envSpec * (F_ibl * brdf.x + brdf.y) * specOcclusion;
+    vec3 specIBL = envSpec * (F0 * brdf.x + brdf.y) * specOcclusion;
 
 
     vec3 color = direct + diffIBL + specIBL;

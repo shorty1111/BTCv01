@@ -21,6 +21,8 @@ export function initCamera(canvas) {
   const MIN_FAR = 500.0;
   let fovDegrees = 60;
   let fovOverride = null;
+  const FIT_PADDING = 0.05; // ~5% padding po širini
+  const FIT_FILL = 0.95; // model zauzima ~95% ekrana
 
   function computeFarPlane(currentDist) {
     const sceneRadius = window.sceneBoundingRadius || 50.0;
@@ -223,15 +225,15 @@ export function initCamera(canvas) {
       window.sceneBoundingRadius = Math.max(size[0], size[1], size[2]) * 0.5;
 
       // projekcija koja garantuje isti “zoom” za sve veličine
-      const fovY = Math.PI / 4;               // 45°
       const aspect = canvas.width / canvas.height;
-      const fill = 1.1;                       // model zauzima 70% visine ekrana
-      // udaljenost mora da pokrije najveću od: visina, širina/aspect
-      const halfHeight = size[1] * 0.5 / fill;
-      const halfWidth  = (size[0] * 0.5 / fill) / aspect;
-      const halfDepth  = size[2] * 0.5 / fill;
-      const halfMax = Math.max(halfHeight, halfWidth, halfDepth);
-      const distFit = halfMax / Math.tan(fovY * 0.5);
+      const fovDegCurrent = typeof fovOverride === "number" ? fovOverride : fovDegrees;
+      const fovY = (fovDegCurrent * Math.PI) / 180;
+      const fovX = 2 * Math.atan(Math.tan(fovY * 0.5) * aspect);
+      const paddedHalfW = Math.max(size[0] * 0.5 * (1 + FIT_PADDING * 2), 0.001);
+      const paddedHalfH = Math.max(size[1] * 0.5 * (1 + FIT_PADDING * 2), 0.001);
+      const distX = paddedHalfW / Math.tan(fovX * 0.5);
+      const distY = paddedHalfH / Math.tan(fovY * 0.5);
+      const distFit = Math.max(distX, distY) / Math.max(FIT_FILL, 0.01);
       pan = center.slice();
       panTarget = center.slice();
       dist = distTarget = distFit;
