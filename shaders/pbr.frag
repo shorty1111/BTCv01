@@ -20,7 +20,6 @@ uniform samplerCube uEnvDiffuse;
 
 uniform float uNormalBias; 
 uniform mat4  uView, uLightVP;
-uniform vec3  uCameraPos;
 uniform vec3  uSunDir, uSunColor;
 uniform float uSunIntensity;
 uniform float uBiasBase, uBiasSlope;
@@ -66,9 +65,6 @@ float getShadowView(vec3 Pw, vec3 Nw)
 
     float cosT = max(dot(Nw, L), 0.0);
     float bias = uBiasBase + uBiasSlope * (1.0 - cosT);
-    // dodatni receiver bias iz derivacija smanjuje treperenje na ravnim povrsinama
-    vec3 dUVW = fwidth(uvw);
-    bias += max(dUVW.z * 2.0, max(dUVW.x, dUVW.y));
 
     const vec2 poissonDisk[16] = vec2[](
         vec2(-0.94201624, -0.39906216),
@@ -91,15 +87,10 @@ float getShadowView(vec3 Pw, vec3 Nw)
 
     vec2 texel = 1.0 / uShadowMapSize;
 
-    // zakljucaj sum na texel mrezu da ne sara kad se kamera malo pomeri
-    vec2 uvTexel = floor(uvw.xy * uShadowMapSize);
-    float angle = fract(sin(dot(uvTexel, vec2(12.9898, 78.233))) * 43758.5453) * 6.28318;
+    float angle = fract(sin(dot(uvw.xy, vec2(12.9898, 78.233))) * 43758.5453) * 6.28318;
     mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
 
-    // prosiri kernel kad je povrsina dalje od kamere da ublazi aliasing u daljini
-    float viewDist = length((uView * vec4(Pw, 1.0)).xyz);
-    float farSoft = clamp(viewDist * 0.003, 0.0, 3.0);
-    float radius = mix(1.0, 2.0, pow(1.0 - cosT, 2.0)) + farSoft;
+    float radius = mix(1.0, 1.5, pow(1.0 - cosT, 2.0));
 
     float shadow = 0.0;
     for (int i = 0; i < 8; i++) {
@@ -165,8 +156,7 @@ void main(){
     vec3 envDiff = texture(uEnvDiffuse, upN).rgb;
 
     float mipSpec = roughPerceptual  * uCubeMaxMip;
-    // prefiltered env specular without double AO (specOcclusion already covers it)
-    vec3 envSpec = textureLod(uEnvMap, Rw, mipSpec).rgb;
+    vec3 envSpec = textureLod(uEnvMap, Rw, mipSpec).rgb * ao;
         
     
     vec3 sunRadiance = uSunColor * uSunIntensity;
@@ -174,10 +164,12 @@ void main(){
     vec3 ambient = envDiff *  ao;
 
     vec2 brdf = texture(uBRDFLUT, vec2(NdotV, roughPerceptual)).rg; 
-    vec3 kd_ibl = (1.0 - F0) * (1.0 - metal);
+    vec3 F_ibl = fresnelSchlickRoughness(NdotV, F0, roughPerceptual);
+
+    vec3 kd_ibl = (1.0 - F_ibl) * (1.0 - metal);
     vec3 diffIBL = ambient * baseColor * kd_ibl;
     float specOcclusion = clamp(ao + (1.0 - ao) * pow(NdotV, 4.0), 0.0, 1.0);
-    vec3 specIBL = envSpec * (F0 * brdf.x + brdf.y) * specOcclusion;
+    vec3 specIBL = envSpec * (F_ibl * brdf.x + brdf.y) * specOcclusion;
 
 
     vec3 color = direct + diffIBL + specIBL;

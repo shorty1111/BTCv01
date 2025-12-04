@@ -45,13 +45,14 @@ const lastAppliedCameraPreset = {}; // per-part key to avoid re-applying same ca
 let shadowFBO, shadowDepthTex;
 
 // === Render / camera tuning constants ===
-const SHADOW_RES = 2048;
-const REFLECTION_SCALE = 0.2;
+const SHADOW_RES = 4096;
+const REFLECTION_SCALE = 0.15;
 let envSize = 512; // kontrola kvaliteta/performansi
 let cubeMaxMip = Math.floor(Math.log2(envSize));
-const KERNEL_SIZE = 48;
+const KERNEL_SIZE = 32;
 const SSAO_NOISE_SIZE = 3;
-let ssaa = 1.2;
+const SSAO_DOWNSCALE = 0.80; // render SSAO u nizoj rezoluciji (minimum 0.85 da ne muti)
+let ssaa = 1.35; // supersampling faktor
 const CAMERA_FRAME_PADDING = 0.0; // dodatni margin oko okvira (0 = koristi samo fill)
 const CAMERA_FRAME_FILL = 0.8; // model zauzima ~80% ekrana bez obzira na velicinu
 
@@ -456,6 +457,7 @@ let idxCounts = [];
 let idxTypes = [];
 let gBuffer, gPosition, gNormal, gAlbedo, gMaterial;
 let ssaoFBO, ssaoColorBuffer;
+let ssaoWidth = 0, ssaoHeight = 0;
 let ssaoKernel = [];
 let ssaoNoiseTexture;
 let lineProgram; // globalna promenljiva
@@ -947,7 +949,7 @@ function resizeCanvas() {
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
   createGBuffer();
-  createSSAOBuffers(Math.round(realW * 1.0), Math.round(realH * 1.0));
+  createSSAOBuffers(Math.round(realW * SSAO_DOWNSCALE), Math.round(realH * SSAO_DOWNSCALE));
   createFinalColorTarget(canvas.width, canvas.height);
   createToneMapTarget(canvas.width, canvas.height);
   createReflectionTarget(gl, realW, realH);
@@ -1271,8 +1273,8 @@ function disposeSSAOBuffers() {
 function createSSAOBuffers(w, h) {
   disposeSSAOBuffers();
 
-  const width = w || canvas.width;
-  const height = h || canvas.height;
+  ssaoWidth = Math.max(1, Math.floor(w || canvas.width));
+  ssaoHeight = Math.max(1, Math.floor(h || canvas.height));
 
   // === FBO za SSAO ===
   ssaoFBO = gl.createFramebuffer();
@@ -1280,7 +1282,7 @@ function createSSAOBuffers(w, h) {
 
   ssaoColorBuffer = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, ssaoColorBuffer);
- gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+ gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, ssaoWidth, ssaoHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, ssaoColorBuffer, 0);
@@ -1290,7 +1292,7 @@ gl.bindFramebuffer(gl.FRAMEBUFFER, window.ssaoBlurFBO);
 
 window.ssaoBlurColor = gl.createTexture();
 gl.bindTexture(gl.TEXTURE_2D, window.ssaoBlurColor);
-gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, ssaoWidth, ssaoHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, window.ssaoBlurColor, 0);
@@ -1893,7 +1895,7 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     rebuildEnvironmentTextures();
     generateSSAOKernel();
     generateNoiseTexture();
-    createSSAOBuffers(canvas.width, canvas.height);
+    createSSAOBuffers(Math.round(canvas.width * SSAO_DOWNSCALE), Math.round(canvas.height * SSAO_DOWNSCALE));
 
     // === BRDF LUT precompute ===
 // === BRDF LUT precompute ===
@@ -2270,7 +2272,7 @@ if (shadowDirty) {
   gl.enable(gl.CULL_FACE);
   gl.cullFace(gl.BACK);
   gl.enable(gl.POLYGON_OFFSET_FILL);
-  gl.polygonOffset(6.0, 8.0);
+  gl.polygonOffset(2.0, 4.0);
 
   // Sun light setup
   const lightPos = [
@@ -2485,6 +2487,9 @@ if (ssaoDirty) {
   beginDrawPass("ssao");
   gl.bindFramebuffer(gl.FRAMEBUFFER, ssaoFBO);
   gl.useProgram(ssaoProgram);
+  const aoW = ssaoWidth || canvas.width;
+  const aoH = ssaoHeight || canvas.height;
+  gl.viewport(0, 0, aoW, aoH);
 
   // --- Textures ---
   gl.activeTexture(gl.TEXTURE0);
@@ -2504,7 +2509,7 @@ if (ssaoDirty) {
   gl.uniform1i(ssaoUniforms.gAlbedo, 3);
 
   // --- Uniforms ---
-  gl.uniform2f(ssaoUniforms.uNoiseScale, canvas.width / SSAO_NOISE_SIZE, canvas.height / SSAO_NOISE_SIZE);
+  gl.uniform2f(ssaoUniforms.uNoiseScale, aoW / SSAO_NOISE_SIZE, aoH / SSAO_NOISE_SIZE);
   gl.uniform3fv(ssaoUniforms.samples, ssaoKernel);
   gl.uniformMatrix4fv(ssaoUniforms.uProjection, false, proj);
   gl.uniform1f(ssaoUniforms.uFrame, timeNow * 50.0);
@@ -2513,21 +2518,22 @@ if (ssaoDirty) {
   gl.bindVertexArray(quadVAO);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
-  // ✅ resetuj stanje posle SSAO pasa
+  // resetuj stanje posle SSAO pasa
   gl.disable(gl.SCISSOR_TEST);
-  gl.viewport(0, 0, canvas.width, canvas.height);
 
   // === BLUR SSAO ===
   beginDrawPass("ssao-blur");
   gl.bindFramebuffer(gl.FRAMEBUFFER, window.ssaoBlurFBO);
   gl.useProgram(window.ssaoBlurProgram);
+  gl.viewport(0, 0, aoW, aoH);
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, ssaoColorBuffer);
   gl.uniform1i(window.ssaoBlurUniforms.tSSAO, 0);
-  gl.uniform2f(window.ssaoBlurUniforms.uTexelSize, 1.0 / canvas.width, 1.0 / canvas.height);
+  gl.uniform2f(window.ssaoBlurUniforms.uTexelSize, 1.0 / aoW, 1.0 / aoH);
   gl.bindVertexArray(quadVAO);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
 
 
     ssaoDirty = false;

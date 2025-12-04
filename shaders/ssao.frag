@@ -4,20 +4,20 @@ precision highp float;
 in vec2 vUV;
 out vec4 fragColor;
 
+#define KERNEL_SIZE 32
+const float bias     = 0.025;
+const float powerAO  = 1.25;
+
 /* ---------- G-buffer & uniforms ---------- */
 uniform sampler2D gPosition;
 uniform sampler2D gNormal;
 uniform sampler2D tNoise;
 uniform mat4 uView;
 uniform mat4 uProjection;
-uniform vec3 samples[48];
+uniform vec3 samples[KERNEL_SIZE];
 uniform vec4 uViewportRect; // x = umin.x, y = umin.y, z = width, w = height
 uniform float uFrame;
 uniform vec2  uNoiseScale;
-
-#define KERNEL_SIZE 48
-const float bias     = 0.025;
-const float powerAO  = 1.3;
 
 /* ---------- main ---------- */
 void main() {
@@ -36,9 +36,9 @@ void main() {
     // --- Camera-depth adaptacija ---
     float camDepth = -fragPos.z;
     float depthFactor = clamp(camDepth / 1.0, 0.0, 1.0);
-    float radius = mix(0.1,1.0, depthFactor);
-    float adapt  = mix(1.0, 1.0, clamp(camDepth / 1.0, 0.0, 1.0));
-    int sampleCount = int(mix(32.0, 48.0, depthFactor));
+    float radius = mix(0.5,0.8, depthFactor);
+    float adapt  = mix(0.1, 1.0, clamp(camDepth / 1.0, 0.0, 1.0));
+    int sampleCount = int(mix(24.0, float(KERNEL_SIZE), depthFactor));
 
     float occlusion = 0.0;
 
