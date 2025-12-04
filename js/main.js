@@ -43,7 +43,18 @@ window.textureCache = textureCache;
 const lastAppliedCameraPreset = {}; // per-part key to avoid re-applying same camera
 
 let shadowFBO, shadowDepthTex;
+
+// === Render / camera tuning constants ===
 const SHADOW_RES = 2048;
+const REFLECTION_SCALE = 0.2;
+let envSize = 512; // kontrola kvaliteta/performansi
+let cubeMaxMip = Math.floor(Math.log2(envSize));
+const KERNEL_SIZE = 48;
+const SSAO_NOISE_SIZE = 3;
+let ssaa = 1.2;
+const CAMERA_FRAME_PADDING = 0.0; // dodatni margin oko okvira (0 = koristi samo fill)
+const CAMERA_FRAME_FILL = 0.8; // model zauzima ~80% ekrana bez obzira na velicinu
+
 const UNIT_SCALE = window.UNIT_SCALE ?? 1;
 const COMPONENT_BYTE_SIZE = {
   5120: 1, // BYTE
@@ -425,9 +436,6 @@ window.savedColorsByPart = savedColorsByPart;
 let reflectionFBO = null;
 let reflectionTex = null;
 let reflectionColorProgram = null;
-const REFLECTION_SCALE = 0.2;
-let envSize = 512; // kontrola kvaliteta/performansi
-let cubeMaxMip = Math.floor(Math.log2(envSize));
 window.showWater = true;
 window.showDimensions = false;
 const ENV_MODE = { SKY: "sky", STUDIO: "studio" };
@@ -484,9 +492,6 @@ const dimOverlayCtx = { canvas: null, labels: null, uColor: null };
 
 const DIM_COLOR = [0.9, 0.02, 1.0];
 const DIM_TICK_COLOR = [0.65, 0.9, 1.0];
-
-const KERNEL_SIZE = 48;
-const SSAO_NOISE_SIZE = 3;
 window.__suppressThumbnailUI = window.__suppressThumbnailUI || false;
 const cachedVariants = {}; // url -> ArrayBuffer
 const preparedVariants = {}; // url -> [ { vao, count, type, baseColor, metallic, roughness, trisWorld }... ]
@@ -893,12 +898,9 @@ function createDepthTexture(w, h) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   return tex;
 }
-  let ssaa = 1.2;
 
 function resizeCanvas() {
   const sidebarEl = document.getElementById("sidebar");
-  // Treat tablet portrait the same as landscape/desktop so layout stays consistent.
-  const isTabletPortrait = false;
   let sidebarW = sidebarEl ? sidebarEl.offsetWidth : 0;
   const headerEl = document.querySelector(".global-header");
   const headerH = headerEl ? headerEl.offsetHeight : 0;
@@ -944,7 +946,7 @@ function resizeCanvas() {
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-  createGBuffer(realW, realH);
+  createGBuffer();
   createSSAOBuffers(Math.round(realW * 1.0), Math.round(realH * 1.0));
   createFinalColorTarget(canvas.width, canvas.height);
   createToneMapTarget(canvas.width, canvas.height);
@@ -1685,12 +1687,10 @@ function buildDimensionTicks(min, max, radius) {
 async function initGL() {
   try {
     initShadowMap();
-    createGBuffer();
-    createSSAOBuffers();
     return true;
   } catch (err) {
     console.error("[initGL] Failed:", err);
-    alert("GL initialization failed — see console for details.");
+    alert("GL initialization failed - see console for details.");
     return false;
   }
 }
@@ -3722,9 +3722,6 @@ if (prim.material !== undefined) {
   return out;
 }
 
-const CAMERA_FRAME_PADDING = 0.0; // dodatni margin oko okvira (0 = koristi samo fill)
-const CAMERA_FRAME_FILL = 0.8; // model zauzima ~80% ekrana bez obzira na velicinu
-
 // Ensure camera preset still fits current viewport aspect (prevents tablet portrait crop)
 function ensureViewFitsViewport(cameraInstance, bounds = null) {
   if (!canvas || !cameraInstance) return;
@@ -4394,7 +4391,3 @@ if (import.meta.hot) {
     lose?.loseContext();
   });
 }
-
-
-
-
