@@ -1212,7 +1212,8 @@ function createGBuffer() {
   // Tekstura za pozicije (u View-space, potrebna za SSAO)
   gPosition = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, gPosition);
-  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,canvas.width,canvas.height,0,gl.RGBA, gl.FLOAT,null);
+  // koristimo RGBA32F da pozicije ne kvantizuju na daljini (stabilnije senke pri rotaciji kamere)
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA32F,canvas.width,canvas.height,0,gl.RGBA, gl.FLOAT,null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,gPosition,0 );
@@ -2301,8 +2302,14 @@ if (shadowDirty) {
   const hy = (lmax[1] - lmin[1]) * 0.5 * FRUSTUM_SCALE;
   const hz = (lmax[2] - lmin[2]) * 0.5 * FRUSTUM_SCALE;
 
-  lmin = [cx - hx, cy - hy, cz - hz];
-  lmax = [cx + hx, cy + hy, cz + hz];
+  // snap centar na texel mrežu u light prostoru da senka ne treperi pri malim pomerajima kamere
+  const texelSizeX = (hx * 2) / SHADOW_RES;
+  const texelSizeY = (hy * 2) / SHADOW_RES;
+  const snappedCx = Math.round(cx / texelSizeX) * texelSizeX;
+  const snappedCy = Math.round(cy / texelSizeY) * texelSizeY;
+
+  lmin = [snappedCx - hx, snappedCy - hy, cz - hz];
+  lmax = [snappedCx + hx, snappedCy + hy, cz + hz];
   const lightProj = ortho(lmin[0], lmax[0], lmin[1], lmax[1], -lmax[2], -lmin[2]);
   lightVP = mat4mul(lightProj, lightView);
 
