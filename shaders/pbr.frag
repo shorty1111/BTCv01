@@ -156,7 +156,7 @@ void main(){
     vec3 envDiff = texture(uEnvDiffuse, upN).rgb;
 
     float mipSpec = roughPerceptual  * uCubeMaxMip;
-    vec3 envSpec = textureLod(uEnvMap, Rw, mipSpec).rgb * ao;
+    vec3 envSpec = textureLod(uEnvMap, Rw, mipSpec).rgb;
         
     
     vec3 sunRadiance = uSunColor * uSunIntensity;
