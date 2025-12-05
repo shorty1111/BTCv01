@@ -919,8 +919,36 @@ function resizeCanvas() {
 
   const footerH = actionBarH;
 
-  const cssW = Math.max(1, window.innerWidth - sidebarW);
-  const cssH = Math.max(1, window.innerHeight - headerH - footerH);
+  const isTabletPortrait = window.matchMedia(
+    "(orientation: portrait) and (min-width: 700px) and (max-width: 1199px)"
+  ).matches;
+  const canvasWrapper =
+    canvas.parentElement && canvas.parentElement.classList.contains("canvas-wrapper")
+      ? canvas.parentElement
+      : null;
+
+  let cssW;
+  let cssH;
+  if (isTabletPortrait && canvasWrapper) {
+    const rect = canvasWrapper.getBoundingClientRect();
+    cssW = Math.max(1, rect.width);
+    cssH = Math.max(1, rect.height);
+
+    // Fallback if CSS hasn't applied yet or height is tiny
+    if (cssW < 16 || cssH < 16) {
+      const root = getComputedStyle(document.documentElement);
+      const safeBottom = parseFloat(root.getPropertyValue("--safe-bottom")) || 0;
+      const availH = Math.max(1, window.innerHeight - headerH - safeBottom);
+      cssW = window.innerWidth;
+      cssH = Math.max(1, Math.round(availH * 0.4));
+    }
+
+    sidebarW = 0; // sidebar is stacked below canvas in this layout
+  } else {
+    cssW = Math.max(1, window.innerWidth - sidebarW);
+    cssH = Math.max(1, window.innerHeight - headerH - footerH);
+  }
+
   const aspect = cssW / cssH;
   let maxRenderW;
   const isMobile = /Mobi|Android|iPhone|iPad|Tablet/i.test(navigator.userAgent);
@@ -940,8 +968,8 @@ function resizeCanvas() {
   canvas.height = realH;
   canvas.style.width = cssW + "px";
   canvas.style.height = cssH + "px";
-  canvas.style.left = sidebarW + "px";
-  canvas.style.top = headerH + "px"; 
+  canvas.style.left = isTabletPortrait ? "0px" : sidebarW + "px";
+  canvas.style.top = isTabletPortrait ? "0px" : headerH + "px";
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.bindTexture(gl.TEXTURE_2D, null);
