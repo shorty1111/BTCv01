@@ -1289,63 +1289,36 @@ body.app-loading #camera-controls {
   color: var(--primary);
   text-shadow: var(--shadow-glow);
 }
-/* =========================
-   INFO PANEL - 0 STYLE
-========================= */
-#info-panel {
+  /* =========================
+     INFO PANEL - 0 STYLE
+  ========================= */
+  .canvas-actions {
     position: fixed;
     left: var(--sidebar-w);
     right: 0;
-    width: calc(100% - var(--sidebar-w));
-    bottom: calc(var(--action-bar-h) + env(safe-area-inset-bottom));
-    background: transparent;
-    border: none;
-    z-index: 140;
-    padding: 0 16px 0;
+    bottom: 0;
+    height: auto;
     display: flex;
-    flex-direction: column;
-    gap: 10px;
-    box-sizing: border-box;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    min-height: var(--action-bar-h);
+    background: var(--background-secondary);
+    border-top: 1px solid var(--card-border);
+    border-left: 1px solid var(--card-border);
+    border-radius: 0;
+    padding: 8px 16px;
+    box-shadow: 0 -4px 18px hsl(220, 15%, 5%, 0.3);
+    z-index: 140;
   }
-#info-panel table {
-  table-layout: fixed;
-  width: 100%;
-}
-#info-panel th,
-#info-panel td {
-  width: 33.33%; /* prilagodi po broju kolona */
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.canvas-actions {
-  position: fixed;
-  left: var(--sidebar-w);
-  right: 0;
-  bottom: 0;
-  height: auto;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  min-height: var(--action-bar-h);
-  background: var(--background-secondary);
-  border-top: 1px solid var(--card-border);
-  border-left: 1px solid var(--card-border);
-  border-radius: 0;
-  padding: 8px 16px;
-
-  box-shadow: 0 -4px 18px hsl(220, 15%, 5%, 0.3);
-  z-index: 140;
-}
   .info-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
     align-items: center;
     justify-content: flex-start;
-  width: 100%;
-}
+    width: 100%;
+  }
 .action-button {
   background: var(--secondary);
   color: var(--foreground);
@@ -1481,22 +1454,14 @@ body.app-loading #camera-controls {
   border: 1px solid var(--glass-border);
   opacity: 1;
 }
-#info-panel.mobile-local {
+  #info-panel.mobile-local {
   position: relative;
   left: 0;
   right: 0;
   width: 100%;
   bottom: auto;
 }
-/* Desktop enforce alignment with canvas */
-@media (min-width: 1201px) {
-  #info-panel {
-    position: fixed;
-    left: var(--sidebar-w);
-    right: 0;
-    width: calc(100% - var(--sidebar-w));
-  }
-}
+  /* Desktop enforce alignment with canvas */
 #info-content {
   padding: 8px 4px 16px 4px;
   z-index: 1;
@@ -1515,7 +1480,7 @@ body.app-loading #camera-controls {
    TABLES - 0 STYLE
 ========================= */
 #partsTable,
-#boat-info table {
+  #boat-info table {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
@@ -1527,7 +1492,7 @@ body.app-loading #camera-controls {
 #partsTable th,
 #partsTable td,
 #boat-info table th,
-#boat-info table td {
+  #boat-info table td {
   padding: 12px 16px;
   text-align: left;
   border-bottom: 1px solid var(--border);
@@ -2284,20 +2249,6 @@ body.studio-mode .btn-weather {
   }
 
 
-  /* Info panel above bottom panel */
-  #info-panel {
-    position: fixed;
-    left: 0;
-    right: 0;
-    width: 100%;
-    bottom: var(--mobile-panel-height);
-    background: transparent;
-    padding: 0 16px 8px;
-    z-index: 120; /* Preko sidebar-a */
-    display: flex;
-    flex-direction: column;
-  }
-
   .canvas-actions {
     position: relative;
     left: auto;
@@ -2356,6 +2307,17 @@ body.studio-mode .btn-weather {
   }
 }
 
+/* Landscape mobile/tablet: poravnaj info panel i action bar sa realnim dnom,
+   da Safari ne "potapa" sadržaj zbog toolbar visine */
+@media (max-width: 1024px) and (orientation: landscape) {
+  #info-panel {
+    bottom: var(--action-bar-h);
+  }
+  .canvas-actions {
+    bottom: 0;
+  }
+}
+
 /* Responsive za manje tablete */
 @media (max-width: 820px) and (orientation: portrait) {
   .variant-card-list {
@@ -2397,7 +2359,9 @@ body.studio-mode .btn-weather {
     left: 0;
     right: 0;
     width: 100%;
-    height: calc((100vh - var(--header-h) - var(--safe-bottom)) * 0.5);
+    /* koristi 100dvh da izbegne iOS/Safari 100vh bug u portret modu,
+       ali bez dodatnog "jastuka" na dnu – gornja polovina je tačno 50% */
+    height: calc((100dvh - var(--header-h)) * 0.5);
     background: var(--gradient-canvas);
     overflow: hidden;
     z-index: 50;
@@ -2420,11 +2384,13 @@ body.studio-mode .btn-weather {
 
   #sidebar {
     position: fixed;
-    top: calc(var(--header-h) + ((100vh - var(--header-h) - var(--safe-bottom)) * 0.5));
+    /* donja polovina počinje tačno na sredini između header-a i dna,
+       bez dodatnog safe-bottom offseta – panel vizuelno ide do ivice */
+    top: calc(var(--header-h) + ((100dvh - var(--header-h)) * 0.5));
     left: 0;
     right: 0;
     width: 100%;
-    height: calc((100vh - var(--header-h) - var(--safe-bottom)) * 0.5);
+    height: calc((100dvh - var(--header-h)) * 0.5);
     border-right: none;
     border-top: 1px solid var(--card-border);
     border-radius: 0px;
@@ -2447,22 +2413,6 @@ body.studio-mode .btn-weather {
     bottom: 0;
     border-top: 1px solid var(--card-border);
     background: var(--background-secondary);
-  }
-
-  #info-panel {
-    position: fixed;
-    left: 0;
-    right: 0;
-    top: var(--header-h);
-    bottom: calc((100vh - var(--header-h) - var(--safe-bottom)) * 0.5 + var(--safe-bottom));
-    width: 100%;
-    padding: 0 12px 8px;
-    box-sizing: border-box;
-    background: transparent;
-    border: none;
-    box-shadow: none;
-    z-index: 70;
-    pointer-events: none; /* ne blokira drag po canvasu */
   }
 
     .canvas-actions {
@@ -2504,6 +2454,91 @@ body.studio-mode .btn-weather {
   #drawcall-meter,
   #res-meter {
     right: 16px;
+  }
+}
+
+/* =========================
+   INFO PANEL - REWORKED, CANONICAL
+   (ovo preuzima prioritet nad starim definicijama)
+========================= */
+
+#info-panel {
+  position: fixed;
+  left: var(--sidebar-w);
+  right: 0;
+  width: calc(100% - var(--sidebar-w));
+  bottom: calc(var(--action-bar-h) + env(safe-area-inset-bottom));
+  background: transparent;
+  border: none;
+  z-index: 140;
+  padding: 0 16px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+}
+
+#info-panel table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+#info-panel th,
+#info-panel td {
+  width: 33.33%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Desktop ≥ 1201px: info panel poravnat sa canvasom desno od sidebar-a */
+@media (min-width: 1201px) {
+  #info-panel {
+    position: fixed;
+    left: var(--sidebar-w);
+    right: 0;
+    width: calc(100% - var(--sidebar-w));
+    bottom: calc(var(--action-bar-h) + env(safe-area-inset-bottom));
+  }
+}
+
+/* Tablet/phone portret: info panel iznad donje zone (ne preko canvasa) */
+@media (max-width: 1024px) and (orientation: portrait) {
+  #info-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    width: 100%;
+    bottom: var(--mobile-panel-height);
+    background: transparent;
+    padding: 0 16px 8px;
+    z-index: 120;
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+/* Tablet portret 700–1199px: info panel između header-a i donje polovine */
+@media (orientation: portrait) and (min-width: 700px) and (max-width: 1199px) {
+  #info-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: var(--header-h);
+    bottom: calc((100vh - var(--header-h) - var(--safe-bottom)) * 0.5 + var(--safe-bottom));
+    width: 100%;
+    padding: 0 12px 8px;
+    box-sizing: border-box;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    z-index: 70;
+    pointer-events: none;
+  }
+
+  #info-panel.info-open .info-body,
+  #info-panel.load-open .load-body {
+    pointer-events: auto;
   }
 }
 
