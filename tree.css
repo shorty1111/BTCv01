@@ -126,7 +126,7 @@ body {
   position: fixed;
   top: 0;
   left: var(--sidebar-w); /* pomeri ga desno koliko je sidebar */
-  width: calc(100% - var(--sidebar-w)); /* skrati ga za sidebar �irinu */
+  width: calc(100% - var(--sidebar-w)); /* skrati ga za sidebar širinu */
 
   display: flex;
   align-items: center;
@@ -166,7 +166,7 @@ padding-top: calc(8px + env(safe-area-inset-top));
 .header-left.show-tooltip .tooltip {
   opacity: 1;
 }
-/* kad klikne� na strelicu (doda� .clicked) tooltip nestaje */
+/* kad klikneš na strelicu (dodaš .clicked) tooltip nestaje */
 .header-left.clicked .tooltip {
   opacity: 0;
 }
@@ -203,6 +203,7 @@ padding-top: calc(8px + env(safe-area-inset-top));
   align-items: center;
   gap: 12px;
   font-size: 20px;
+  padding-left: 16px;
   font-weight: bold;
   color: var(--foreground);
   letter-spacing: 0.5px;
@@ -420,7 +421,7 @@ canvas,
   max-height: 100dvh;
   transform-origin: center center;
   will-change: transform;
-  transition: none !important; /* <- sprecava "scale flicker" */
+  transition: none !important; /* <- sprečava "scale flicker" */
 }
 /* =========================
    CAMERA CONTROLS - 0 STYLE
@@ -470,7 +471,7 @@ canvas,
 /* ---------- BUTTON GRID ---------- */
 .button-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: 0.5rem;
 }
 /* ---------- CONTENT WRAPPER ---------- */
@@ -522,10 +523,6 @@ canvas,
     border-color: var(--border);
     transform: none;
   }
-}
-#toggleOptions,
-#closeOptions {
-  display: none !important;
 }
 #camera-controls .weather-switch {
   display: flex;
@@ -792,7 +789,7 @@ canvas,
   padding-bottom: 0;
   background: var(--card);
   border-right: 1px solid var(--card-border);
-  overflow: hidden;            /* sprecava da total isece ivicu */
+  overflow: hidden;            /* sprečava da total iseče ivicu */
   z-index: 500;
 }
 /* =========================
@@ -841,7 +838,7 @@ canvas,
   opacity: 0.1;
 }
 .variant-group h3::after {
-  content: "�";
+  content: "›";
   font-size: 20px;
   transition: transform 0.3s var(--spring);
   z-index: 1;
@@ -1684,8 +1681,8 @@ button:focus-visible,
 .hamburger-btn:hover { opacity: 0.7; }
 /* Sidebar panel */
 .sidebar-menu {
-  overflow-y: auto;             /* omogucava skrol */
-  overscroll-behavior: contain; /* sprecava bubble na body */
+  overflow-y: auto;             /* omogućava skrol */
+  overscroll-behavior: contain; /* sprečava bubble na body */
   position: fixed;
   top: 0;
   right: 0;
@@ -2090,7 +2087,7 @@ body.studio-mode .btn-weather {
     border-radius: 4px;
   }
 
-  /* Full width buttons, ali kompaktne �irine */
+  /* Full width buttons, ali kompaktne širine */
   #camera-controls button.full-width {
     width: 88px;
     height: 28px;
@@ -2114,7 +2111,7 @@ body.studio-mode .btn-weather {
     --thumb-shift: 57px;
   }
 
-  /* Pozicioniraj pojedinacne dugmice u svoje kolone */
+  /* Pozicioniraj pojedinačne dugmiće u svoje kolone */
   #toggleDims { grid-column: 2; grid-row: 2; justify-self: center; }
   #toggleWater { grid-column: 3; grid-row: 2; justify-self: center; }
 
@@ -2278,9 +2275,9 @@ body.studio-mode .btn-weather {
     font-size: 13px;
   }
 
-  /* Color grid takode 2 kolone */
+  /* Color grid takođe 2 kolone */
   .color-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, 1fr);
     gap: 8px;
   }
 
@@ -2478,6 +2475,17 @@ body.studio-mode .btn-weather {
   #info-panel.load-open .load-body {
     max-height: calc(((100vh - var(--header-h) - var(--safe-bottom)) * 0.5) - var(--action-bar-h) - 24px);
     pointer-events: auto; /* dozvoli skrol u panelu kad je otvoren */
+  }
+
+  /* Load config panel sedi tik iznad dugmeta (ne lepi se za vrh) */
+  .load-body {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: calc(var(--action-bar-h) + 12px);
+    max-width: none;
+    width: auto;
+    pointer-events: auto;
   }
 
   #fps-meter,
