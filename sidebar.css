@@ -254,7 +254,7 @@
   width: 384px;
   max-width: 100%;
   height: auto;
-  aspect-ratio: 16 / 10; /* enforce 16:10 while keeping 384px width */
+  aspect-ratio: 16 / 9; /* enforce 16:9 while keeping 384px width */
   overflow: hidden;
   border: none;
 }
@@ -427,7 +427,7 @@
 .color-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, 150px);
-  justify-content: center;
+  justify-content: left;
   gap: 12px;
 }
 .color-grid .color-swatch {
@@ -808,10 +808,12 @@
   }
 
   .variant-card-list {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-    padding: 0 4px;
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        justify-content: space-between;
+        align-items: stretch;
+        align-content: normal;
   }
 
   .variant-item {
@@ -820,8 +822,7 @@
   }
 
   .variant-item .thumb-wrapper {
-    aspect-ratio: 4/3;
-    height: auto;
+    width: 320px;
   }
 
   .variant-item .thumb-wrapper img.thumb {
@@ -862,8 +863,12 @@
   }
 
   .color-grid {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    align-items: stretch;
+    align-content: normal;
   }
 
   .color-grid .color-swatch {

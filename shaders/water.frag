@@ -59,6 +59,9 @@ vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
 void main() {
     float depthM      = abs((vWorldPos.y - uWaterLevel) - uBottomOffsetM);
     float depthFactor = clamp(depthM / DEPTH_SCALE, 0.0, 1.0);
+    // sitan dither u UV prostoru (fiksan, bez animacije) da ublaži banding između shallow/deep boje
+    float dither = fract(sin(dot(vUV * 256.0 , vec2(12.9898,78.233))) * 43758.5453);
+    float depthMix = clamp(pow(depthFactor, DEPTH_CURVE) + (dither - 0.5) * 0.0025, 0.0, 1.0);
 
   // === NORMALS (čistije, stabilnije) ===
     vec2 scroll1 = vec2(0.02,  0.05) * uTime;
@@ -94,7 +97,7 @@ void main() {
 
     vec3 R = normalize(reflect(-V, N));
 
-    vec3 baseColor = mix(uShallowColor, uDeepColor, pow(depthFactor, DEPTH_CURVE)) * uSunColor;
+    vec3 baseColor = mix(uShallowColor, uDeepColor, depthMix) * uSunColor;
 
     vec3 F0 = vec3(0.02, 0.023, 0.028);
     vec3 fresnel = fresnelSchlickRoughness(NdotV, F0, uRoughness);
@@ -131,6 +134,6 @@ void main() {
     vec3 color = mix(refracted, planarReflection, fresnel * mix(1.0, 0.5, lowAngleMix));
 
     color += sunSpecular+glintColor; //+glintColor
- color *= uGlobalExposure;
+    color *= uGlobalExposure;
     fragColor = vec4(vec3(color), 1.0);
 }
