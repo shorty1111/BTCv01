@@ -739,10 +739,13 @@ function buildVariantSidebar() {
 
         const body = document.createElement("div");
         body.className = "variant-body";
+        const titleRow = document.createElement("div");
+        titleRow.className = "variant-title-row";
         const label = document.createElement("div");
         label.className = "title";
         label.textContent = variant.name;
-        body.appendChild(label);
+        titleRow.appendChild(label);
+        body.appendChild(titleRow);
 
         if (variant.description) {
           const desc = document.createElement("div");
@@ -756,7 +759,7 @@ function buildVariantSidebar() {
         const rawPrice = variant.price ?? 0;
         const priceText =
           rawPrice === 0 ? "Included (incl. VAT)" : `+${rawPrice} € (incl. VAT)`;
-        footer.innerHTML = `<span class="price">${priceText}</span>`;
+        footer.innerHTML = `<svg class="price-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 7V3.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 21v-3.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 12h9a2 2 0 0 1 0 4h-5a2 2 0 1 1 0-4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 10h7a2 2 0 1 0 0-4h-5a2 2 0 0 0 0 4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 8h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M16 16h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="price">${priceText}</span>`;
         body.appendChild(footer);
 
         if (thumbWrapper) itemEl.appendChild(thumbWrapper);
@@ -1419,10 +1422,6 @@ function initWeatherButtons() {
   switchEl.addEventListener("click", handleClick);
 }
 
-const cameraControls = document.getElementById("camera-controls");
-  // Camera options panel is always expanded now; toggle/close buttons removed.
-
-
 document
   .querySelectorAll("#camera-controls button[data-view]")
   .forEach((btn) => {
@@ -1536,11 +1535,11 @@ function getVariantPreviewSrc(partKey, variant) {
   const input = document.getElementById("glbInput");
   const loadingScr = document.getElementById("loading-screen");
   const toggleDimsBtn = document.getElementById("toggleDims");
-  toggleDimsBtn.innerText = "Show Ruler"; // početni tekst
+  toggleDimsBtn.querySelector('.btn-label').innerText = "Show Ruler"; // početni tekst
   
   toggleDimsBtn.addEventListener("click", () => {
     showDimensions = !showDimensions;
-    toggleDimsBtn.innerText = showDimensions ? "Hide Ruler" : "Show Ruler";
+    toggleDimsBtn.querySelector('.btn-label').innerText = showDimensions ? "Hide Ruler" : "Show Ruler";
 
     ["lengthLabel", "widthLabel", "heightLabel"].forEach((id) => {
       const lbl = document.getElementById(id);
@@ -1554,11 +1553,11 @@ function getVariantPreviewSrc(partKey, variant) {
     if (window.markDimLabelsDirty) window.markDimLabelsDirty();
   });
   const toggleWaterBtn = document.getElementById("toggleWater");
-  toggleWaterBtn.innerText = "Studio"; // odmah prikaži tekst jer je voda aktivna
+  toggleWaterBtn.querySelector('.btn-label').innerText = "Studio"; // odmah prikaži tekst jer je voda aktivna
   
   toggleWaterBtn.addEventListener("click", () => {
     showWater = !showWater;
-    toggleWaterBtn.innerText = showWater ? "Studio" : "Env";
+    toggleWaterBtn.querySelector('.btn-label').innerText = showWater ? "Studio" : "Env";
     if (typeof window.setEnvMode === "function") {
       window.setEnvMode(showWater ? "sky" : "studio");
     }

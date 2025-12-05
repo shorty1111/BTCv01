@@ -1,0 +1,81 @@
+/* Root theme tokens and layout constants */
+:root {
+  --background: hsl(220, 15%, 8%);
+  --background-secondary: hsl(220, 15%, 12%);
+  --background-tertiary: hsl(220, 12%, 16%);
+  --foreground: hsl(210, 40%, 98%);
+  --sidebar-w: 400px;
+  /* Glass Effects */
+  --card: hsl(220, 15%, 12%, 0.8);
+  --card-foreground: hsl(210, 40%, 95%);
+  --card-border: hsl(220, 20%, 25%, 0.4);
+  --popover: hsl(220, 15%, 10%, 0.95);
+  --popover-foreground: hsl(210, 40%, 95%);
+  /* Primary Colors */
+  --primary: hsl(210, 85%, 55%);
+  --primary-glow: hsl(210, 90%, 65%);
+  --primary-dark: hsl(210, 80%, 45%);
+  --primary-foreground: hsl(210, 40%, 98%);
+  /* Secondary Colors */
+  --secondary: hsl(220, 15%, 20%);
+  --secondary-foreground: hsl(210, 40%, 95%);
+  --secondary-hover: hsl(220, 15%, 25%);
+  --accent: hsl(280, 70%, 55%);
+  --accent-glow: hsl(280, 80%, 65%);
+  --accent-foreground: hsl(210, 40%, 98%);
+  /* Neutral Colors */
+  --muted: hsl(220, 15%, 18%);
+  --muted-foreground: hsl(220, 10%, 65%);
+  --muted-hover: hsl(220, 15%, 22%);
+  /* Borders */
+  --border: hsl(220, 20%, 25%, 0.6);
+  --border-hover: hsl(220, 25%, 35%, 0.8);
+  --input: hsl(220, 15%, 16%);
+  --input-border: hsl(220, 20%, 30%);
+  --ring: hsl(210, 85%, 55%, 0.3);
+  /* Glass & Blur */
+  --glass-bg: hsl(220, 15%, 10%, 0.7);
+  --glass-border: hsl(220, 30%, 40%, 0.3);
+  --blur-strong: blur(20px) saturate(150%);
+  --blur-medium: blur(12px) saturate(120%);
+  --blur-light: blur(8px) saturate(110%);
+  /* Gradients */
+  --gradient-primary: linear-gradient(
+    135deg,
+    hsl(210, 85%, 55%),
+    hsl(280, 70%, 55%)
+  );
+  --gradient-background: radial-gradient(
+    ellipse at top,
+    hsl(220, 15%, 12%),
+    hsl(220, 15%, 8%)
+  );
+  --gradient-glass: linear-gradient(
+    145deg,
+    hsl(220, 15%, 15%, 0.8),
+    hsl(220, 15%, 10%, 0.6)
+  );
+  --gradient-canvas: radial-gradient(
+    circle at 50% 50%,
+    hsl(210, 31%, 15%),
+    hsl(210, 23%, 9%) 80%
+  );
+  --tabs-height: 52px;
+  --mobile-panel-height: 45vh;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* Shadows */
+  --shadow-soft: 0 4px 16px hsl(220, 15%, 5%, 0.3);
+  --shadow-medium: 0 8px 32px hsl(220, 15%, 5%, 0.4);
+  --shadow-strong: 0 8px 32px hsl(220, 15%, 5%, 0.5);
+  --shadow-glow: 0 0 20px hsl(210, 85%, 55%, 0.3);
+  --shadow-accent-glow: 0 0 15px hsl(280, 70%, 55%, 0.4);
+  /* Transitions */
+  --transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  --spring: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  /* Layout */
+  --action-bar-h: 64px;
+  --header-h: 64px;
+}
