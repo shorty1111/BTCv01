@@ -1420,18 +1420,7 @@ function initWeatherButtons() {
 }
 
 const cameraControls = document.getElementById("camera-controls");
-const toggleOptions = document.getElementById("toggleOptions");
-const closeOptions = document.getElementById("closeOptions");
-
-toggleOptions.addEventListener("click", () => {
-  cameraControls.classList.remove("collapsed");
-  cameraControls.classList.add("expanded");
-});
-
-closeOptions.addEventListener("click", () => {
-  cameraControls.classList.remove("expanded");
-  cameraControls.classList.add("collapsed");
-});
+  // Camera options panel is always expanded now; toggle/close buttons removed.
 
 
 document

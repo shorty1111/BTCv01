@@ -438,36 +438,27 @@ canvas,
   overflow: hidden;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
-/* ---------- TOGGLE BUTTON ---------- */
-#toggleOptions {
-  width: 100%;
-  height: 3.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 1rem;
-  background: transparent;
-  border: none;
-  font-weight: 600;
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-#toggleOptions,
-#closeOptions {
-  display: none !important;
-}
 #camera-controls.expanded .controls-content {
   max-height: 600px;
   opacity: 1;
 }
-/* ---------- INNER CONTENT ---------- */
-.controls-inner {
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
+  /* ---------- INNER CONTENT ---------- */
+  .controls-inner {
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .controls-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .controls-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
 /* ---------- BUTTON GRID ---------- */
 .button-grid {
   display: grid;
@@ -1302,20 +1293,20 @@ body.app-loading #camera-controls {
    INFO PANEL - 0 STYLE
 ========================= */
 #info-panel {
-  position: fixed;
-  left: var(--sidebar-w);
-  right: 0;
-  width: calc(100% - var(--sidebar-w));
-  bottom: calc(var(--action-bar-h) + env(safe-area-inset-bottom));
-  background: transparent;
-  border: none;
-  z-index: 100;
-  padding: 0 16px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  box-sizing: border-box;
-}
+    position: fixed;
+    left: var(--sidebar-w);
+    right: 0;
+    width: calc(100% - var(--sidebar-w));
+    bottom: calc(var(--action-bar-h) + env(safe-area-inset-bottom));
+    background: transparent;
+    border: none;
+    z-index: 140;
+    padding: 0 16px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-sizing: border-box;
+  }
 #info-panel table {
   table-layout: fixed;
   width: 100%;
@@ -1347,12 +1338,12 @@ body.app-loading #camera-controls {
   box-shadow: 0 -4px 18px hsl(220, 15%, 5%, 0.3);
   z-index: 140;
 }
-.info-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-  justify-content: flex-start;
+  .info-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    justify-content: flex-start;
   width: 100%;
 }
 .action-button {
@@ -1999,7 +1990,7 @@ body.studio-mode .btn-weather {
 /* =========================
    TABLET PORTRAIT MODE - CLEAN VERSION
 ========================= */
-@media (max-width: 1024px) and (orientation: portrait) {
+  @media (max-width: 1024px) and (orientation: portrait) {
   :root {
     --sidebar-w: 100%;
     --header-h: 72px;
@@ -2007,23 +1998,17 @@ body.studio-mode .btn-weather {
     --mobile-panel-height: 50vh;
   }
 
-  #camera-controls {
-    position: fixed;
-    top: calc(var(--header-h) + 8px);
-    left: 8px;
-    right: auto;
-    width: auto;
-    max-width: 520px;
-    height: auto; /* pusti sadrzaj da odredi visinu */
-    z-index: 150;
-    padding: 6px 8px;
-  }
-
-  /* Ukloni toggle dugme */
-  #toggleOptions,
-  #closeOptions {
-    display: none;
-  }
+    #camera-controls {
+      position: fixed;
+      top: calc(var(--header-h) + 8px);
+      left: 8px;
+      right: auto;
+      width: auto;
+      max-width: 520px;
+      height: auto; /* pusti sadrzaj da odredi visinu */
+      z-index: 60; /* ispod info-panela u portret modu */
+      padding: 6px 8px;
+    }
 
   /* Controls content uvek vidljiv */
   .controls-content {
@@ -2047,20 +2032,21 @@ body.studio-mode .btn-weather {
     width: auto;
   }
 
-  /* Naslov iznad, centriran u koloni */
-  .section-label {
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--muted-foreground);
-    text-transform: uppercase;
-    margin: 0;
-    text-align: center;
-    width: 100%;
-  }
-  .section-label:nth-of-type(1) { grid-column: 1; grid-row: 1; }
-  .section-label:nth-of-type(2) { grid-column: 2; grid-row: 1; }
-  .section-label:nth-of-type(3) { grid-column: 3; grid-row: 1; }
-  .section-label:nth-of-type(4) { grid-column: 4; grid-row: 1; }
+    /* Naslov iznad, centriran u koloni */
+    .section-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--muted-foreground);
+      text-transform: uppercase;
+      margin: 0;
+      text-align: center;
+      width: 100%;
+    }
+    /* Fiksne kolone po vrsti sekcije – da ne zavisi od nth-of-type redosleda */
+    .section-label-viewports  { grid-column: 1; grid-row: 1; }
+    .section-label-dimensions { grid-column: 2; grid-row: 1; }
+    .section-label-lighting   { grid-column: 3; grid-row: 1; }
+    .section-label-weather    { grid-column: 4; grid-row: 1; }
 
   /* Grupa elemenata puni kolonu */
   .controls-inner > div {
@@ -2308,18 +2294,39 @@ body.studio-mode .btn-weather {
     background: transparent;
     padding: 0 16px 8px;
     z-index: 120; /* Preko sidebar-a */
+    display: flex;
+    flex-direction: column;
   }
 
   .canvas-actions {
     position: relative;
-    left: 0;
-    right: 0;
+    left: auto;
+    right: auto;
     bottom: auto;
-    width: 100%;
+    /* kompaktan chip bar, centriran u info-panelu */
+    width: auto;
+    max-width: 100%;
+    align-self: center;
     background: var(--glass-bg);
     backdrop-filter: var(--blur-medium);
     border-radius: 12px;
     border: 1px solid var(--glass-border);
+    padding: 8px 10px;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    order: 2;
+  }
+
+  .info-actions {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+  }
+
+  .load-body,
+  .info-body {
+    order: 1;
   }
 
   /* Control box repositioned */
@@ -2420,6 +2427,7 @@ body.studio-mode .btn-weather {
     height: calc((100vh - var(--header-h) - var(--safe-bottom)) * 0.5);
     border-right: none;
     border-top: 1px solid var(--card-border);
+    border-radius: 0px;
     background: var(--background-secondary);
     padding: 12px;
     display: flex;
@@ -2457,19 +2465,23 @@ body.studio-mode .btn-weather {
     pointer-events: none; /* ne blokira drag po canvasu */
   }
 
-  .canvas-actions {
-    position: absolute;
-    left: 12px;
-    right: 12px;
-    bottom: 8px;
-    border-left: none;
-    border-radius: 12px;
-    padding: 10px 12px;
-    box-shadow: none;
-    background: var(--background-secondary);
-    border: 1px solid var(--card-border);
-    pointer-events: auto; /* ostavi dugmad klikabilna */
-  }
+    .canvas-actions {
+      position: absolute;
+      bottom: 8px;
+      /* kompaktan chip bar, centriran ispod canvasa */
+      left: 50%;
+      transform: translateX(-50%);
+      width: auto;
+      max-width: calc(100% - 24px);
+      border-left: none;
+      border-radius: 12px;
+      padding: 10px 12px;
+      box-shadow: none;
+      background: var(--background-secondary);
+      border: 1px solid var(--card-border);
+      pointer-events: auto; /* ostavi dugmad klikabilna */
+      justify-content: center;
+    }
 
   #info-panel.info-open .info-body,
   #info-panel.load-open .load-body {
