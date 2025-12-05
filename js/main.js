@@ -52,7 +52,7 @@ let cubeMaxMip = Math.floor(Math.log2(envSize));
 const KERNEL_SIZE = 32;
 const SSAO_NOISE_SIZE = 3;
 const SSAO_DOWNSCALE = 0.9; // render SSAO u nizoj rezoluciji (minimum 0.85 da ne muti)
-let ssaa = 1.35; // supersampling faktor
+let ssaa = 1.2; // supersampling faktor
 const CAMERA_FRAME_PADDING = 0.0; // dodatni margin oko okvira (0 = koristi samo fill)
 const CAMERA_FRAME_FILL = 0.8; // model zauzima ~80% ekrana bez obzira na velicinu
 
