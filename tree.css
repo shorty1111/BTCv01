@@ -740,9 +740,7 @@ body.app-loading #camera-controls {
     align-items: center;
     gap: 8px;
     min-height: var(--action-bar-h);
-    background: var(--background-secondary);
-    border-top: 1px solid var(--card-border);
-    border-left: 1px solid var(--card-border);
+
     border-radius: 0;
     padding: 8px 16px;
     box-shadow: 0 -4px 18px hsl(220, 15%, 5%, 0.3);
@@ -755,6 +753,7 @@ body.app-loading #camera-controls {
     align-items: center;
     justify-content: flex-start;
     width: 100%;
+    overflow: visible;
   }
 .action-button {
   background: linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01));
@@ -770,8 +769,12 @@ body.app-loading #camera-controls {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  background-color: var(--background-secondary);
   gap: 8px;
-  white-space: nowrap;
+  white-space: nowrap;      /* kao variant tabs */
+  flex: 1 1 0;              /* dozvoli sabijanje */
+  min-width: 0;             /* ne guraj van ekrana */
+  max-width: 100%;
 }
 .action-button svg {
   width: 16px;
@@ -870,12 +873,18 @@ body.app-loading #camera-controls {
   border-radius: 12px;
   padding: 12px 16px 16px;
   opacity: 0;
+  visibility: hidden;
+  display: none;
+  pointer-events: none;
 }
 #info-panel.info-open .info-body {
   max-height: 60vh;
   overflow-y: auto;
   border: 1px solid var(--glass-border);
   opacity: 1;
+  visibility: visible;
+  display: block;
+  pointer-events: auto;
 }
 .load-body {
   max-height: 0;
@@ -1024,9 +1033,6 @@ body.app-loading #camera-controls {
     bottom: var(--action-bar-h);
     height: calc(100% - var(--header-h) - var(--action-bar-h));
   }
-  #camera-controls {
-    left: 350px;
-  }
   #info-panel {
     width: calc(100% - var(--sidebar-w));
     left: var(--sidebar-w);
@@ -1171,123 +1177,7 @@ body.studio-mode .btn-weather {
     --mobile-panel-height: 50vh;
   }
 
-    #camera-controls {
-      position: fixed;
-      top: calc(var(--header-h) + 8px);
-      left: 8px;
-      right: auto;
-      width: auto;
-      max-width: 520px;
-      height: auto; /* pusti sadrzaj da odredi visinu */
-      z-index: 60; /* ispod info-panela u portret modu */
-      padding: 6px 8px;
-      background: var(--background-secondary);
-      border: 1px solid var(--glass-border);
-      border-radius: 1rem;
-      overflow: hidden;
-    }
 
-  /* Controls content uvek vidljiv */
-  .controls-content {
-    max-height: none !important;
-    opacity: 1 !important;
-    overflow: visible;
-    height: auto;
-  }
-
-  /* Grid: 4 grupe u jednom redu (Viewports / Dimensions / Lighting / Weather) */
-  .controls-inner {
-    padding: 6px 8px;
-    display: grid;
-    grid-template-columns: repeat(4, auto);
-    grid-template-rows: auto auto;
-    column-gap: 6px;
-    row-gap: 4px;
-    align-items: start;
-    justify-content: flex-start;
-    height: auto;
-    width: auto;
-  }
-
-    /* Naslov iznad, centriran u koloni */
-    .section-label {
-      font-size: 10px;
-      font-weight: 600;
-      color: var(--muted-foreground);
-      text-transform: uppercase;
-      margin: 0;
-      text-align: center;
-      width: 100%;
-    }
-    /* Fiksne kolone po vrsti sekcije – da ne zavisi od nth-of-type redosleda */
-    .section-label-viewports  { grid-column: 1; grid-row: 1; }
-    .section-label-dimensions { grid-column: 2; grid-row: 1; }
-    .section-label-lighting   { grid-column: 3; grid-row: 1; }
-    .section-label-weather    { grid-column: 4; grid-row: 1; }
-
-  /* Grupa elemenata puni kolonu */
-  .controls-inner > div {
-    width: 100%;
-  }
-
-  /* Viewports dugmad ispod svog naslova */
-  .button-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 4px;
-    width: 100%;
-    justify-items: center;
-    grid-column: 1;
-    grid-row: 2;
-  }
-
-  /* Buttons */
-  #camera-controls button {
-    width: 44px;
-    height: 28px !important;
-    padding: 0;
-    font-size: 10px;
-    border-radius: 4px;
-  }
-
-  /* Full width buttons, ali kompaktne širine */
-  #camera-controls button.full-width {
-    width: 88px;
-    height: 28px;
-    grid-row: 2;
-    justify-self: center;
-  }
-
-  /* Weather switch ispod svog naslova */
-  #camera-controls .weather-switch {
-    width: 88px;
-    padding: 0;
-    grid-column: 4;
-    grid-row: 2;
-    justify-self: center;
-  }
-
-  #camera-controls .switch-track {
-    width: 88px;
-    height: 28px;
-    --thumb-size: 24px;
-    --thumb-shift: 57px;
-  }
-
-  /* Pozicioniraj pojedinačne dugmiće u svoje kolone */
-  #toggleDims { grid-column: 2; grid-row: 2; justify-self: center; }
-  #toggleWater { grid-column: 3; grid-row: 2; justify-self: center; }
-
-  #camera-controls .switch-track .track-icon,
-  #camera-controls .switch-thumb .thumb-icon {
-    width: 16px;
-    height: 16px;
-  }
-
-  /* Sakrij close dugme */
-  #closeOptions {
-    display: none;
-  }
 
   /* Sidebar portrait tweaks moved to sidebar.css */
   .canvas-actions {
@@ -1453,6 +1343,32 @@ body.studio-mode .btn-weather {
   flex-direction: column;
   gap: 10px;
   box-sizing: border-box;
+}
+
+/* Info modal overlay (desktop) */
+#info-panel.info-open {
+  pointer-events: none;
+}
+#info-panel.info-open .info-body {
+  position: fixed;
+  left: calc(var(--sidebar-w) + (100vw - var(--sidebar-w)) / 2);
+  top: calc(var(--header-h) + (100vh - var(--header-h) - var(--action-bar-h)) / 2);
+  transform: translate(-50%, -50%);
+  width: min(80vw, calc((100vw - var(--sidebar-w)) * 0.8));
+  height: min(80vh, calc((100vh - var(--header-h) - var(--action-bar-h)) * 0.8));
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - var(--header-h) - var(--action-bar-h) - 24px);
+  min-width: 320px;
+  min-height: 240px;
+  padding: 16px;
+  background: var(--background-secondary);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.45);
+  opacity: 1;
+  pointer-events: auto;
+  overflow: auto;
+  z-index: 160;
 }
 
 #info-panel table {

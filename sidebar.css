@@ -114,7 +114,6 @@
   color: var(--muted-foreground);
 }
 .variant-intro .boat-name {
- 
   font-size: 20px;
   font-weight: 700;
   color: var(--foreground);
@@ -632,6 +631,14 @@
 @media (max-width: 1024px) and (orientation: portrait) {
   :root {
     --sidebar-w: 100%;
+  }
+
+  .variant-intro {
+    text-align: center;
+  }
+  .variant-intro .boat-name {
+    text-align: center;
+    justify-content: center;
   }
 
   .variant-tabs-buttons {

@@ -1674,6 +1674,15 @@ function renderDimensionOverlay(proj, view) {
 function buildDimensionTicks(min, max, radius) {
   const verts = [];
   const size = Math.max(radius * 0.015, 0.05);
+  const lenX = Math.abs(max[0] - min[0]);
+  const lenY = Math.abs(max[1] - min[1]);
+  const lenZ = Math.abs(max[2] - min[2]);
+  const maxSpan = Math.max(lenX, lenY, lenZ, 0.001);
+  // cilj: raster 1.0m dok god nema previse tikova; u suprotnom ga povecaj,
+  // ali kvantizuj na 1.0m da ostane "cist"
+  const maxTicks = 200;
+  let baseStep = Math.max(1.0, maxSpan / maxTicks);
+  baseStep = Math.max(1.0, Math.round(baseStep / 1.0) * 1.0);
   const addTicks = (start, end, up) => {
     const dir = [
       end[0] - start[0],
@@ -1681,8 +1690,8 @@ function buildDimensionTicks(min, max, radius) {
       end[2] - start[2],
     ];
     const len = Math.hypot(dir[0], dir[1], dir[2]);
-    if (len < size * 1.5) return;
-    const step = Math.max(0.5, len / 12);
+    if (!Number.isFinite(len) || len < size * 1.5) return;
+    const step = baseStep;
     const invLen = 1 / len;
     dir[0] *= invLen;
     dir[1] *= invLen;
