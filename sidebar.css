@@ -530,6 +530,8 @@
   gap: 10px;
 }
 .variant-tabs-buttons {
+  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border);
   margin: 12px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -607,9 +609,8 @@
   display: none;
 }
 .variant-active-title {
-  border-top: 1px solid var(--border);
+ 
   margin: 12px;
-  padding-top: 12px;
   font-size: 24px;
   font-weight: 700;
   color: var(--primary-foreground);
@@ -634,6 +635,8 @@
   }
 
   .variant-tabs-buttons {
+    border-bottom: 1px solid var(--border);
+    border-radius: 14px;
     margin: 8px;
     display: flex;
     justify-content: space-between;
