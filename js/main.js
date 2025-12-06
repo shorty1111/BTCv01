@@ -17,6 +17,8 @@ import { initUI, renderBoatInfo, showPartInfo, showLoading, hideLoading, showToa
 import { TEXTURE_SLOTS, bindTextureToSlot } from "./texture-slots.js";
 import { createThumbnailGenerator, thumbnails, clearThumbnailCache } from "./thumbnails.js";
 
+// KADA UVEZES BAZU, IZBACI SIDEBAR_INFO IZ KONFIGA!!!!!!!!!!!!!!!!!!!! NE ZABORAVI TO KRV TI JEBEM GAZIRANU
+
 let sceneChanged = true;
 let pbrUniforms = {};
 let reflectionUniforms = {};
@@ -608,10 +610,10 @@ function createFinalColorTarget(w, h) {
 }
 
 function applyBoatNameFromConfig() {
-  const nameEl = document.querySelector(".boat-name");
-  if (!nameEl) return;
+  const nameEls = document.querySelectorAll(".boat-name");
+  if (!nameEls.length) return;
   const name = BOAT_INFO?.Model || "Boat";
-  nameEl.textContent = name;
+  nameEls.forEach((el) => (el.textContent = name));
 }
 
 function focusCameraOnNode(node) {

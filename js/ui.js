@@ -587,7 +587,24 @@ window.updateHotspotPositions = updateHotspotPositions;
 
 function buildVariantSidebar() {
   const sidebar = document.getElementById("variantSidebar");
-  sidebar.innerHTML = "";
+  // Oslanjamo se na HTML kostur; ako ne postoji, prijavi grešku
+  const intro = sidebar.querySelector(".variant-intro");
+  const tabsBar = sidebar.querySelector(".variant-tabs");
+  const tabsButtons = sidebar.querySelector(".variant-tabs-buttons");
+  const tabsContent = sidebar.querySelector(".variant-tabs-content");
+  const placeholderMsg = sidebar.querySelector(".variant-placeholder");
+  const activeTitle = sidebar.querySelector(".variant-active-title");
+
+  if (!intro || !tabsBar || !tabsButtons || !tabsContent || !placeholderMsg || !activeTitle) {
+    console.error("Variant sidebar scaffold not found in HTML.");
+    return;
+  }
+
+  tabsButtons.innerHTML = "";
+  tabsContent.innerHTML = "";
+  placeholderMsg.classList.remove("hidden");
+  activeTitle.classList.add("hidden");
+  activeTitle.textContent = "";
   partFirstItems.clear();
   hotspotButtons.clear();
   colorPanels.clear();
@@ -595,32 +612,8 @@ function buildVariantSidebar() {
   const layer = ensureHotspotLayer();
   if (layer) layer.innerHTML = "";
 
-  const intro = document.createElement("div");
-  intro.className = "variant-intro";
-  intro.innerHTML = `
-    <h2>Customize Your Boat</h2>
-    <p>Select materials, colors, and parts to create a configuration that matches your vision.</p>
-  `;
-
-  const tabsBar = document.createElement("div");
-  tabsBar.className = "variant-tabs";
-
-  const tabsButtons = document.createElement("div");
-  tabsButtons.className = "variant-tabs-buttons";
-  tabsBar.appendChild(tabsButtons);
-
-  const tabsContent = document.createElement("div");
-  tabsContent.className = "variant-tabs-content";
-
   const groupNodes = new Map();
   let activeGroup = null;
-
-  const placeholderMsg = document.createElement("div");
-  placeholderMsg.className = "variant-placeholder";
-  placeholderMsg.textContent =
-    "Tap a category to pick an option and start configuring your boat.";
-  const activeTitle = document.createElement("h3");
-  activeTitle.className = "variant-active-title hidden";
 
   const setActiveGroup = (name) => {
     activeGroup = name;
@@ -670,18 +663,6 @@ function buildVariantSidebar() {
     }
     applySelectedFilter();
   };
-
-  sidebar.appendChild(intro);
-  const tabsWrapper = document.createElement("div");
-  tabsWrapper.className = "variant-tabs-wrapper";
-  tabsWrapper.appendChild(tabsBar);
-  sidebar.appendChild(tabsWrapper);
-  const scrollArea = document.createElement("div");
-  scrollArea.className = "variant-scroll-area";
-  scrollArea.appendChild(placeholderMsg);
-  scrollArea.appendChild(activeTitle);
-  scrollArea.appendChild(tabsContent);
-  sidebar.appendChild(scrollArea);
 
   for (const [groupName, parts] of Object.entries(VARIANT_GROUPS)) {
     const tabBtn = document.createElement("button");
@@ -1430,8 +1411,13 @@ document
 
       // 👇 DODAJ - HOME button specijalan slučaj
       if (viewName === "iso" && window.initialCameraState) {
-        console.log("🏠 HOME clicked - restoring initial state");
         camera.useOrtho = false;
+        // vrati dinamicke limite zumiranja na ceo brod
+        if (typeof window.sceneBoundingRadius === "number") {
+          window.currentBoundingRadius = window.sceneBoundingRadius;
+        } else {
+          delete window.currentBoundingRadius;
+        }
         camera.pan = window.initialCameraState.pan.slice();
         camera.distTarget = window.initialCameraState.dist;
 

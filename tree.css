@@ -65,6 +65,20 @@ body {
 .header-left {
   justify-content: flex-start;
 }
+.global-header .header-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.global-header .header-controls .button-grid {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.global-header .header-controls .btn-toggle,
+.global-header .header-controls .weather-switch {
+  margin: 0;
+}
 .tooltip {
   position: absolute;
   top: 100%;
@@ -345,42 +359,43 @@ canvas,
    CAMERA CONTROLS - 0 STYLE
 ========================= */
 #camera-controls {
-  position: fixed;
-  top: 6rem;
-  left: 30rem;
-  z-index: 50;
-  max-width: 240px;
-  background: var(--background-secondary);
-  border: 1px solid var(--glass-border);
-  border-radius: 1rem;
-  overflow: hidden;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  inset: auto;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  max-width: none;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+  padding: 0;
 }
-#camera-controls.expanded .controls-content {
-  max-height: 600px;
-  opacity: 1;
-}
+
   /* ---------- INNER CONTENT ---------- */
   .controls-inner {
-    padding: 1rem;
     display: flex;
-    flex-direction: column;
+    align-items: center;
     gap: 0.75rem;
+    padding: 0 1rem;
   }
   .controls-group {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: center;
     gap: 0.5rem;
   }
   .controls-group {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: center;
     gap: 0.5rem;
   }
 /* ---------- BUTTON GRID ---------- */
 .button-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(4, auto);
   gap: 0.5rem;
   justify-items: center;
 }
@@ -399,13 +414,13 @@ canvas,
 }
 /* ---------- BUTTONS ---------- */
 #camera-controls button {
-  height: 3rem;
-  padding: 0.5rem 1rem;
-  background: var(--secondary);
+  height: 36px;
+  padding: 0 12px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01));
   border: 1px solid var(--border);
   color: var(--secondary-foreground);
   border-radius: 0.5rem;
-  font-size: 0.875rem;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   display: flex;
@@ -437,33 +452,33 @@ canvas,
   width: 100%;
 }
 #camera-controls button:hover {
-  background: var(--primary);
+  border-color: var(--border);
   color: var(--primary-foreground);
-  border-color: var(--primary);
-  transform: translateY(-2px);
+  background: linear-gradient(120deg, rgba(85,214,255,0.25), rgba(85,214,255,0.08));
+  transform: translateY(-1px);
 }
 @media (hover: none) and (pointer: coarse) {
   #camera-controls button:hover,
   #camera-controls button:focus,
   #camera-controls button:active {
-    background: var(--secondary);
+    background: linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01));
     color: var(--secondary-foreground);
     border-color: var(--border);
     transform: none;
   }
 }
 #camera-controls .weather-switch {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+
   border-radius: 0.75rem;
+  min-width: 128px;
+  height: 36px;
 }
 #camera-controls .switch-track {
-  --thumb-size: 44px;
-  --thumb-shift: 66px;
+  --thumb-size: 30px;
+  --thumb-shift: 62px;
   position: relative;
-  height: 52px;
-  width: 100%;
+  height: 36px;
+  width: 100px;
   background:
     linear-gradient(90deg, hsla(210, 85%, 55%, 1.0) 0%, hsla(25, 85%, 60%, 1.0) 100%),
     var(--secondary);
@@ -475,8 +490,8 @@ canvas,
 #camera-controls .switch-track .track-icon {
   position: absolute;
   top: 50%;
-  width: 28px;
-  height: 28px;
+  width: 18px;
+  height: 18px;
   transform: translateY(-50%);
 
   transition: opacity 180ms ease;
@@ -504,8 +519,8 @@ canvas,
 }
 #camera-controls .switch-thumb .thumb-icon {
   position: absolute;
-  width: 28px;
-  height: 28px;
+  width: 16px;
+  height: 16px;
   object-fit: contain;
   opacity: 0;
   transition: opacity 180ms ease;
@@ -742,10 +757,10 @@ body.app-loading #camera-controls {
     width: 100%;
   }
 .action-button {
-  background: var(--secondary);
+  background: linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01));
   color: var(--foreground);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 8px 12px;
   font-weight: 600;
   font-size: 13px;
@@ -754,6 +769,8 @@ body.app-loading #camera-controls {
   height: 36px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  gap: 8px;
   white-space: nowrap;
 }
 .action-button svg {
@@ -784,9 +801,9 @@ body.app-loading #camera-controls {
   box-shadow: 0 10px 24px rgba(10, 170, 255, 0.18);
 }
 .action-button:hover {
-  background: var(--primary);
+  background: linear-gradient(120deg, rgba(85,214,255,0.25), rgba(85,214,255,0.08));
   color: var(--primary-foreground);
-  border-color: var(--primary);
+  border-color: var(--border);
   transform: translateY(-1px);
 }
 .action-button.has-chevron {
@@ -862,23 +879,17 @@ body.app-loading #camera-controls {
 }
 .load-body {
   max-height: 0;
+  opacity: 0;
   overflow: hidden;
   transition: max-height 0.45s var(--spring), opacity 0.3s var(--spring);
-  background: var(--card);
-  border: 1px solid transparent;
-  border-radius: 12px;
-  padding: 12px 16px 16px;
-  opacity: 0;
   width: 100%;
   max-width: 420px;
   min-width: 280px;
   align-self: flex-start;
-  box-shadow: var(--shadow-soft);
 }
 #info-panel.load-open .load-body {
   max-height: 40vh;
   overflow-y: auto;
-  border: 1px solid var(--glass-border);
   opacity: 1;
 }
   #info-panel.mobile-local {
@@ -1170,6 +1181,10 @@ body.studio-mode .btn-weather {
       height: auto; /* pusti sadrzaj da odredi visinu */
       z-index: 60; /* ispod info-panela u portret modu */
       padding: 6px 8px;
+      background: var(--background-secondary);
+      border: 1px solid var(--glass-border);
+      border-radius: 1rem;
+      overflow: hidden;
     }
 
   /* Controls content uvek vidljiv */
